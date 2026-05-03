@@ -16,7 +16,9 @@ async def chat_async() -> JSONResponse:
     # TODO: Implementation: Story S-D
     return JSONResponse(
         status_code=501,
-        content={"error": {"code": "NOT_IMPLEMENTED", "message": "Not implemented.", "details": {}}},
+        content={
+            "error": {"code": "NOT_IMPLEMENTED", "message": "Not implemented.", "details": {}}
+        },
     )
 
 
@@ -30,5 +32,7 @@ async def chat_summary_async() -> JSONResponse:
     # TODO: Implementation: Story S-F
     return JSONResponse(
         status_code=501,
-        content={"error": {"code": "NOT_IMPLEMENTED", "message": "Not implemented.", "details": {}}},
+        content={
+            "error": {"code": "NOT_IMPLEMENTED", "message": "Not implemented.", "details": {}}
+        },
     )
