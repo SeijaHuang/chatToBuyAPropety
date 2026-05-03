@@ -1,0 +1,70 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint-and-test:
+    name: Lint, Type Check & Test
+    runs-on: ubuntu-latest
+
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 5
+
+      postgres:
+        image: postgres:16-alpine
+        ports:
+          - 5432:5432
+        env:
+          POSTGRES_USER: propertyai
+          POSTGRES_PASSWORD: propertyai
+          POSTGRES_DB: propertyai_test
+        options: >-
+          --health-cmd "pg_isready -U propertyai"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 5
+
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+          enable-cache: true
+
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --all-groups
+
+      - name: ruff format check
+        run: uv run ruff format --check .
+
+      - name: ruff lint
+        run: uv run ruff check .
+
+      - name: mypy type check
+        run: uv run mypy --strict .
+
+      - name: pytest with coverage
+        run: uv run pytest --cov --cov-fail-under=80
+        env:
+          OPENROUTER_API_KEY: test-key
+          REDIS_URL: redis://localhost:6379
+          DATABASE_URL: postgresql+asyncpg://propertyai:propertyai@localhost:5432/propertyai_test
