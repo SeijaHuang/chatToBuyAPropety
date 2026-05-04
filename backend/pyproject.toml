@@ -17,6 +17,25 @@ dependencies = [
     "structlog>=24.1.0",
 ]
 
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+py-modules = ["scripts"]
+
+[tool.setuptools.packages.find]
+include = ["conversation*", "models*", "prompts*", "routers*", "services*", "tools*"]
+
+[tool.uv]
+package = true
+
+[project.scripts]
+test = "scripts:test"
+lint = "scripts:lint"
+format = "scripts:format_code"
+typecheck = "scripts:typecheck"
+
 [dependency-groups]
 dev = [
     "pytest>=8.2.0",
