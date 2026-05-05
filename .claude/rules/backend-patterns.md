@@ -83,6 +83,42 @@ system_prompt = "You are an AI property buying assistant..."
 
 ---
 
+## Module Completion Rules — Centralised Registry
+
+All required-field logic for module completion lives in `MODULE_COMPLETION_RULES` in
+`conversation/state_machine.py`. Do **not** hard-code field names or completion conditions
+anywhere else (e.g. routers, prompts, tests).
+
+Each entry is a `ModuleRequirements` frozen dataclass:
+
+```python
+@dataclass(frozen=True)
+class ModuleRequirements:
+    submodel_attr: str                            # e.g. "m1", "m2"
+    all_fields: frozenset[str]                    # every field owned by this module (routing)
+    required_fields: frozenset[str]               # must be non-None for completion
+    extra_check: Callable[[CollectedData], bool]  # cross-module condition; use _no_extra_check if none
+```
+
+To add a required field, update `required_fields` in the relevant `MODULE_COMPLETION_RULES` entry.
+To add a new conditional requirement (e.g. "field X required only when Y == Z"), write a named
+predicate function and assign it to `extra_check` — never inline the logic in `is_module_complete`.
+
+```python
+# Correct — extend the registry entry
+ModuleRequirements(
+    ...,
+    required_fields=frozenset({"household_size", "has_children", "new_required_field"}),
+    extra_check=_m2_extra_check,
+)
+
+# Incorrect — ad-hoc condition outside the registry
+if module == EModule.M2_LIFESTYLE and data.m2.new_required_field is None:
+    return False
+```
+
+---
+
 ## Null Safety — State Merging
 
 When merging extracted fields into `CollectedData`, a non-`None` existing value must never be overwritten by an incoming `None`. This invariant is owned by `state_machine.py` and must not be bypassed.

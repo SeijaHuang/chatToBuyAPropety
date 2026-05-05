@@ -6,6 +6,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from main import app
+from models.schemas import ConversationStateDTO
 
 
 @pytest.fixture
@@ -16,19 +17,6 @@ async def client_async() -> AsyncGenerator[AsyncClient, None]:
 
 
 @pytest.fixture
-def sample_state() -> dict[str, object]:
-    """Minimal valid ConversationStateDTO-shaped dict for use in unit tests."""
-    return {
-        "session_id": "test-session-001",
-        "current_module": "M1_PROPERTY_NEEDS",
-        "status": "IN_PROGRESS",
-        "collected_data": {
-            "property_type": None,
-            "bedrooms": None,
-            "bathrooms": None,
-            "budget_min": None,
-            "budget_max": None,
-            "preferred_suburbs": [],
-        },
-        "messages": [],
-    }
+def sample_state() -> ConversationStateDTO:
+    """Minimal valid ConversationStateDTO for use in unit tests."""
+    return ConversationStateDTO(session_id="test-session-001")
