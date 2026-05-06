@@ -147,3 +147,37 @@ class RoutingPayload:
     intent: str
     collected_data: CollectedData
     session_id: str
+
+
+class ChatRequest(BaseModel):
+    """Inbound payload for a single conversation turn.
+
+    Attributes:
+        message: The user's message text. Must be non-empty.
+        state: The full current conversation state held by the client.
+    """
+
+    message: str = Field(min_length=1)
+    state: ConversationStateDTO
+
+
+class ChatResponse(BaseModel):
+    """Outbound payload returned after processing a conversation turn.
+
+    Attributes:
+        reply: The assistant's reply text.
+        extracted: Business fields extracted by the LLM tool call (control keys stripped).
+        updated_state: Conversation state after merging extracted fields and advancing modules.
+        routing: Populated when the state is complete or a routing keyword is detected.
+    """
+
+    model_config = ConfigDict(
+        arbitrary_types_allowed=True,
+        alias_generator=to_camel,
+        populate_by_name=True,
+    )
+
+    reply: str
+    extracted: dict[str, object]
+    updated_state: ConversationStateDTO
+    routing: RoutingPayload | None = None
