@@ -35,6 +35,7 @@ test = "scripts:test"
 lint = "scripts:lint"
 format = "scripts:format_code"
 typecheck = "scripts:typecheck"
+dev = "scripts:dev"
 
 [dependency-groups]
 dev = [
