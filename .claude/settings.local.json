@@ -7,7 +7,12 @@
       "Bash(kill %1)",
       "Bash(Remove-Item *)",
       "Bash(git checkout *)",
-      "Bash(git add *)"
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git commit -m 'chore\\(pre-commit\\): use official ruff-pre-commit hooks with auto-fix *)",
+      "Bash(git -C \"C:\\\\Users\\\\Shijia Huang\\\\Desktop\\\\AI Engineer\\\\CTB\" add backend/tools/extraction_schema.py backend/tests/test_extraction_schema.py)",
+      "Bash(git -C \"C:\\\\Users\\\\Shijia Huang\\\\Desktop\\\\AI Engineer\\\\CTB\" log --oneline -5)",
+      "Bash(git *)"
     ]
   }
 }
