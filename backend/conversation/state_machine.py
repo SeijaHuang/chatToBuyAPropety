@@ -9,17 +9,18 @@ from models.schemas import (
     ConversationStateDTO,
     EModule,
     EStatus,
+    ESubmodel,
 )
 
 
-def _no_extra_check(_: CollectedData) -> bool:
-    return True
+def _no_extra_required(_: CollectedData) -> frozenset[str]:
+    return frozenset()
 
 
-def _m2_extra_check(data: CollectedData) -> bool:
+def _m2_extra_required(data: CollectedData) -> frozenset[str]:
     if data.m1.intended_use == "investment":
-        return data.m2.target_tenant is not None
-    return True
+        return frozenset({"target_tenant"})
+    return frozenset()
 
 
 @dataclass(frozen=True)
@@ -30,18 +31,18 @@ class ModuleRequirements:
         submodel_attr: Attribute name on CollectedData that owns this module's fields.
         all_fields: Every field that belongs to this module, used for routing incoming values.
         required_fields: Subset of all_fields that must be non-None for the module to be complete.
-        extra_check: Optional cross-module predicate evaluated after required_fields are satisfied.
+        extra_required: Returns additional required fields derived from cross-module state.
     """
 
-    submodel_attr: str
+    submodel_attr: ESubmodel
     all_fields: frozenset[str]
     required_fields: frozenset[str]
-    extra_check: Callable[[CollectedData], bool]
+    extra_required: Callable[[CollectedData], frozenset[str]]
 
 
 MODULE_COMPLETION_RULES: dict[EModule, ModuleRequirements] = {
     EModule.M1_PROPERTY_NEEDS: ModuleRequirements(
-        submodel_attr="m1",
+        submodel_attr=ESubmodel.M1,
         all_fields=frozenset(
             {
                 "property_type",
@@ -58,10 +59,10 @@ MODULE_COMPLETION_RULES: dict[EModule, ModuleRequirements] = {
             }
         ),
         required_fields=frozenset({"property_type", "min_bedrooms", "intended_use"}),
-        extra_check=_no_extra_check,
+        extra_required=_no_extra_required,
     ),
     EModule.M2_LIFESTYLE: ModuleRequirements(
-        submodel_attr="m2",
+        submodel_attr=ESubmodel.M2,
         all_fields=frozenset(
             {
                 "household_size",
@@ -73,10 +74,10 @@ MODULE_COMPLETION_RULES: dict[EModule, ModuleRequirements] = {
             }
         ),
         required_fields=frozenset({"household_size", "has_children"}),
-        extra_check=_m2_extra_check,
+        extra_required=_m2_extra_required,
     ),
     EModule.M3_SUBURB_PREFERENCE: ModuleRequirements(
-        submodel_attr="m3",
+        submodel_attr=ESubmodel.M3,
         all_fields=frozenset(
             {
                 "commute_destination",
@@ -88,10 +89,10 @@ MODULE_COMPLETION_RULES: dict[EModule, ModuleRequirements] = {
             }
         ),
         required_fields=frozenset({"commute_destination", "commute_max_mins"}),
-        extra_check=_no_extra_check,
+        extra_required=_no_extra_required,
     ),
     EModule.M4_BUDGET: ModuleRequirements(
-        submodel_attr="m4",
+        submodel_attr=ESubmodel.M4,
         all_fields=frozenset(
             {
                 "budget_min",
@@ -104,7 +105,7 @@ MODULE_COMPLETION_RULES: dict[EModule, ModuleRequirements] = {
             }
         ),
         required_fields=frozenset({"budget_max"}),
-        extra_check=_no_extra_check,
+        extra_required=_no_extra_required,
     ),
 }
 
@@ -123,9 +124,9 @@ def is_module_complete(module: EModule, data: CollectedData) -> bool:
     rules = MODULE_COMPLETION_RULES.get(module)
     if rules is None:
         return False
-    sub = getattr(data, rules.submodel_attr)
-    base_ok = all(getattr(sub, f) is not None for f in rules.required_fields)
-    return base_ok and rules.extra_check(data)
+    sub = data[rules.submodel_attr]
+    all_required = rules.required_fields | rules.extra_required(data)
+    return all(getattr(sub, f) is not None for f in all_required)
 
 
 def get_current_module(completion: CompletionStatus) -> EModule:
@@ -187,7 +188,7 @@ def merge_extracted_fields(
             continue
         for rules in MODULE_COMPLETION_RULES.values():
             if key in rules.all_fields:
-                setattr(getattr(state.collected_data, rules.submodel_attr), key, value)
+                setattr(state.collected_data[rules.submodel_attr], key, value)
                 break
 
     state.completion_status = recalculate_completion(state.collected_data)

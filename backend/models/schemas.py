@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Literal
+from typing import Literal, cast
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 from pydantic.alias_generators import to_camel
@@ -23,6 +23,15 @@ class EStatus(StrEnum):
 
     IN_PROGRESS = "IN_PROGRESS"
     REQUIREMENTS_COMPLETE = "REQUIREMENTS_COMPLETE"
+
+
+class ESubmodel(StrEnum):
+    """Attribute names for each module's sub-model on CollectedData and CompletionStatus."""
+
+    M1 = "m1"
+    M2 = "m2"
+    M3 = "m3"
+    M4 = "m4"
 
 
 class M1PropertyNeeds(BaseModel):
@@ -75,6 +84,9 @@ class M4Budget(BaseModel):
     first_home_buyer: bool | None = None
 
 
+TSubmodel = M1PropertyNeeds | M2Lifestyle | M3SuburbPreference | M4Budget
+
+
 class CollectedData(BaseModel):
     """Flat accumulator for all extracted fields across all modules."""
 
@@ -82,6 +94,10 @@ class CollectedData(BaseModel):
     m2: M2Lifestyle = Field(default_factory=M2Lifestyle)
     m3: M3SuburbPreference = Field(default_factory=M3SuburbPreference)
     m4: M4Budget = Field(default_factory=M4Budget)
+
+    def __getitem__(self, key: ESubmodel) -> TSubmodel:
+        """Return the sub-model for the given module key."""
+        return cast(TSubmodel, getattr(self, key))
 
 
 class CompletionStatus(BaseModel):
@@ -91,6 +107,10 @@ class CompletionStatus(BaseModel):
     m2: bool = False
     m3: bool = False
     m4: bool = False
+
+    def __getitem__(self, key: ESubmodel) -> bool:
+        """Return the completion flag for the given module key."""
+        return cast(bool, getattr(self, key))
 
     @computed_field  # type: ignore[prop-decorator]
     @property
