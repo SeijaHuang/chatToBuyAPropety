@@ -15,6 +15,12 @@ Detailed standards live in `.claude/rules/` — read the relevant file before to
 | [testing.md](.claude/rules/testing.md) | Writing or modifying tests — coverage thresholds, mock rules, test naming |
 | [git-workflow.md](.claude/rules/git-workflow.md) | Commits, branches, PRs, pre-commit hooks |
 
+## Docs Index
+
+| File | Contents |
+|---|---|
+| [docs/part1-p0-implementation.md](docs/part1-p0-implementation.md) | Part 1 P0 story completion, E2E criteria, architectural decisions, test coverage |
+
 ---
 
 ## Tech Stack
@@ -25,7 +31,7 @@ Detailed standards live in `.claude/rules/` — read the relevant file before to
 | API framework | FastAPI |
 | Data validation | Pydantic v2 |
 | LLM gateway | OpenRouter API |
-| Session store | Redis |
+| Session store | Redis (P1 — not active in P0) |
 | Database | PostgreSQL (JSONB for semi-structured fields) |
 | Dependency manager | uv + `pyproject.toml` |
 | Formatter + Linter | Ruff (line-length 100) |
@@ -81,6 +87,8 @@ Every source file and its single responsibility. Read this before adding code to
 ```
 backend/
 ├── main.py                        FastAPI app factory — CORS middleware, router mount, /health
+├── config.py                      pydantic-settings Settings class — single source of env vars
+├── exceptions.py                  Typed exception hierarchy (PropertyAIException, LLMServiceError, …)
 ├── pyproject.toml                 Canonical dependency + tool config (ruff, mypy, pytest)
 ├── requirements.txt               pip mirror of pyproject.toml — keep in sync manually
 │
@@ -89,8 +97,8 @@ backend/
 │                                  CollectedData, ChatRequest, ChatResponse, SummaryResponse)
 │
 ├── conversation/
-│   ├── state_machine.py           Core orchestrator — loads Redis state, dispatches to active
-│                                  module, calls LLM, merges extracted fields, advances module
+│   ├── state_machine.py           Module progression — merges extracted fields, advances module,
+│                                  recalculates completion, owns null-safety invariant
 │   └── intent_router.py           Classifies each user message into a routing intent
 │                                  (recommend_suburbs / list_properties / property_detail / open_ended_query)
 │
@@ -100,112 +108,64 @@ backend/
 │
 ├── services/
 │   └── llm_client.py              OpenRouter async wrapper — implements ILLMClient Protocol,
-│                                  handles tool-calling and retries
+│                                  chat_with_tools_async (tool-calling) and complete_async (plain)
 │
 ├── tools/
 │   └── extraction_schema.py       OpenAI-format tool definition that instructs the LLM to
 │                                  return structured CollectedData fields
 │
 ├── routers/
-│   └── chat.py                    FastAPI route handlers — POST /chat (chat_async),
-│                                  POST /chat/summary (chat_summary_async)
+│   └── chat.py                    FastAPI route handlers — POST /chat and POST /chat/summary
 │
 └── tests/
     ├── conftest.py                 Shared fixtures: client_async (AsyncClient), sample_state
-    ├── test_state_machine.py       Unit tests for conversation/state_machine.py        [S-B]
-    ├── test_intent_router.py       Unit tests for conversation/intent_router.py        [S-E]
-    ├── test_system_prompt.py       Unit tests for prompts/system_prompt_builder.py     [S-C]
-    ├── test_extraction_schema.py   Unit tests for tools/extraction_schema.py           [S-C]
-    ├── test_chat_endpoint.py       Integration tests for POST /chat                    [S-D]
-    └── test_summary.py             Integration tests for POST /chat/summary            [S-F]
+    ├── test_extraction_schema.py   S-A unit tests
+    ├── test_state_machine.py       S-B unit tests
+    ├── test_system_prompt.py       S-C unit tests
+    ├── test_chat_endpoint.py       S-D integration tests
+    ├── test_intent_router.py       S-E unit tests
+    └── test_summary.py             S-F integration tests
 ```
 
 ---
 
 ## Architecture Overview
 
-PropertyAI guides users through four sequential conversation modules, collecting structured property requirements, then returns a formatted summary via `POST /chat/summary`.
+PropertyAI guides users through four sequential conversation modules (M1→M4), collecting structured property requirements, then returns a formatted summary via `POST /chat/summary`.
 
 ### Request Flow
 
 ```
 POST /api/v1/chat
     │
-    ├── routers/chat.py              Validates request, delegates to state machine
+    ├── routers/chat.py
+    │       1. Append user message to conversationHistory
+    │       2. Build system prompt  →  prompts/system_prompt_builder.py
+    │       3. Call LLM with tool   →  services/llm_client.py
+    │       4. Merge extracted fields, advance module  →  conversation/state_machine.py
+    │       5. Append assistant reply to conversationHistory
+    │       6. Classify intent  →  conversation/intent_router.py
+    │       7. Return ChatResponse (reply + extracted + updated_state + routing)
     │
-    ├── conversation/intent_router.py
-    │       Classifies intent — recommend_suburbs / list_properties / property_detail / open_ended_query
+POST /api/v1/chat/summary
     │
-    ├── conversation/state_machine.py
-    │       1. Loads ConversationState from Redis (keyed by session_id)
-    │       2. Builds system prompt via system_prompt_builder.py
-    │       3. Calls LLM via llm_client.py (with extraction_schema.py tool)
-    │       4. Merges extracted fields into CollectedData (null-safety invariant)
-    │       5. Advances module if all required fields are non-None
-    │       6. Persists updated state to Redis
-    │       7. Returns assistant reply
-    │
-    ├── prompts/system_prompt_builder.py
-    │       Builds module-specific system prompt from current state
-    │
-    ├── services/llm_client.py
-    │       Async OpenRouter call with tool-calling support
-    │
-    └── tools/extraction_schema.py
-            Tool definition that forces structured field extraction
+    └── routers/chat.py
+            Validates non-empty data, builds summary prompt, calls LLM plain completion
 ```
-
-### Session State (Redis)
-
-State is serialised as JSON and stored at key `session:{session_id}`.
-
-```
-ConversationState
-├── session_id: str
-├── current_module: EModule          — active module driving the conversation
-├── status: EStatus                  — IN_PROGRESS | REQUIREMENTS_COMPLETE
-├── messages: list[Message]          — full chat history (role + content)
-└── collected_data: CollectedData    — accumulated field values across all modules
-```
-
-`CollectedData` is the single accumulator for all extracted fields. Fields are owned by a specific module but stored flat so the summary endpoint can read everything in one pass.
 
 ### Module Progression
 
 ```
 EModule:  M1_PROPERTY_NEEDS → M2_LIFESTYLE → M3_SUBURB_PREFERENCE → M4_BUDGET → COMPLETE
-EStatus:  IN_PROGRESS ──────────────────────────────────────────────────────► REQUIREMENTS_COMPLETE
+EStatus:  IN_PROGRESS ────────────────────────────────────────────► REQUIREMENTS_COMPLETE
 ```
 
-| Module | Collects |
+| Module | Required fields to advance |
 |---|---|
-| M1_PROPERTY_NEEDS | Property type, bedrooms, bathrooms, parking, key features |
-| M2_LIFESTYLE | Lifestyle priorities, commute destination, pet/family requirements |
-| M3_SUBURB_PREFERENCE | Preferred suburbs, max distance, school zone requirements |
-| M4_BUDGET | Budget min/max, deposit readiness |
-
-The state machine advances only when **all required fields for the current module are non-`None`**. Optional fields do not block advancement.
-
-### Domain Enums
-
-```python
-class EModule(str, Enum):
-    M1_PROPERTY_NEEDS    = "M1_PROPERTY_NEEDS"
-    M2_LIFESTYLE         = "M2_LIFESTYLE"
-    M3_SUBURB_PREFERENCE = "M3_SUBURB_PREFERENCE"
-    M4_BUDGET            = "M4_BUDGET"
-    COMPLETE             = "COMPLETE"
-
-class EStatus(str, Enum):
-    IN_PROGRESS            = "IN_PROGRESS"
-    REQUIREMENTS_COMPLETE  = "REQUIREMENTS_COMPLETE"
-
-class EUserIntent(str, Enum):
-    RECOMMEND_SUBURBS  = "recommend_suburbs"   # user asking for suburb recommendations
-    LIST_PROPERTIES    = "list_properties"     # user asking to list matching properties
-    PROPERTY_DETAIL    = "property_detail"     # user asking about a specific property
-    OPEN_ENDED_QUERY   = "open_ended_query"    # general query after requirements are complete
-```
+| M1 | `property_type`, `min_bedrooms`, `intended_use` |
+| M2 | `household_size`, `has_children` (+ `target_tenant` when `intended_use == "investment"`) |
+| M3 | `commute_destination`, `commute_max_mins` |
+| M4 | `budget_max` |
 
 ---
 
@@ -239,25 +199,3 @@ These are non-obvious constraints that must never be violated, regardless of con
 | Constant | SCREAMING_SNAKE | `MAX_TOKENS`, `DEFAULT_MODEL` |
 
 Full conventions: [coding-standards.md](.claude/rules/coding-standards.md)
-
----
-
-## Implementation Status
-
-| File | Story | Status |
-|---|---|---|
-| `main.py` | — | Done (skeleton) |
-| `routers/chat.py` | S-D, S-F | Stub — returns 501 |
-| `models/schemas.py` | S-B | Stub — placeholder DTO only |
-| `conversation/state_machine.py` | S-B | Stub |
-| `conversation/intent_router.py` | S-E | Stub |
-| `prompts/system_prompt_builder.py` | S-C | Stub |
-| `services/llm_client.py` | S-C | Stub |
-| `tools/extraction_schema.py` | S-C | Stub |
-| `tests/conftest.py` | — | Done (fixtures) |
-| `tests/test_state_machine.py` | S-B | Placeholder only |
-| `tests/test_intent_router.py` | S-E | Placeholder only |
-| `tests/test_system_prompt.py` | S-C | Placeholder only |
-| `tests/test_extraction_schema.py` | S-C | Placeholder only |
-| `tests/test_chat_endpoint.py` | S-D | Placeholder only |
-| `tests/test_summary.py` | S-F | Placeholder only |
