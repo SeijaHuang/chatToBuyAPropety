@@ -5,7 +5,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from exceptions import LLMServiceError, PropertyAIException
+from exceptions import LLMServiceError, PropertyAIException, SummaryValidationError
 from routers.chat import router as chat_router
 
 load_dotenv()
@@ -31,7 +31,12 @@ async def property_ai_exception_handler_async(
     Returns:
         JSONResponse with the standard error envelope.
     """
-    status_code = 503 if isinstance(exc, LLMServiceError) else 500
+    if isinstance(exc, LLMServiceError):
+        status_code = 503
+    elif isinstance(exc, SummaryValidationError):
+        status_code = 422
+    else:
+        status_code = 500
     return JSONResponse(
         status_code=status_code,
         content={

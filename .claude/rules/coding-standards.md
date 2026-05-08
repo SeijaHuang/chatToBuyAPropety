@@ -52,6 +52,28 @@ class BaseLLMClient(ABC):
     async def call_llm_async(self, ...) -> str: ...
 ```
 
+### No Magic Strings — Use Enums
+
+Any string value that is reused in more than one place, used as a key/identifier, or represents a domain concept must be defined as an `StrEnum` member. Raw string literals for these cases are forbidden.
+
+This applies to: module identifiers, status codes, role names, field attribute names, display labels, intent names, and any other categorical value.
+
+```python
+# Correct — canonical definition in schemas.py, referenced everywhere
+class ESubmodel(StrEnum):
+    M1 = "m1"
+    M2 = "m2"
+
+for submodel in ESubmodel:
+    getattr(data, submodel)  # uses enum value "m1", "m2", ...
+
+# Incorrect — magic string scattered across files
+for attr in ("m1", "m2", "m3", "m4"):
+    getattr(data, attr)
+```
+
+Enum classes belong in `models/schemas.py` unless they are exclusively used within a single module (in which case they live at the top of that module). When in doubt, put them in `schemas.py`.
+
 ### Enum Example
 
 ```python
