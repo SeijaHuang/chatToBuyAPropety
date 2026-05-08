@@ -3,11 +3,11 @@
 
 | Field | Value |
 |-------|-------|
-| Version | v1.0 |
+| Version | v1.1 |
 | Status | Pending Confirmation |
 | Parent Document | PropertyAI PRD v1.1 |
 | Scope | Part 1 Conversation Layer — P0 Implementation |
-| Last Updated | 3 May 2026 |
+| Last Updated | 8 May 2026 |
 
 ---
 
@@ -65,12 +65,23 @@ User sends message
 POST /chat
        │
        ├─ 1. Load current state (passed in from frontend)
-       ├─ 2. Build dynamic system prompt
-       ├─ 3. Call OpenRouter (conversational reply + extract_requirements tool)
-       ├─ 4. Parse tool_call, merge new fields into collectedData
-       ├─ 5. Update completionStatus
-       ├─ 6. Evaluate whether to trigger intent routing
-       └─ 7. Return ChatResponse (including updated_state)
+       ├─ 2. Append user message to conversationHistory
+       │
+       ├─ ── Round 1: Extraction ──────────────────────────────────
+       ├─ 3. Build extraction system prompt (build_extraction_prompt)
+       ├─ 4. Call OpenRouter with extract_requirements tool
+       ├─ 5. Parse tool_call → extracted fields dict
+       ├─ 6. Merge new fields into collectedData (merge_extracted_fields)
+       ├─ 7. Recalculate completionStatus + advance current_module
+       │
+       ├─ ── Round 2: Question Generation ──────────────────────────
+       ├─ 8. Build question system prompt (build_question_prompt)
+       │      (sees updated state with freshly extracted fields)
+       ├─ 9. Call OpenRouter plain completion → assistant reply string
+       │
+       ├─ 10. Append assistant reply to conversationHistory
+       ├─ 11. Evaluate whether to trigger intent routing (classify_intent)
+       └─ 12. Return ChatResponse (reply + extracted + updated_state + routing)
 
 all_complete = true
        │
@@ -100,9 +111,9 @@ backend/tools/extraction_schema.py
 
 #### Specification
 
-The tool name must be `extract_requirements` (PRD §2.2.4).
+The tool name must be `extract_requirements`.
 
-All business fields are optional — the LLM only populates fields the user has clearly stated. `module_complete` and `user_intent` are required and must be returned on every invocation.
+All fields are optional — the LLM only populates fields the user has explicitly stated. There are no required fields and no control fields (`module_complete`, `next_question`, `user_intent` have been removed). Module completion detection and reply generation are handled by separate logic in Round 2.
 
 **Field groups:**
 
@@ -119,8 +130,6 @@ M3: commute_destination, commute_max_mins, commute_mode,
 
 M4: budget_min, budget_max, deposit_amount,
     pre_tax_salary, is_joint, partner_salary, first_home_buyer
-
-Control: module_complete (required), next_question, user_intent (required)
 ```
 
 #### Acceptance Criteria
@@ -129,12 +138,11 @@ Control: module_complete (required), next_question, user_intent (required)
 |----|-----------|
 | SA-1 | Schema can be serialised by `json.dumps()` without error |
 | SA-2 | `name` field value is strictly equal to `"extract_requirements"` |
-| SA-3 | `module_complete` and `user_intent` are present in the `required` list |
-| SA-4 | All M1–M4 fields are absent from the `required` list |
+| SA-3 | The `required` list is empty (no required fields) |
+| SA-4 | Control fields `module_complete`, `next_question`, and `user_intent` are absent from the schema |
 | SA-5 | `property_type` enum values match PRD exactly: `["house","townhouse","unit","apartment","villa","any"]` |
-| SA-6 | `user_intent` enum values match PRD exactly: `["answering","asking_question","changing_topic","confused","done"]` |
-| SA-7 | `commute_mode` enum values match PRD exactly: `["train","car","tram","bus","any"]` |
-| SA-8 | `preferred_suburbs` and `excluded_suburbs` have type `array` with items of type `string` |
+| SA-6 | `commute_mode` enum values match PRD exactly: `["train","car","tram","bus","any"]` |
+| SA-7 | `preferred_suburbs` and `excluded_suburbs` have type `array` with items of type `string` |
 
 #### Unit Tests
 
@@ -143,10 +151,9 @@ tests/test_extraction_schema.py
 
 test_schema_is_json_serialisable
 test_tool_name_is_extract_requirements
-test_required_fields_contain_module_complete_and_user_intent
-test_m1_to_m4_fields_are_not_required
+test_required_list_is_empty
+test_control_fields_absent_from_schema
 test_property_type_enum_values
-test_user_intent_enum_values
 test_commute_mode_enum_values
 test_list_fields_have_correct_array_type
 ```
@@ -230,7 +237,7 @@ test_none_value_does_not_overwrite_existing_value
 
 #### Objective
 
-Generate a dynamic system prompt based on the current module and collected fields, corresponding to the four-section structure in PRD Appendix B.
+Expose three prompt-builder functions for the two-round LLM call architecture and the summary endpoint. All LLM prompt strings must live exclusively in this file.
 
 #### File
 
@@ -240,7 +247,17 @@ backend/prompts/system_prompt_builder.py
 
 #### Specification
 
-The system prompt must contain the following four sections in fixed order:
+##### `build_extraction_prompt(state)` — Round 1
+
+A minimal prompt focused solely on field extraction. It **must not** ask the model to generate a reply or question.
+
+Required content:
+- Active module identifier (so the model knows which sub-model to focus on)
+- Instruction to extract only explicitly stated fields, without inference
+
+##### `build_question_prompt(state)` — Round 2
+
+A full prompt for generating the next guiding question. It **must not** ask the model to perform field extraction. Assembled from the following sections in fixed order:
 
 **Section 1 — Role Definition (static)**
 
@@ -250,7 +267,9 @@ Your role is to collect buyer requirements through natural conversation.
 You are NOT a licensed buyer's agent, financial advisor, or legal professional.
 ```
 
-**Section 2 — Current State Injection (dynamic)**
+**Section 2 — Updated State Injection (dynamic)**
+
+Reflects the state *after* Round 1 extraction:
 
 ```
 Current module: {current_module}
@@ -268,8 +287,6 @@ Injected only when M1 is complete. Content varies by `intended_use`:
 
 **Section 4 — Six Guardrail Rules Summary (static)**
 
-Abbreviated form of all six rules from PRD §3:
-
 ```
 Rule 1 — Property recommendations: present data only, never give a direct recommendation
 Rule 2 — Market information: provide data, always follow with a question returning focus to user needs
@@ -279,24 +296,38 @@ Rule 5 — Investment predictions: historical data only, always append ASIC disc
 Rule 6 — Role identity: transparent explanation of AI assistant boundaries
 ```
 
+**Section 5 — Question Task Instruction (static)**
+
+```
+Task: Generate exactly ONE short, natural, conversational question targeting the most
+important missing required field for the current module. Do not re-ask fields already collected.
+```
+
+##### `build_system_prompt(state)` — Legacy / Summary
+
+Retained for backward compatibility. Used by `POST /chat/summary` and any callers that pre-date the two-round refactor. Identical structure to `build_question_prompt` minus Section 5.
+
 #### Acceptance Criteria
 
 | ID | Criterion |
 |----|-----------|
-| SC-1 | Output contains all four sections in correct order |
-| SC-2 | `current_module` correctly reflects the current incomplete module |
-| SC-3 | `collected_summary` contains fields that have values; fields not yet collected do not appear |
-| SC-4 | When M1 is incomplete, Section 3 is not present in the output |
-| SC-5 | When M1 is complete and `intended_use == "investment"`, Section 3 contains tenant-related guidance |
-| SC-6 | When M1 is complete and `intended_use == "owner_occupier"`, Section 3 contains family/school zone guidance |
-| SC-7 | All six guardrail rules appear in the output |
-| SC-8 | Output is a non-empty string with no errors raised |
+| SC-1 | `build_question_prompt` output contains role definition, state section, guardrail rules, and task instruction |
+| SC-2 | `build_question_prompt` reflects the correct `current_module` |
+| SC-3 | `build_question_prompt` lists non-None collected fields; None fields do not appear |
+| SC-4 | When M1 is incomplete, Section 3 is absent from both `build_question_prompt` and `build_system_prompt` |
+| SC-5 | When M1 complete and `intended_use == "investment"`, Section 3 contains tenant guidance |
+| SC-6 | When M1 complete and `intended_use == "owner_occupier"`, Section 3 contains school zone guidance |
+| SC-7 | All six guardrail rules appear in `build_question_prompt` output |
+| SC-8 | `build_extraction_prompt` output does not contain question-generation instruction |
+| SC-9 | `build_extraction_prompt` output contains the active module identifier |
+| SC-10 | All three functions return non-empty strings without raising |
 
 #### Unit Tests
 
 ```
 tests/test_system_prompt.py
 
+# build_system_prompt (existing)
 test_output_contains_role_definition
 test_output_contains_current_module
 test_collected_summary_excludes_none_fields
@@ -305,6 +336,16 @@ test_section_3_contains_tenant_guidance_for_investment
 test_section_3_contains_school_guidance_for_owner_occupier
 test_all_six_guardrail_rules_present
 test_output_is_nonempty_string
+
+# build_extraction_prompt (new)
+test_extraction_prompt_contains_active_module
+test_extraction_prompt_excludes_question_instruction
+
+# build_question_prompt (new)
+test_question_prompt_contains_role_definition
+test_question_prompt_contains_missing_fields
+test_question_prompt_contains_task_instruction
+test_question_prompt_guardrail_rules_present
 ```
 
 ---
@@ -334,8 +375,8 @@ class ChatRequest(BaseModel):
 
 # Response
 class ChatResponse(BaseModel):
-    reply:         str
-    extracted:     dict                        # fields extracted by tool_call
+    reply:         str                         # assistant reply from Round 2
+    extracted:     dict                        # business fields extracted in Round 1
     updated_state: ConversationStateDTO
     routing:       Optional[RoutingPayload] = None
 ```
@@ -344,47 +385,71 @@ class ChatResponse(BaseModel):
 
 1. Load current state from `request.state`
 2. Append user message to `conversationHistory`
-3. Call `build_system_prompt()`
-4. Call `llm_client.chat_with_tools()`
-5. Parse tool_call, call `merge_extracted_fields()`
-6. Call `update_completion()`
-7. Append assistant reply to `conversationHistory`
-8. Call `classify_intent()` to determine whether to trigger routing
-9. Return `ChatResponse`
+3. **Round 1 — Extraction**
+   - Call `build_extraction_prompt(state)` → extraction-focused system prompt
+   - Call `llm_client.chat_with_tools_async()` with `EXTRACT_REQUIREMENTS_TOOL`
+   - Returns `extracted: dict[str, object]` (business fields only, no control keys)
+4. Call `merge_extracted_fields(state, extracted)` — merges fields, advances module, recalculates completion
+5. **Round 2 — Question Generation**
+   - Call `build_question_prompt(updated_state)` → question-focused system prompt (sees freshly updated state)
+   - Call `llm_client.complete_async(question_prompt, request.message)` → `reply: str`
+6. Append `reply` to `conversationHistory`
+7. Call `classify_intent(request.message, state)` to determine routing
+8. Return `ChatResponse`
 
-**LLM call configuration:**
+**LLM client method signatures:**
+
+```python
+# Round 1
+async def chat_with_tools_async(
+    system_prompt: str,
+    messages: list[dict[str, object]],
+    tools: list[dict[str, object]],
+) -> dict[str, object]:  # extracted business fields only
+    ...
+
+# Round 2
+async def complete_async(
+    system_prompt: str,
+    user_message: str,
+) -> str:  # assistant reply
+    ...
+```
+
+**LLM call configuration (both rounds):**
 
 | Parameter | Value |
 |-----------|-------|
 | Model | `MODEL_STRONG` (`anthropic/claude-sonnet-4-5`, overridable via env var) |
 | Temperature | 0.7 |
 | Max tokens | 1000 |
-| Tools | `[EXTRACT_REQUIREMENTS_TOOL]` |
-| Tool choice | `"auto"` |
+| Round 1 tool choice | `"auto"` |
 
 **Error handling:**
 
 | Scenario | Response |
 |----------|----------|
 | `message` is empty string | HTTP 422 |
-| OpenRouter call fails | HTTP 503 with clear error message |
-| LLM returns no tool_call | `extracted: {}`, flow continues without error |
+| OpenRouter call fails (either round) | HTTP 503 with error envelope |
+| Round 1 LLM returns no tool_call | `extracted: {}`, Round 2 still executes |
 
 #### Acceptance Criteria
 
 | ID | Criterion |
 |----|-----------|
 | SD-1 | Valid request returns HTTP 200 with response conforming to `ChatResponse` schema |
-| SD-2 | `updated_state.conversationHistory` contains both the user message and assistant reply from this turn |
-| SD-3 | `extracted` contains fields extracted by the LLM; is `{}` when nothing is extracted |
-| SD-4 | `updated_state.collectedData` contains fields extracted in this turn |
-| SD-5 | `updated_state.completionStatus` correctly reflects the latest completion state |
-| SD-6 | When LLM returns no tool_call, `extracted` is `{}` and the flow does not raise an error |
+| SD-2 | `updated_state.conversationHistory` contains both the user message and the Round 2 assistant reply |
+| SD-3 | `extracted` contains only business fields from Round 1; is `{}` when the LLM returns no tool_call |
+| SD-4 | `updated_state.collectedData` reflects fields extracted in Round 1 |
+| SD-5 | `updated_state.completionStatus` is recalculated after Round 1 before Round 2 is called |
+| SD-6 | When Round 1 LLM returns no tool_call, `extracted` is `{}` and Round 2 still executes without error |
 | SD-7 | When `message` is an empty string, returns HTTP 422 |
-| SD-8 | When OpenRouter call fails, returns HTTP 503 with a clear error message |
+| SD-8 | When OpenRouter call fails, returns HTTP 503 with error envelope |
 | SD-9 | Across multiple turns, `conversationHistory` accumulates correctly and is not reset |
 
 #### Integration Tests
+
+Each test must mock **both** `chat_with_tools_async` (returns `dict`) **and** `complete_async` (returns `str`).
 
 ```
 tests/test_chat_endpoint.py
@@ -740,25 +805,27 @@ def test_m2_requires_target_tenant_for_investment():
 
 ### 7.2 Integration Tests (mocked LLM)
 
-Cover S-D and S-F using `pytest` + `httpx.AsyncClient` + `unittest.mock`. Mock `llm_client.chat_with_tools()` to return preset values.
+Cover S-D and S-F using `pytest` + `httpx.AsyncClient` + `unittest.mock`. Each test must mock **both** `chat_with_tools_async` (Round 1, returns `dict`) and `complete_async` (Round 2, returns `str`).
 
 ```python
 # Example: S-D integration test
 @pytest.mark.asyncio
-async def test_chat_endpoint_returns_updated_state(mock_llm):
-    mock_llm.return_value = (
-        "Great, tell me about your lifestyle.",
-        {
-            "property_type": "house",
-            "min_bedrooms": 3,
-            "module_complete": False,
-            "user_intent": "answering"
-        }
-    )
-    response = await client.post("/chat", json={...})
+async def test_chat_endpoint_returns_updated_state():
+    tools_mock = AsyncMock(return_value={
+        "property_type": "house",
+        "min_bedrooms": 3,
+        "intended_use": "owner_occupier",
+    })
+    complete_mock = AsyncMock(return_value="Great, tell me about your lifestyle.")
+    with (
+        patch.object(chat_module._default_llm_client, "chat_with_tools_async", tools_mock),
+        patch.object(chat_module._default_llm_client, "complete_async", complete_mock),
+    ):
+        response = await client.post("/api/v1/chat", json={...})
     assert response.status_code == 200
     data = response.json()
-    assert data["updated_state"]["collectedData"]["m1"]["property_type"] == "house"
+    assert data["updatedState"]["collectedData"]["m1"]["propertyType"] == "house"
+    assert data["reply"] == "Great, tell me about your lifestyle."
 ```
 
 ### 7.3 E2E Test (full chain)

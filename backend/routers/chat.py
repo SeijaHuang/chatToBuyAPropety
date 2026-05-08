@@ -8,7 +8,11 @@ from conversation.intent_router import classify_intent
 from conversation.state_machine import merge_extracted_fields
 from exceptions import SummaryValidationError
 from models.schemas import ChatRequest, ChatResponse, ESubmodel, SummaryRequest, SummaryResponse
-from prompts.system_prompt_builder import build_summary_prompt, build_system_prompt
+from prompts.system_prompt_builder import (
+    build_extraction_prompt,
+    build_question_prompt,
+    build_summary_prompt,
+)
 from services.llm_client import ILLMClient, OpenRouterClient
 from tools.extraction_schema import EXTRACT_REQUIREMENTS_TOOL
 
@@ -26,9 +30,9 @@ async def chat_async(
 
     Processing order:
       1. Append user message to conversation history.
-      2. Build the module-specific system prompt.
-      3. Call the LLM with the extraction tool.
-      4. Merge extracted fields into state (also advances module and recalculates completion).
+      2. Round 1 — Extraction: call LLM with extraction tool to pull structured fields.
+      3. Merge extracted fields into state (advances module, recalculates completion).
+      4. Round 2 — Question generation: call LLM plain completion with updated state.
       5. Append assistant reply to conversation history.
       6. Classify intent for downstream routing.
       7. Return ChatResponse.
@@ -43,14 +47,17 @@ async def chat_async(
     state = request.state
     state.conversation_history.append({"role": "user", "content": request.message})
 
-    system_prompt = build_system_prompt(state)
-    reply, extracted = await llm_client.chat_with_tools_async(
-        system_prompt,
+    extraction_prompt = build_extraction_prompt(state)
+    extracted = await llm_client.chat_with_tools_async(
+        extraction_prompt,
         state.conversation_history,
         [EXTRACT_REQUIREMENTS_TOOL],
     )
 
     merge_extracted_fields(state, extracted)
+
+    question_prompt = build_question_prompt(state)
+    reply = await llm_client.complete_async(question_prompt, request.message)
 
     state.conversation_history.append({"role": "assistant", "content": reply})
 

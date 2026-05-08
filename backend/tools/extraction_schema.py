@@ -7,8 +7,7 @@ EXTRACT_REQUIREMENTS_TOOL: dict[str, object] = {
         "description": (
             "Extract structured property requirements from the user's message. "
             "Populate only the fields the user has explicitly mentioned. "
-            "Set module_complete to true only when all required fields for the active module "
-            "have been collected. Set user_intent to reflect the nature of the user's message."
+            "Do not infer or guess values that were not clearly stated."
         ),
         "parameters": {
             "type": "object",
@@ -68,21 +67,8 @@ EXTRACT_REQUIREMENTS_TOOL: dict[str, object] = {
                 "is_joint": {"type": "boolean"},
                 "partner_salary": {"type": "integer"},
                 "first_home_buyer": {"type": "boolean"},
-                # Control fields
-                "module_complete": {"type": "boolean"},
-                "next_question": {"type": "string"},
-                "user_intent": {
-                    "type": "string",
-                    "enum": [
-                        "answering",
-                        "asking_question",
-                        "changing_topic",
-                        "confused",
-                        "done",
-                    ],
-                },
             },
-            "required": ["module_complete", "user_intent"],
+            "required": [],
         },
     },
 }

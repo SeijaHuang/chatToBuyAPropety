@@ -61,11 +61,18 @@ def test_tool_name_is_extract_requirements() -> None:
     assert _function()["name"] == "extract_requirements"
 
 
-def test_required_fields_contain_module_complete_and_user_intent() -> None:
-    """SA-3: module_complete and user_intent are present in the required list."""
+def test_required_list_is_empty() -> None:
+    """SA-3: The required list is empty — all fields are optional."""
     required: list[str] = _parameters()["required"]
-    assert "module_complete" in required
-    assert "user_intent" in required
+    assert required == []
+
+
+def test_control_fields_absent_from_schema() -> None:
+    """SA-4: Control fields module_complete, next_question, and user_intent are not in properties."""
+    properties = _properties()
+    assert "module_complete" not in properties
+    assert "next_question" not in properties
+    assert "user_intent" not in properties
 
 
 def test_all_business_fields_are_defined_in_properties() -> None:
@@ -73,13 +80,6 @@ def test_all_business_fields_are_defined_in_properties() -> None:
     properties = _properties()
     for field in _M1_TO_M4_FIELDS:
         assert field in properties, f"Business field '{field}' is missing from properties"
-
-
-def test_m1_to_m4_fields_are_not_required() -> None:
-    """SA-4: All M1–M4 business fields are absent from the required list."""
-    required: list[str] = _parameters()["required"]
-    for field in _M1_TO_M4_FIELDS:
-        assert field not in required, f"Business field '{field}' must not be required"
 
 
 def test_property_type_enum_values() -> None:
@@ -94,19 +94,8 @@ def test_property_type_enum_values() -> None:
     ]
 
 
-def test_user_intent_enum_values() -> None:
-    """SA-6: user_intent enum values match the specification exactly."""
-    assert _properties()["user_intent"]["enum"] == [
-        "answering",
-        "asking_question",
-        "changing_topic",
-        "confused",
-        "done",
-    ]
-
-
 def test_commute_mode_enum_values() -> None:
-    """SA-7: commute_mode enum values match the specification exactly."""
+    """SA-6: commute_mode enum values match the specification exactly."""
     assert _properties()["commute_mode"]["enum"] == [
         "train",
         "car",
@@ -117,7 +106,7 @@ def test_commute_mode_enum_values() -> None:
 
 
 def test_list_fields_have_correct_array_type() -> None:
-    """SA-8: preferred_suburbs and excluded_suburbs are arrays of strings."""
+    """SA-7: preferred_suburbs and excluded_suburbs are arrays of strings."""
     for field in ("preferred_suburbs", "excluded_suburbs"):
         prop = _properties()[field]
         assert prop["type"] == "array"

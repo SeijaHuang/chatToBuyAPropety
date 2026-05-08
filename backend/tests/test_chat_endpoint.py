@@ -1,5 +1,7 @@
 """Integration tests for POST /chat — Story S-D."""
 
+from collections.abc import Generator
+from contextlib import contextmanager
 from unittest.mock import AsyncMock, patch
 
 from httpx import AsyncClient
@@ -14,12 +16,30 @@ def _build_body(message: str, state: ConversationStateDTO) -> dict[str, object]:
     return {"message": message, "state": state.model_dump(by_alias=True)}
 
 
+@contextmanager
+def _mock_llm(
+    extracted: dict[str, object] | None = None,
+    reply: str = "Next question?",
+) -> Generator[tuple[AsyncMock, AsyncMock], None, None]:
+    """Patch both LLM methods for a single chat turn.
+
+    chat_with_tools_async → Round 1 extraction (returns dict)
+    complete_async        → Round 2 question generation (returns str)
+    """
+    tools_mock = AsyncMock(return_value=extracted if extracted is not None else {})
+    complete_mock = AsyncMock(return_value=reply)
+    with (
+        patch.object(chat_module._default_llm_client, "chat_with_tools_async", tools_mock),
+        patch.object(chat_module._default_llm_client, "complete_async", complete_mock),
+    ):
+        yield tools_mock, complete_mock
+
+
 async def test_valid_request_returns_200(
     client_async: AsyncClient, sample_state: ConversationStateDTO
 ) -> None:
     """POST /chat with a valid payload returns HTTP 200."""
-    mock = AsyncMock(return_value=("Hello!", {}))
-    with patch.object(chat_module._default_llm_client, "chat_with_tools_async", mock):
+    with _mock_llm():
         response = await client_async.post("/api/v1/chat", json=_build_body("Hi", sample_state))
     assert response.status_code == 200
 
@@ -28,8 +48,7 @@ async def test_response_conforms_to_chat_response_schema(
     client_async: AsyncClient, sample_state: ConversationStateDTO
 ) -> None:
     """Response body contains reply, extracted, and updatedState keys."""
-    mock = AsyncMock(return_value=("Hello!", {}))
-    with patch.object(chat_module._default_llm_client, "chat_with_tools_async", mock):
+    with _mock_llm(reply="Hello!"):
         response = await client_async.post("/api/v1/chat", json=_build_body("Hi", sample_state))
     body = response.json()
     assert "reply" in body
@@ -41,8 +60,7 @@ async def test_conversation_history_updated_after_turn(
     client_async: AsyncClient, sample_state: ConversationStateDTO
 ) -> None:
     """After one turn, updatedState.conversationHistory contains the user and assistant messages."""
-    mock = AsyncMock(return_value=("Assistant reply", {}))
-    with patch.object(chat_module._default_llm_client, "chat_with_tools_async", mock):
+    with _mock_llm(reply="Assistant reply"):
         response = await client_async.post(
             "/api/v1/chat", json=_build_body("User message", sample_state)
         )
@@ -59,8 +77,7 @@ async def test_extracted_fields_written_to_collected_data(
 ) -> None:
     """Extracted property_type is written into updatedState.collectedData.m1."""
     extracted = {"property_type": "house", "min_bedrooms": 3, "intended_use": "owner_occupier"}
-    mock = AsyncMock(return_value=("Got it!", extracted))
-    with patch.object(chat_module._default_llm_client, "chat_with_tools_async", mock):
+    with _mock_llm(extracted=extracted, reply="Got it!"):
         response = await client_async.post(
             "/api/v1/chat", json=_build_body("I want a house", sample_state)
         )
@@ -73,8 +90,7 @@ async def test_completion_status_updated_correctly(
 ) -> None:
     """After a turn that satisfies all M1 required fields, completionStatus.m1 is True."""
     extracted = {"property_type": "house", "min_bedrooms": 2, "intended_use": "owner_occupier"}
-    mock = AsyncMock(return_value=("M1 done!", extracted))
-    with patch.object(chat_module._default_llm_client, "chat_with_tools_async", mock):
+    with _mock_llm(extracted=extracted, reply="M1 done!"):
         response = await client_async.post(
             "/api/v1/chat", json=_build_body("3 bed house owner-occupier", sample_state)
         )
@@ -84,9 +100,8 @@ async def test_completion_status_updated_correctly(
 async def test_no_tool_call_returns_empty_extracted(
     client_async: AsyncClient, sample_state: ConversationStateDTO
 ) -> None:
-    """When the LLM returns no tool call, extracted is {} and the response has no error."""
-    mock = AsyncMock(return_value=("Just a reply", {}))
-    with patch.object(chat_module._default_llm_client, "chat_with_tools_async", mock):
+    """When Round 1 LLM returns no tool call, extracted is {} and Round 2 still succeeds."""
+    with _mock_llm(extracted={}, reply="Just a reply"):
         response = await client_async.post("/api/v1/chat", json=_build_body("Hello", sample_state))
     assert response.status_code == 200
     assert response.json()["extracted"] == {}
@@ -103,9 +118,9 @@ async def test_empty_message_returns_422(
 async def test_llm_failure_returns_503(
     client_async: AsyncClient, sample_state: ConversationStateDTO
 ) -> None:
-    """An LLMServiceError raised by the client returns HTTP 503 with the error envelope."""
-    mock = AsyncMock(side_effect=LLMServiceError("OpenRouter unavailable"))
-    with patch.object(chat_module._default_llm_client, "chat_with_tools_async", mock):
+    """An LLMServiceError raised by Round 1 returns HTTP 503 with the error envelope."""
+    tools_mock = AsyncMock(side_effect=LLMServiceError("OpenRouter unavailable"))
+    with patch.object(chat_module._default_llm_client, "chat_with_tools_async", tools_mock):
         response = await client_async.post("/api/v1/chat", json=_build_body("Hi", sample_state))
     assert response.status_code == 503
     assert response.json()["error"]["code"] == "LLMServiceError"
@@ -115,8 +130,7 @@ async def test_history_accumulates_across_turns(
     client_async: AsyncClient, sample_state: ConversationStateDTO
 ) -> None:
     """Conversation history grows correctly across two sequential turns (4 messages total)."""
-    mock = AsyncMock(return_value=("Reply", {}))
-    with patch.object(chat_module._default_llm_client, "chat_with_tools_async", mock):
+    with _mock_llm(reply="Reply"):
         first = await client_async.post("/api/v1/chat", json=_build_body("Turn one", sample_state))
         assert first.status_code == 200
 
