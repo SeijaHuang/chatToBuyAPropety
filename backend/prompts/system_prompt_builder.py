@@ -1,7 +1,21 @@
 """Constructs LLM system prompts for each conversation module — the sole source of prompt strings."""
 
 from conversation.state_machine import MODULE_COMPLETION_RULES
-from models.schemas import CollectedData, CompletionStatus, ConversationStateDTO, EModule
+from models.schemas import (
+    CollectedData,
+    CompletionStatus,
+    ConversationStateDTO,
+    EModule,
+    ESubmodel,
+    ESubmodelLabel,
+)
+
+_SUBMODEL_LABELS: dict[ESubmodel, ESubmodelLabel] = {
+    ESubmodel.M1: ESubmodelLabel.M1,
+    ESubmodel.M2: ESubmodelLabel.M2,
+    ESubmodel.M3: ESubmodelLabel.M3,
+    ESubmodel.M4: ESubmodelLabel.M4,
+}
 
 _ROLE_DEFINITION = """\
 You are an AI property buying assistant for the Australian market.
@@ -91,3 +105,36 @@ def build_system_prompt(state: ConversationStateDTO) -> str:
     sections.append(_GUARDRAIL_RULES)
 
     return "\n\n".join(sections)
+
+
+def build_summary_prompt(collected_data: CollectedData) -> str:
+    """Build the system prompt for generating a natural-language requirements summary.
+
+    Iterates over all four sub-models and injects only non-None field values so the
+    LLM has concrete data to summarise.
+
+    Args:
+        collected_data: The fully accumulated field values from the conversation.
+
+    Returns:
+        A system prompt string ready to pass to a plain completion call.
+    """
+    field_lines: list[str] = []
+    for submodel, label in _SUBMODEL_LABELS.items():
+        sub = getattr(collected_data, submodel)
+        for field, value in sub.model_dump().items():
+            if value is not None:
+                field_lines.append(f"  {label} — {field}: {value}")
+
+    collected_context = "\n".join(field_lines) if field_lines else "  (no data collected)"
+
+    return (
+        "You are a professional property buying assistant writing a client brief.\n\n"
+        "You have collected the following property requirements:\n"
+        f"{collected_context}\n\n"
+        "Write a natural-language summary of these requirements in English. "
+        "Use flowing paragraphs (not bullet lists). "
+        "Cover all four dimensions where data is available: budget, property type, "
+        "location and commute, and lifestyle. "
+        "Only mention fields that have a value — do not speculate about missing information."
+    )

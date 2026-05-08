@@ -3,12 +3,12 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends
-from fastapi.responses import JSONResponse
 
 from conversation.intent_router import classify_intent
 from conversation.state_machine import merge_extracted_fields
-from models.schemas import ChatRequest, ChatResponse
-from prompts.system_prompt_builder import build_system_prompt
+from exceptions import SummaryValidationError
+from models.schemas import ChatRequest, ChatResponse, ESubmodel, SummaryRequest, SummaryResponse
+from prompts.system_prompt_builder import build_summary_prompt, build_system_prompt
 from services.llm_client import ILLMClient, OpenRouterClient
 from tools.extraction_schema import EXTRACT_REQUIREMENTS_TOOL
 
@@ -65,16 +65,39 @@ async def chat_async(
 
 
 @router.post("/chat/summary")
-async def chat_summary_async() -> JSONResponse:
-    """Return a structured summary of all collected property requirements.
+async def chat_summary_async(
+    request: SummaryRequest,
+    llm_client: Annotated[ILLMClient, Depends(lambda: _default_llm_client)],
+) -> SummaryResponse:
+    """Return a natural-language summary of all collected property requirements.
+
+    Processing order:
+      1. Raise SummaryValidationError when every field across all sub-models is None.
+      2. Build the summary system prompt from the collected data.
+      3. Call the LLM for a plain completion.
+      4. Return SummaryResponse with the generated text and the unchanged structured data.
+
+    Args:
+        request: Inbound payload carrying the CollectedData to summarise.
+        llm_client: LLM client injected via FastAPI Depends (mockable in tests).
 
     Returns:
-        JSONResponse containing the formatted requirements summary.
+        SummaryResponse with summary_text and the original structured data.
+
+    Raises:
+        SummaryValidationError: When all fields across all sub-models are None.
     """
-    # TODO: Implementation: Story S-F
-    return JSONResponse(
-        status_code=501,
-        content={
-            "error": {"code": "NOT_IMPLEMENTED", "message": "Not implemented.", "details": {}}
-        },
+    data = request.collected_data
+    all_none = all(
+        value is None
+        for submodel in ESubmodel
+        for value in getattr(data, submodel).model_dump().values()
     )
+    if all_none:
+        raise SummaryValidationError("No data collected — cannot generate summary.")
+
+    system_prompt = build_summary_prompt(data)
+    reply = await llm_client.complete_async(
+        system_prompt, "Please generate the requirements summary."
+    )
+    return SummaryResponse(summary_text=reply, structured=data)

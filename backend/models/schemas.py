@@ -34,6 +34,15 @@ class ESubmodel(StrEnum):
     M4 = "m4"
 
 
+class ESubmodelLabel(StrEnum):
+    """Human-readable display labels for each sub-model."""
+
+    M1 = "Property needs"
+    M2 = "Lifestyle"
+    M3 = "Suburb preference"
+    M4 = "Budget"
+
+
 class M1PropertyNeeds(BaseModel):
     """Collected fields for module 1: property type and physical requirements."""
 
@@ -138,6 +147,29 @@ class ConversationStateDTO(BaseModel):
     collected_data: CollectedData = Field(default_factory=CollectedData)
     conversation_history: list[dict[str, object]] = Field(default_factory=list)
     final_needs: CollectedData | None = None
+
+
+class SummaryRequest(BaseModel):
+    """Inbound payload for the summary endpoint."""
+
+    model_config = ConfigDict(
+        alias_generator=to_camel,
+        populate_by_name=True,
+    )
+
+    collected_data: CollectedData
+
+
+class SummaryResponse(BaseModel):
+    """Outbound payload from the summary endpoint."""
+
+    model_config = ConfigDict(
+        alias_generator=to_camel,
+        populate_by_name=True,
+    )
+
+    summary_text: str
+    structured: CollectedData
 
 
 @dataclass
