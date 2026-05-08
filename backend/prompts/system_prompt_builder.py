@@ -95,7 +95,7 @@ def build_system_prompt(state: ConversationStateDTO) -> str:
     )
     sections.append(state_section)
 
-    if state.completion_status.m1:
+    if state.completion_status.M1:
         intended_use = state.collected_data.m1.intended_use
         if intended_use == "investment":
             sections.append(_INVESTMENT_CONTEXT)

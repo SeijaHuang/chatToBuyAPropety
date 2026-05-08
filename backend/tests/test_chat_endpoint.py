@@ -78,7 +78,7 @@ async def test_completion_status_updated_correctly(
         response = await client_async.post(
             "/api/v1/chat", json=_build_body("3 bed house owner-occupier", sample_state)
         )
-    assert response.json()["updatedState"]["completionStatus"]["m1"] is True
+    assert response.json()["updatedState"]["completionStatus"]["M1"] is True
 
 
 async def test_no_tool_call_returns_empty_extracted(
