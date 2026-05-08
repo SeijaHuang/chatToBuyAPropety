@@ -1,6 +1,5 @@
 """Single source of truth for all Pydantic request/response models and domain DTOs."""
 
-from dataclasses import dataclass
 from enum import StrEnum
 from typing import Literal, cast
 
@@ -26,7 +25,7 @@ class EStatus(StrEnum):
 
 
 class ESubmodel(StrEnum):
-    """Attribute names for each module's sub-model on CollectedData and CompletionStatus."""
+    """Attribute names for each module's sub-model on CollectedData."""
 
     M1 = "m1"
     M2 = "m2"
@@ -112,20 +111,38 @@ class CollectedData(BaseModel):
 class CompletionStatus(BaseModel):
     """Tracks which modules have had all required fields collected."""
 
-    m1: bool = False
-    m2: bool = False
-    m3: bool = False
-    m4: bool = False
+    M1: bool = False
+    M2: bool = False
+    M3: bool = False
+    M4: bool = False
 
     def __getitem__(self, key: ESubmodel) -> bool:
-        """Return the completion flag for the given module key."""
-        return cast(bool, getattr(self, key))
+        """Return the completion flag for the given module key.
+
+        Uses key.name ("M1", "M2", …) to map ESubmodel values ("m1", "m2", …)
+        to the uppercase field names on this model.
+        """
+        return cast(bool, getattr(self, key.name))
 
     @computed_field  # type: ignore[prop-decorator]
     @property
     def all_complete(self) -> bool:
         """True when every module has been completed."""
-        return self.m1 and self.m2 and self.m3 and self.m4
+        return self.M1 and self.M2 and self.M3 and self.M4
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def current_module(self) -> EModule:
+        """Return the first incomplete module in M1 → M2 → M3 → M4 order."""
+        if not self.M1:
+            return EModule.M1_PROPERTY_NEEDS
+        if not self.M2:
+            return EModule.M2_LIFESTYLE
+        if not self.M3:
+            return EModule.M3_SUBURB_PREFERENCE
+        if not self.M4:
+            return EModule.M4_BUDGET
+        return EModule.COMPLETE
 
 
 class ConversationStateDTO(BaseModel):
@@ -172,9 +189,13 @@ class SummaryResponse(BaseModel):
     structured: CollectedData
 
 
-@dataclass
-class RoutingPayload:
+class RoutingPayload(BaseModel):
     """Bundled routing context passed between conversation layers."""
+
+    model_config = ConfigDict(
+        alias_generator=to_camel,
+        populate_by_name=True,
+    )
 
     intent: str
     collected_data: CollectedData
@@ -198,13 +219,12 @@ class ChatResponse(BaseModel):
 
     Attributes:
         reply: The assistant's reply text.
-        extracted: Business fields extracted by the LLM tool call (control keys stripped).
+        extracted: Full LLM tool call fields including control keys.
         updated_state: Conversation state after merging extracted fields and advancing modules.
         routing: Populated when the state is complete or a routing keyword is detected.
     """
 
     model_config = ConfigDict(
-        arbitrary_types_allowed=True,
         alias_generator=to_camel,
         populate_by_name=True,
     )

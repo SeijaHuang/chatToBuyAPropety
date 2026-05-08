@@ -11,7 +11,7 @@ def _incomplete_state(session_id: str = "test-session-001") -> ConversationState
 def _complete_state(session_id: str = "test-session-001") -> ConversationStateDTO:
     return ConversationStateDTO(
         session_id=session_id,
-        completion_status=CompletionStatus(m1=True, m2=True, m3=True, m4=True),
+        completion_status=CompletionStatus(M1=True, M2=True, M3=True, M4=True),
     )
 
 
@@ -34,9 +34,21 @@ def test_recommend_intent_on_keyword_match() -> None:
 
 
 def test_property_detail_intent_on_address_match() -> None:
-    """SE-4: a 4+ digit sequence maps to property_detail intent."""
+    """SE-4: a street address maps to property_detail intent."""
     result = classify_intent("12 Smith Street 3000", _incomplete_state())
     assert result is not None and result.intent == "property_detail"
+
+
+def test_property_detail_intent_on_property_id_match() -> None:
+    """SE-4b: a property ID keyword maps to property_detail intent."""
+    result = classify_intent("Tell me about property_id 98765", _incomplete_state())
+    assert result is not None and result.intent == "property_detail"
+
+
+def test_pure_number_does_not_trigger_property_detail() -> None:
+    """SE-4c: a plain dollar amount without a street keyword does not trigger property_detail."""
+    result = classify_intent("my budget is $8000", _incomplete_state())
+    assert result is None
 
 
 def test_open_ended_query_as_fallback_when_complete() -> None:
@@ -56,7 +68,7 @@ def test_routing_payload_contains_correct_session_id() -> None:
     """SE-7: RoutingPayload.session_id matches the state's session_id."""
     state = ConversationStateDTO(
         session_id="unique-session-xyz",
-        completion_status=CompletionStatus(m1=True, m2=True, m3=True, m4=True),
+        completion_status=CompletionStatus(M1=True, M2=True, M3=True, M4=True),
     )
     result = classify_intent("Show me something", state)
     assert result is not None and result.session_id == "unique-session-xyz"

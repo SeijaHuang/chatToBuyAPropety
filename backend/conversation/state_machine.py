@@ -12,6 +12,8 @@ from models.schemas import (
     ESubmodel,
 )
 
+_CONTROL_KEYS: frozenset[str] = frozenset({"module_complete", "next_question", "user_intent"})
+
 
 def _no_extra_required(_: CollectedData) -> frozenset[str]:
     return frozenset()
@@ -139,15 +141,7 @@ def get_current_module(completion: CompletionStatus) -> EModule:
         The first module that has not yet been completed, or EModule.COMPLETE
         if all four modules are done.
     """
-    if not completion.m1:
-        return EModule.M1_PROPERTY_NEEDS
-    if not completion.m2:
-        return EModule.M2_LIFESTYLE
-    if not completion.m3:
-        return EModule.M3_SUBURB_PREFERENCE
-    if not completion.m4:
-        return EModule.M4_BUDGET
-    return EModule.COMPLETE
+    return completion.current_module
 
 
 def recalculate_completion(data: CollectedData) -> CompletionStatus:
@@ -160,10 +154,10 @@ def recalculate_completion(data: CollectedData) -> CompletionStatus:
         A new CompletionStatus reflecting current field coverage.
     """
     return CompletionStatus(
-        m1=is_module_complete(EModule.M1_PROPERTY_NEEDS, data),
-        m2=is_module_complete(EModule.M2_LIFESTYLE, data),
-        m3=is_module_complete(EModule.M3_SUBURB_PREFERENCE, data),
-        m4=is_module_complete(EModule.M4_BUDGET, data),
+        M1=is_module_complete(EModule.M1_PROPERTY_NEEDS, data),
+        M2=is_module_complete(EModule.M2_LIFESTYLE, data),
+        M3=is_module_complete(EModule.M3_SUBURB_PREFERENCE, data),
+        M4=is_module_complete(EModule.M4_BUDGET, data),
     )
 
 
@@ -184,7 +178,7 @@ def merge_extracted_fields(
         current module.
     """
     for key, value in incoming.items():
-        if value is None:
+        if key in _CONTROL_KEYS or value is None:
             continue
         for rules in MODULE_COMPLETION_RULES.values():
             if key in rules.all_fields:

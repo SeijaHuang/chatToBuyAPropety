@@ -77,12 +77,12 @@ def test_current_module_returns_m1_when_m1_incomplete() -> None:
 
 
 def test_current_module_returns_m2_when_m1_complete_m2_incomplete() -> None:
-    completion = CompletionStatus(m1=True)
+    completion = CompletionStatus(M1=True)
     assert get_current_module(completion) == EModule.M2_LIFESTYLE
 
 
 def test_current_module_returns_complete_when_all_done() -> None:
-    completion = CompletionStatus(m1=True, m2=True, m3=True, m4=True)
+    completion = CompletionStatus(M1=True, M2=True, M3=True, M4=True)
     assert get_current_module(completion) == EModule.COMPLETE
 
 
@@ -99,7 +99,7 @@ def test_completion_status_recalculated_after_merge() -> None:
         state,
         {"property_type": "house", "min_bedrooms": 3, "intended_use": "owner_occupier"},
     )
-    assert state.completion_status.m1 is True
+    assert state.completion_status.M1 is True
 
 
 def test_none_value_does_not_overwrite_existing_value() -> None:

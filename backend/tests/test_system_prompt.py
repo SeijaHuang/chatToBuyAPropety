@@ -67,7 +67,7 @@ def test_section_3_contains_tenant_guidance_for_investment() -> None:
     )
     state = _make_state(
         current_module=EModule.M2_LIFESTYLE,
-        completion_status=CompletionStatus(m1=True),
+        completion_status=CompletionStatus(M1=True),
         collected_data=data,
     )
     result = build_system_prompt(state)
@@ -81,7 +81,7 @@ def test_section_3_contains_school_guidance_for_owner_occupier() -> None:
     )
     state = _make_state(
         current_module=EModule.M2_LIFESTYLE,
-        completion_status=CompletionStatus(m1=True),
+        completion_status=CompletionStatus(M1=True),
         collected_data=data,
     )
     result = build_system_prompt(state)

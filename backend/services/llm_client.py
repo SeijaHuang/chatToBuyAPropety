@@ -9,8 +9,6 @@ from openai import AsyncOpenAI
 from config import settings
 from exceptions import LLMServiceError
 
-_CONTROL_KEYS: frozenset[str] = frozenset({"module_complete", "next_question", "user_intent"})
-
 
 class ILLMClient(Protocol):
     """Protocol contract for LLM client implementations."""
@@ -104,8 +102,7 @@ class OpenRouterClient(ILLMClient):
             return reply, {}
 
         raw: dict[str, object] = json.loads(tool_calls[0].function.arguments)
-        extracted = {k: v for k, v in raw.items() if k not in _CONTROL_KEYS}
-        return reply, extracted
+        return reply, raw
 
     async def complete_async(
         self,

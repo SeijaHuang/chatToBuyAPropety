@@ -91,8 +91,8 @@ backend/
 ├── conversation/
 │   ├── state_machine.py           Core orchestrator — loads Redis state, dispatches to active
 │                                  module, calls LLM, merges extracted fields, advances module
-│   └── intent_router.py           Classifies each user message into EUserIntent
-│                                  (NORMAL / CORRECTION / SKIP / RESTART)
+│   └── intent_router.py           Classifies each user message into a routing intent
+│                                  (recommend_suburbs / list_properties / property_detail / open_ended_query)
 │
 ├── prompts/
 │   └── system_prompt_builder.py   SOLE source of all LLM prompt strings — no prompt literals
@@ -134,7 +134,7 @@ POST /api/v1/chat
     ├── routers/chat.py              Validates request, delegates to state machine
     │
     ├── conversation/intent_router.py
-    │       Classifies intent (EUserIntent) — RESTART short-circuits to module reset
+    │       Classifies intent — recommend_suburbs / list_properties / property_detail / open_ended_query
     │
     ├── conversation/state_machine.py
     │       1. Loads ConversationState from Redis (keyed by session_id)
@@ -201,10 +201,10 @@ class EStatus(str, Enum):
     REQUIREMENTS_COMPLETE  = "REQUIREMENTS_COMPLETE"
 
 class EUserIntent(str, Enum):
-    NORMAL      = "NORMAL"       # standard conversational turn
-    CORRECTION  = "CORRECTION"   # user correcting a previously given value
-    SKIP        = "SKIP"         # user skipping an optional field
-    RESTART     = "RESTART"      # user restarting the conversation
+    RECOMMEND_SUBURBS  = "recommend_suburbs"   # user asking for suburb recommendations
+    LIST_PROPERTIES    = "list_properties"     # user asking to list matching properties
+    PROPERTY_DETAIL    = "property_detail"     # user asking about a specific property
+    OPEN_ENDED_QUERY   = "open_ended_query"    # general query after requirements are complete
 ```
 
 ---

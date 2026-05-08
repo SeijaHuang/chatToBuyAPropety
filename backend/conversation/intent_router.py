@@ -7,14 +7,24 @@ from models.schemas import ConversationStateDTO, RoutingPayload
 
 _SUBURB_KEYWORDS: frozenset[str] = frozenset({"suburb", "area", "recommend", "推荐", "区域"})
 _PROPERTY_KEYWORDS: frozenset[str] = frozenset({"property", "listing", "find", "找房", "房源"})
-_DIGIT_SEQUENCE_RE: re.Pattern[str] = re.compile(r"\d{4,}")
+_ADDRESS_RE: re.Pattern[str] = re.compile(
+    r"\d+\s+\w+\s+(street|st|road|rd|avenue|ave|drive|dr|lane|ln|court|ct|way|place|pl)\b",
+    re.IGNORECASE,
+)
+_PROPERTY_ID_RE: re.Pattern[str] = re.compile(
+    r"\bproperty[_\s-]?id\b|\bprop[_\s-]?id\b",
+    re.IGNORECASE,
+)
 
 # Each entry is (predicate(lower, original) -> bool, intent_string).
 # Checked in order; first match wins. "open_ended_query" is the fallback.
 _INTENT_RULES: list[tuple[Callable[[str, str], bool], str]] = [
     (lambda lower, _: any(kw in lower for kw in _SUBURB_KEYWORDS), "recommend_suburbs"),
+    (
+        lambda _, original: bool(_ADDRESS_RE.search(original) or _PROPERTY_ID_RE.search(original)),
+        "property_detail",
+    ),
     (lambda lower, _: any(kw in lower for kw in _PROPERTY_KEYWORDS), "list_properties"),
-    (lambda _, original: bool(_DIGIT_SEQUENCE_RE.search(original)), "property_detail"),
 ]
 
 
@@ -29,8 +39,8 @@ def classify_intent(message: str, state: ConversationStateDTO) -> RoutingPayload
 
     Intent priority (first match in _INTENT_RULES wins):
       1. recommend_suburbs — keyword: suburb, area, recommend, 推荐, 区域
-      2. list_properties   — keyword: property, listing, find, 找房, 房源
-      3. property_detail   — message contains a digit sequence of 4+ digits
+      2. property_detail   — address pattern (number + street keyword) or property ID keyword
+      3. list_properties   — keyword: property, listing, find, 找房, 房源
       4. open_ended_query  — fallback when all_complete is True and nothing matched
 
     Args:
