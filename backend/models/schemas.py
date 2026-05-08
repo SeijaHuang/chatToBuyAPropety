@@ -172,6 +172,20 @@ class SummaryRequest(BaseModel):
     model_config = ConfigDict(
         alias_generator=to_camel,
         populate_by_name=True,
+        json_schema_extra={
+            "example": {
+                "collectedData": {
+                    "m1": {
+                        "propertyType": "house",
+                        "minBedrooms": 3,
+                        "intendedUse": "owner_occupier",
+                    },
+                    "m2": {"householdSize": 2, "hasChildren": False},
+                    "m3": {"commuteDestination": "Melbourne CBD", "commuteMaxMins": 40},
+                    "m4": {"budgetMax": 850000},
+                }
+            }
+        },
     )
 
     collected_data: CollectedData
@@ -209,6 +223,27 @@ class ChatRequest(BaseModel):
         message: The user's message text. Must be non-empty.
         state: The full current conversation state held by the client.
     """
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "message": "I want to buy a 3-bedroom house to live in",
+                "state": {
+                    "sessionId": "test-session-001",
+                    "status": "IN_PROGRESS",
+                    "currentModule": "M1_PROPERTY_NEEDS",
+                    "completionStatus": {
+                        "M1": False,
+                        "M2": False,
+                        "M3": False,
+                        "M4": False,
+                    },
+                    "collectedData": {"m1": {}, "m2": {}, "m3": {}, "m4": {}},
+                    "conversationHistory": [],
+                },
+            }
+        }
+    )
 
     message: str = Field(min_length=1)
     state: ConversationStateDTO

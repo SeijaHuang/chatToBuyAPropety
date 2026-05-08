@@ -55,7 +55,7 @@ class OpenRouterClient(ILLMClient):
     def __init__(self) -> None:
         self._client = AsyncOpenAI(
             api_key=settings.openrouter_api_key,
-            base_url="https://openrouter.ai/api/v1",
+            # base_url=settings.llm_base_url,
         )
 
     async def chat_with_tools_async(
@@ -95,13 +95,14 @@ class OpenRouterClient(ILLMClient):
             raise LLMServiceError(f"OpenRouter call failed: {exc}") from exc
 
         choice = response.choices[0]
-        reply: str = choice.message.content or ""
         tool_calls = choice.message.tool_calls
-
         if not tool_calls:
-            return reply, {}
+            return choice.message.content or "", {}
 
         raw: dict[str, object] = json.loads(tool_calls[0].function.arguments)
+        reply: str = str(raw.pop("next_question", ""))
+        raw.pop("module_complete", None)
+        raw.pop("user_intent", None)
         return reply, raw
 
     async def complete_async(
