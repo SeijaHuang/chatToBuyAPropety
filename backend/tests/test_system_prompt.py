@@ -1,6 +1,6 @@
 """Tests for prompts/system_prompt_builder.py — Story S-C."""
 
-from models.schemas import (
+from models.conversation_state import (
     CollectedData,
     CompletionStatus,
     ConversationStateDTO,

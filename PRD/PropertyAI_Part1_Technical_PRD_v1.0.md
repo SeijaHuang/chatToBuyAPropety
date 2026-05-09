@@ -597,7 +597,13 @@ test_all_none_fields_returns_422
 
 ## 4. Data Models
 
-All stories share the following models defined in `models/schemas.py` as the single source of truth.
+All stories share the following models. They are split across three files by domain:
+
+| File | Models |
+|------|--------|
+| `models/conversation_state.py` | Enums, M1–M4 sub-models, `CollectedData`, `CompletionStatus`, `ConversationStateDTO` |
+| `models/chat.py` | `ChatRequest`, `ChatResponse`, `RoutingPayload` |
+| `models/summary.py` | `SummaryRequest`, `SummaryResponse` |
 
 ### M1 — Property Needs
 
@@ -756,7 +762,10 @@ CREATE INDEX idx_sessions_user_id ON sessions(user_id);
 backend/
 ├── main.py
 ├── models/
-│   └── schemas.py                    # Single source of truth: all Pydantic models
+│   ├── conversation_state.py         # Enums, M1–M4 sub-models, CollectedData,
+│   │                                 # CompletionStatus, ConversationStateDTO
+│   ├── chat.py                       # ChatRequest, ChatResponse, RoutingPayload
+│   └── summary.py                    # SummaryRequest, SummaryResponse
 ├── tools/
 │   └── extraction_schema.py          # S-A: extract_requirements tool definition
 ├── conversation/

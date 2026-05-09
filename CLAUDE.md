@@ -93,8 +93,11 @@ backend/
 ├── requirements.txt               pip mirror of pyproject.toml — keep in sync manually
 │
 ├── models/
-│   └── schemas.py                 All Pydantic DTOs and domain models (ConversationStateDTO,
-│                                  CollectedData, ChatRequest, ChatResponse, SummaryResponse)
+│   ├── conversation_state.py      Enums (EModule, EStatus, ESubmodel, ESubmodelLabel),
+│   │                              M1–M4 sub-models, CollectedData, CompletionStatus,
+│   │                              ConversationStateDTO — the core conversation domain
+│   ├── chat.py                    Chat API contract: ChatRequest, ChatResponse, RoutingPayload
+│   └── summary.py                 Summary API contract: SummaryRequest, SummaryResponse
 │
 ├── conversation/
 │   ├── state_machine.py           Module progression — merges extracted fields, advances module,
@@ -140,12 +143,16 @@ POST /api/v1/chat
     │
     ├── routers/chat.py
     │       1. Append user message to conversationHistory
-    │       2. Build system prompt  →  prompts/system_prompt_builder.py
-    │       3. Call LLM with tool   →  services/llm_client.py
+    │       ── Round 1: Extraction ──────────────────────────────────────
+    │       2. build_extraction_prompt(state)  →  prompts/system_prompt_builder.py
+    │       3. chat_with_tools_async()         →  services/llm_client.py  → extracted dict
     │       4. Merge extracted fields, advance module  →  conversation/state_machine.py
-    │       5. Append assistant reply to conversationHistory
-    │       6. Classify intent  →  conversation/intent_router.py
-    │       7. Return ChatResponse (reply + extracted + updated_state + routing)
+    │       ── Round 2: Question Generation ──────────────────────────────
+    │       5. build_question_prompt(updated_state)  →  prompts/system_prompt_builder.py
+    │       6. complete_async()               →  services/llm_client.py  → reply str
+    │       7. Append reply to conversationHistory
+    │       8. Classify intent  →  conversation/intent_router.py
+    │       9. Return ChatResponse (reply + extracted + updated_state + routing)
     │
 POST /api/v1/chat/summary
     │

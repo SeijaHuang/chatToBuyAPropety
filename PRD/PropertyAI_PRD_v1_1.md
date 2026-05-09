@@ -6,11 +6,11 @@
 **房产类型:** 现有住宅（二手）  
 **用户:** 购房者和投资者  
 **部署:** AWS ap-southeast-2（悉尼）  
-**最后更新:** 2026年5月3日
+**最后更新:** 2026年5月9日
 
 ---
 
-**v1.1 变更说明：** 更新了买家服务场景的护栏规则（非建筑商服务）。第2部分编排器重新设计为带两种执行模式的意图路由器。第1阶段Agent扩展至7个（新增邻里+交通Agent）。技术栈确认：Python + FastAPI + OpenRouter + shapely。
+**v1.1 变更说明：** 更新了买家服务场景的护栏规则（非建筑商服务）。第2部分编排器重新设计为带两种执行模式的意图路由器。第1阶段Agent扩展至7个（新增邻里+交通Agent）。技术栈确认：Python + FastAPI + OpenRouter + shapely。**第1部分 LLM 调用架构更新为两轮模式**：第1轮专职字段提取（tool calling），第2轮专职问题生成（plain completion）；工具模式移除控制字段（`module_complete`、`next_question`、`user_intent`），模块推进逻辑改由代码处理。
 
 ---
 
@@ -100,48 +100,67 @@ M4（预算）最后收集，因为它包含敏感财务信息。先收集房产
 }
 ```
 
-#### 2.2.4 工具调用 — 单次 API 调用模式
+#### 2.2.4 工具调用 — 两轮 LLM 调用模式
 
-每条用户消息触发一次 OpenRouter API 调用，同时返回对话回复（content 字段）和结构化字段提取（tool_calls 字段）。工具名称：`extract_requirements`。
+> 🔄 **v1.1 架构更新：** 每条用户消息触发**两次**独立的 OpenRouter API 调用，职责严格分离。
+
+**第1轮 — 字段提取（tool calling）**
+
+使用 `extract_requirements` 工具，仅完成结构化字段提取，不生成对话回复。工具模式无控制字段（`module_complete`、`next_question`、`user_intent` 已移除）——模块完成检测和回复生成由独立逻辑处理。
 
 ```json
 {
   "extracted": {
-    "property_type":    "house|townhouse|unit|apartment|villa|any|null",
-    "min_bedrooms":     "number | null",
-    "max_bedrooms":     "number | null",
-    "min_bathrooms":    "number | null",
-    "min_carspaces":    "number | null",
-    "min_land_size":    "number | null",
-    "max_land_size":    "number | null",
-    "wants_pool":       "boolean | null",
-    "wants_outdoor":    "boolean | null",
-    "wants_study":      "boolean | null",
-    "intended_use":     "owner_occupier|investment|both|null",
-    "household_size":   "number | null",
-    "has_children":     "boolean | null",
+    "property_type":     "house|townhouse|unit|apartment|villa|any|null",
+    "min_bedrooms":      "number | null",
+    "max_bedrooms":      "number | null",
+    "min_bathrooms":     "number | null",
+    "min_carspaces":     "number | null",
+    "min_land_size":     "number | null",
+    "max_land_size":     "number | null",
+    "wants_pool":        "boolean | null",
+    "wants_outdoor":     "boolean | null",
+    "wants_study":       "boolean | null",
+    "intended_use":      "owner_occupier|investment|both|null",
+    "household_size":    "number | null",
+    "has_children":      "boolean | null",
     "needs_school_zone": "boolean | null",
-    "has_pets":         "boolean | null",
-    "work_from_home":   "boolean | null",
-    "target_tenant":    "family|professional|student|any|null",
+    "has_pets":          "boolean | null",
+    "work_from_home":    "boolean | null",
+    "target_tenant":     "family|professional|student|any|null",
     "commute_destination": "string | null",
-    "commute_max_mins": "number | null",
-    "commute_mode":     "train|car|tram|bus|any|null",
+    "commute_max_mins":  "number | null",
+    "commute_mode":      "train|car|tram|bus|any|null",
     "preferred_suburbs": "list | null",
-    "excluded_suburbs": "list | null",
-    "lifestyle_vibe":   "inner_city|suburban|leafy|coastal|any|null",
-    "budget_min":       "number | null",
-    "budget_max":       "number | null",
-    "deposit_amount":   "number | null",
-    "pre_tax_salary":   "number | null",
-    "is_joint":         "boolean | null",
-    "partner_salary":   "number | null",
-    "first_home_buyer": "boolean | null"
-  },
-  "module_complete":  "boolean",
-  "next_question":    "string",
-  "user_intent":      "answering|asking_question|changing_topic|confused|done"
+    "excluded_suburbs":  "list | null",
+    "lifestyle_vibe":    "inner_city|suburban|leafy|coastal|any|null",
+    "budget_min":        "number | null",
+    "budget_max":        "number | null",
+    "deposit_amount":    "number | null",
+    "pre_tax_salary":    "number | null",
+    "is_joint":          "boolean | null",
+    "partner_salary":    "number | null",
+    "first_home_buyer":  "boolean | null"
+  }
 }
+```
+
+**第1轮后处理（代码逻辑，非 LLM）**
+
+将提取字段合并至 `collectedData`（null 值不覆盖已有非 null 值），然后重新计算 `completionStatus` 并推进 `currentModule`。
+
+**第2轮 — 问题生成（plain completion）**
+
+使用更新后的状态（已含第1轮新提取的字段）构建问题提示，调用 LLM 生成下一条引导性问题，直接返回字符串作为助手回复。
+
+**两轮调用序列总览**
+
+```
+用户消息
+  │
+  ├─ 第1轮：build_extraction_prompt(state) → chat_with_tools_async() → extracted dict
+  ├─ 代码：merge + recalculate completionStatus + advance module
+  └─ 第2轮：build_question_prompt(updated_state) → complete_async() → reply string
 ```
 
 ---
@@ -521,29 +540,52 @@ services:
 
 ## 附录B — 系统提示结构
 
-```
-# 系统提示每次请求动态生成
+> 🔄 **v1.1 架构更新：** 两轮调用使用两套独立的系统提示。所有提示字符串集中在 `prompts/system_prompt_builder.py`，其他文件不得包含提示字面量。
 
-1. 角色定义
+### B.1 提取提示（第1轮）— `build_extraction_prompt(state)`
+
+职责仅限字段提取，不含任何问题生成指令。
+
+```
+# 提取提示（精简）
+
+当前活跃模块：{current_module}
+
+指令：从用户消息中提取用户明确陈述的字段，使用 extract_requirements 工具返回结构化数据。
+仅提取用户实际说明的内容，不做推断。不要生成回复或提问。
+```
+
+### B.2 问题提示（第2轮）— `build_question_prompt(state)`
+
+基于第1轮更新后的状态生成引导性问题。不含字段提取指令。
+
+```
+# 问题提示（第2轮，每次请求动态生成）
+
+第1节 — 角色定义（静态）
    "你是澳大利亚市场的AI房产购买助手。"
    "你的职责是通过自然对话收集买家需求。"
    "你不是持牌买家中介、财务顾问或法律专业人士。"
 
-2. 当前状态注入
-   "当前模块：{M1_PROPERTY_NEEDS}"
+第2节 — 更新后的状态注入（动态，反映第1轮提取结果）
+   "当前模块：{current_module}"
    "已完成模块：{completed_list}"
    "已收集：{collected_data_summary}"
    "缺失必填字段：{missing_fields}"
 
-3. M1→M2推断上下文（M1完成时注入）
+第3节 — M1→M2推断上下文（M1完成时注入，条件性）
    例："用户想要4+卧室住宅 — M2聚焦家庭、子女、学区。"
    例："用户想要投资房产 — M2聚焦租客画像、收益优先级。"
 
-4. 全部6条护栏规则（缩略）
+第4节 — 全部6条护栏规则（静态）
    规则1：房产推荐 → 拒绝，仅呈现数据
    规则2：市场信息 → 提供，然后提出跟进问题
    规则3：预算缺口 → 直接友善地指出
    规则4：法律/合规 → 解释，转介给专业人士
    规则5：投资预测 → 仅历史数据 + ASIC免责声明
    规则6：角色身份 → 透明说明边界
+
+第5节 — 问题任务指令（静态）
+   "任务：针对当前模块最重要的缺失必填字段，生成恰好一个简短、自然、
+   对话式的问题。不要重复已收集的字段。"
 ```

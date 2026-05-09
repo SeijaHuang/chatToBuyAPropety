@@ -1,7 +1,7 @@
 """Constructs LLM system prompts for each conversation module — the sole source of prompt strings."""
 
 from conversation.state_machine import MODULE_COMPLETION_RULES
-from models.schemas import (
+from models.conversation_state import (
     CollectedData,
     CompletionStatus,
     ConversationStateDTO,

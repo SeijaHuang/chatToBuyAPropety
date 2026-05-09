@@ -8,7 +8,7 @@ from httpx import AsyncClient
 
 import routers.chat as chat_module
 from exceptions import LLMServiceError
-from models.schemas import ConversationStateDTO
+from models.conversation_state import ConversationStateDTO
 
 
 def _build_body(message: str, state: ConversationStateDTO) -> dict[str, object]:

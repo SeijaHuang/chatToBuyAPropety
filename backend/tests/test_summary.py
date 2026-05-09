@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, patch
 from httpx import AsyncClient
 
 import routers.chat as chat_module
-from models.schemas import CollectedData, M1PropertyNeeds, M3SuburbPreference, M4Budget
+from models.conversation_state import CollectedData, M1PropertyNeeds, M3SuburbPreference, M4Budget
 
 _MOCK_SUMMARY = "Budget max is 800000, property type is house, commute to CBD"
 

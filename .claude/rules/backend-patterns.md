@@ -69,6 +69,28 @@ Never return raw `{"detail": "..."}` FastAPI defaults for business errors.
 
 ---
 
+## Models Package Layout
+
+The `models/` package is split into three semantically distinct files. Add new models to the correct file; do **not** create a catch-all `schemas.py`.
+
+| File | Contains |
+|------|----------|
+| `models/conversation_state.py` | Enums (`EModule`, `EStatus`, `ESubmodel`, `ESubmodelLabel`), M1–M4 sub-models, `CollectedData`, `CompletionStatus`, `ConversationStateDTO` |
+| `models/chat.py` | `ChatRequest`, `ChatResponse`, `RoutingPayload` |
+| `models/summary.py` | `SummaryRequest`, `SummaryResponse` |
+
+```python
+# Correct — import from the file that owns the symbol
+from models.conversation_state import CollectedData, ConversationStateDTO
+from models.chat import ChatRequest, ChatResponse
+from models.summary import SummaryRequest, SummaryResponse
+
+# Incorrect — there is no models.schemas
+from models.schemas import CollectedData  # ModuleNotFoundError
+```
+
+---
+
 ## Prompt Management
 
 All LLM system prompts live exclusively in `prompts/system_prompt_builder.py`. No prompt string literals are permitted in routers, services, or any other file.

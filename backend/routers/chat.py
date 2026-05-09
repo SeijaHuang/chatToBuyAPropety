@@ -7,7 +7,9 @@ from fastapi import APIRouter, Depends
 from conversation.intent_router import classify_intent
 from conversation.state_machine import merge_extracted_fields
 from exceptions import SummaryValidationError
-from models.schemas import ChatRequest, ChatResponse, ESubmodel, SummaryRequest, SummaryResponse
+from models.chat import ChatRequest, ChatResponse
+from models.conversation_state import ESubmodel
+from models.summary import SummaryRequest, SummaryResponse
 from prompts.system_prompt_builder import (
     build_extraction_prompt,
     build_question_prompt,
