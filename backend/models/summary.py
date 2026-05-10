@@ -1,17 +1,17 @@
 """Request/response DTOs for the requirements summary endpoint."""
 
-from pydantic import BaseModel, ConfigDict
-from pydantic.alias_generators import to_camel
+from pydantic import ConfigDict
 
+from models.base import PropertyAIBaseModel
 from models.conversation_state import CollectedData
 
 
-class SummaryRequest(BaseModel):
+class SummaryRequest(PropertyAIBaseModel):
     """Inbound payload for the summary endpoint."""
 
+    # Extends parent config with an OpenAPI example; alias_generator and
+    # populate_by_name are inherited from PropertyAIBaseModel.
     model_config = ConfigDict(
-        alias_generator=to_camel,
-        populate_by_name=True,
         json_schema_extra={
             "example": {
                 "collectedData": {
@@ -25,19 +25,14 @@ class SummaryRequest(BaseModel):
                     "m4": {"budgetMax": 850000},
                 }
             }
-        },
+        }
     )
 
     collected_data: CollectedData
 
 
-class SummaryResponse(BaseModel):
+class SummaryResponse(PropertyAIBaseModel):
     """Outbound payload from the summary endpoint."""
-
-    model_config = ConfigDict(
-        alias_generator=to_camel,
-        populate_by_name=True,
-    )
 
     summary_text: str
     structured: CollectedData

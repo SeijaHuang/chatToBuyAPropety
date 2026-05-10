@@ -82,7 +82,7 @@ async def test_extracted_fields_written_to_collected_data(
             "/api/v1/chat", json=_build_body("I want a house", sample_state)
         )
     m1 = response.json()["updatedState"]["collectedData"]["m1"]
-    assert m1["property_type"] == "house"
+    assert m1["propertyType"] == "house"
 
 
 async def test_completion_status_updated_correctly(

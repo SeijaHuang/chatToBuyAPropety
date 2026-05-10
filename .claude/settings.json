@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\Shijia Huang\\\\Desktop\\\\AI Engineer\\\\CTB\\\\PRD\\\\\" -Force)"
+    ]
+  },
+  "enabledPlugins": {
+    "commit-commands@claude-plugins-official": true
+  }
+}
