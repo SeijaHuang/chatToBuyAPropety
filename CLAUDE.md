@@ -93,6 +93,8 @@ backend/
 ├── requirements.txt               pip mirror of pyproject.toml — keep in sync manually
 │
 ├── models/
+│   ├── base.py                    PropertyAIBaseModel — shared Pydantic base with camelCase
+│   │                              alias_generator; all public DTOs inherit from this class
 │   ├── conversation_state.py      Enums (EModule, EStatus, ESubmodel, ESubmodelLabel),
 │   │                              M1–M4 sub-models, CollectedData, CompletionStatus,
 │   │                              ConversationStateDTO — the core conversation domain

@@ -4,7 +4,8 @@
 
 | Module | Minimum coverage |
 |---|---|
-| `models/schemas.py` | 100% |
+| `models/base.py` | 100% |
+| `models/conversation_state.py` | 100% |
 | `tools/extraction_schema.py` | 100% |
 | `conversation/state_machine.py` | 100% |
 | `conversation/intent_router.py` | 100% |

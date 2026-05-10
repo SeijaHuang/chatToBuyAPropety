@@ -71,10 +71,11 @@ Never return raw `{"detail": "..."}` FastAPI defaults for business errors.
 
 ## Models Package Layout
 
-The `models/` package is split into three semantically distinct files. Add new models to the correct file; do **not** create a catch-all `schemas.py`.
+The `models/` package is split into four semantically distinct files. Add new models to the correct file; do **not** create a catch-all `schemas.py`.
 
 | File | Contains |
 |------|----------|
+| `models/base.py` | `PropertyAIBaseModel` — camelCase `alias_generator`, `populate_by_name=True`; base for all public DTOs |
 | `models/conversation_state.py` | Enums (`EModule`, `EStatus`, `ESubmodel`, `ESubmodelLabel`), M1–M4 sub-models, `CollectedData`, `CompletionStatus`, `ConversationStateDTO` |
 | `models/chat.py` | `ChatRequest`, `ChatResponse`, `RoutingPayload` |
 | `models/summary.py` | `SummaryRequest`, `SummaryResponse` |
