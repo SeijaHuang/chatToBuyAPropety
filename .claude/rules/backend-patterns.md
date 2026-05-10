@@ -23,18 +23,38 @@ settings = Settings()
 
 ## Logging
 
-Use `structlog` with JSON output. Every log entry related to a user session must include `session_id` as a bound context variable.
+Use `structlog` with JSON output. Do not use Python's built-in `logging` module. Do not log sensitive fields (API keys, salary figures).
+
+### Module-level logger
+
+Declare one `logger` at module scope. Never call `structlog.get_logger()` inside a function — it is equivalent but wastes a call per request and scatters the import pattern.
 
 ```python
+# Correct — one declaration at module top-level
 import structlog
 
 logger = structlog.get_logger()
 
-log = logger.bind(session_id=state.session_id)
-log.info("chat_request_received", module=state.current_module)
+# Incorrect — repeated inside every function
+async def chat_async(...):
+    log = structlog.get_logger()  # ← don't do this
 ```
 
-Do not use Python's built-in `logging` module directly. Do not log sensitive fields (API keys, salary figures).
+### Request-scoped binding
+
+When a log entry is tied to a user session, create a bound child logger **inside the request handler** using `.bind()`. Never store a bound logger at module scope — context from one request would leak into others.
+
+```python
+# Correct — bound inside the handler, never escapes the request
+async def chat_async(request: ChatRequest, ...) -> ChatResponse:
+    log = logger.bind(session_id=state.session_id, current_module=state.current_module)
+    log.info("chat_request_received", message_length=len(request.message))
+
+# Incorrect — bound at module scope; session_id bleeds across requests
+logger = structlog.get_logger().bind(session_id="???")
+```
+
+For handlers that have no per-request context (e.g. `/chat/summary`), use the module-level `logger` directly without `.bind()`.
 
 ---
 
@@ -49,7 +69,18 @@ PropertyAIException          ← base for all project exceptions
 └── SummaryValidationError   ← summary requested with all-None fields
 ```
 
-Business logic raises typed subclasses. A single FastAPI exception handler at `main.py` converts them to HTTP responses.
+Business logic raises typed subclasses. A single FastAPI exception handler at `main.py` converts them to HTTP responses. Never catch `PropertyAIException` subclasses inside a router — let the handler do it.
+
+```python
+# Correct — raise and let the global handler convert to HTTP
+raise SummaryValidationError("No data collected — cannot generate summary.")
+
+# Incorrect — swallowing or re-wrapping inside the router
+try:
+    ...
+except SummaryValidationError as e:
+    return JSONResponse(status_code=400, content={"detail": str(e)})
+```
 
 ### API Error Envelope
 

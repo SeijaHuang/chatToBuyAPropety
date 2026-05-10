@@ -4,10 +4,13 @@ import json
 from typing import Any, Protocol
 
 import openai
+import structlog
 from openai import AsyncOpenAI
 
 from config import settings
 from exceptions import LLMServiceError
+
+logger = structlog.get_logger()
 
 
 class ILLMClient(Protocol):
@@ -79,6 +82,8 @@ class OpenRouterClient(ILLMClient):
             LLMServiceError: When the OpenRouter API call fails.
         """
         full_messages: list[Any] = [{"role": "system", "content": system_prompt}, *messages]
+        log = logger.bind(model=settings.model_strong, llm_method="chat_with_tools_async")
+        log.info("llm_call_start", message_count=len(full_messages), tool_count=len(tools))
         try:
             response = await self._client.chat.completions.create(  # type: ignore[call-overload]
                 model=settings.model_strong,
@@ -89,10 +94,30 @@ class OpenRouterClient(ILLMClient):
                 messages=full_messages,
             )
         except openai.APIError as exc:
-            raise LLMServiceError(f"OpenRouter call failed: {exc}") from exc
+            log.error(
+                "llm_call_failed",
+                error=str(exc),
+                status_code=getattr(exc, "status_code", None),
+            )
+            raise LLMServiceError(
+                f"OpenRouter call failed: {exc}",
+                details={
+                    "model": settings.model_strong,
+                    "llm_method": "chat_with_tools_async",
+                    "status_code": getattr(exc, "status_code", None),
+                    "provider_error": str(exc),
+                },
+            ) from exc
 
-        choice = response.choices[0]
-        tool_calls = choice.message.tool_calls
+        usage = response.usage
+        log.info(
+            "llm_call_complete",
+            has_tool_call=bool(response.choices[0].message.tool_calls),
+            prompt_tokens=usage.prompt_tokens if usage else None,
+            completion_tokens=usage.completion_tokens if usage else None,
+        )
+
+        tool_calls = response.choices[0].message.tool_calls
         if not tool_calls:
             return {}
 
@@ -120,6 +145,8 @@ class OpenRouterClient(ILLMClient):
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_message},
         ]
+        log = logger.bind(model=settings.model_strong, llm_method="complete_async")
+        log.info("llm_call_start", message_count=len(full_messages))
         try:
             response = await self._client.chat.completions.create(
                 model=settings.model_strong,
@@ -128,6 +155,25 @@ class OpenRouterClient(ILLMClient):
                 messages=full_messages,
             )
         except openai.APIError as exc:
-            raise LLMServiceError(f"OpenRouter call failed: {exc}") from exc
+            log.error(
+                "llm_call_failed",
+                error=str(exc),
+                status_code=getattr(exc, "status_code", None),
+            )
+            raise LLMServiceError(
+                f"OpenRouter call failed: {exc}",
+                details={
+                    "model": settings.model_strong,
+                    "llm_method": "complete_async",
+                    "status_code": getattr(exc, "status_code", None),
+                    "provider_error": str(exc),
+                },
+            ) from exc
 
+        usage = response.usage
+        log.info(
+            "llm_call_complete",
+            prompt_tokens=usage.prompt_tokens if usage else None,
+            completion_tokens=usage.completion_tokens if usage else None,
+        )
         return response.choices[0].message.content or ""
