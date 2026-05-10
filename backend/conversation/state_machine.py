@@ -3,7 +3,7 @@
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from models.schemas import (
+from models.conversation_state import (
     CollectedData,
     CompletionStatus,
     ConversationStateDTO,

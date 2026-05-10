@@ -3,7 +3,8 @@
 import re
 from collections.abc import Callable
 
-from models.schemas import ConversationStateDTO, RoutingPayload
+from models.chat import RoutingPayload
+from models.conversation_state import ConversationStateDTO
 
 _SUBURB_KEYWORDS: frozenset[str] = frozenset({"suburb", "area", "recommend", "推荐", "区域"})
 _PROPERTY_KEYWORDS: frozenset[str] = frozenset({"property", "listing", "find", "找房", "房源"})

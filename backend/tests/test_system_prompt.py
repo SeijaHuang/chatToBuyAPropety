@@ -1,6 +1,6 @@
 """Tests for prompts/system_prompt_builder.py — Story S-C."""
 
-from models.schemas import (
+from models.conversation_state import (
     CollectedData,
     CompletionStatus,
     ConversationStateDTO,
@@ -8,7 +8,11 @@ from models.schemas import (
     EStatus,
     M1PropertyNeeds,
 )
-from prompts.system_prompt_builder import build_system_prompt
+from prompts.system_prompt_builder import (
+    build_extraction_prompt,
+    build_question_prompt,
+    build_system_prompt,
+)
 
 
 def _make_state(
@@ -98,5 +102,64 @@ def test_all_six_guardrail_rules_present() -> None:
 def test_output_is_nonempty_string() -> None:
     """SC-8: build_system_prompt returns a non-empty string without raising."""
     result = build_system_prompt(_make_state())
+    assert isinstance(result, str)
+    assert len(result) > 0
+
+
+# --- build_extraction_prompt ---
+
+
+def test_extraction_prompt_contains_active_module() -> None:
+    """SC-9: build_extraction_prompt includes the active module identifier."""
+    result = build_extraction_prompt(_make_state(current_module=EModule.M2_LIFESTYLE))
+    assert "M2_LIFESTYLE" in result
+
+
+def test_extraction_prompt_excludes_question_instruction() -> None:
+    """SC-10: build_extraction_prompt does not contain question-generation instruction."""
+    result = build_extraction_prompt(_make_state())
+    assert "Generate" not in result
+    assert "question" not in result.lower()
+
+
+def test_extraction_prompt_is_nonempty_string() -> None:
+    """SC-11: build_extraction_prompt returns a non-empty string without raising."""
+    result = build_extraction_prompt(_make_state())
+    assert isinstance(result, str)
+    assert len(result) > 0
+
+
+# --- build_question_prompt ---
+
+
+def test_question_prompt_contains_role_definition() -> None:
+    """SC-12: build_question_prompt includes the role definition."""
+    result = build_question_prompt(_make_state())
+    assert "You are an AI property buying assistant for the Australian market." in result
+
+
+def test_question_prompt_contains_missing_fields() -> None:
+    """SC-13: build_question_prompt lists missing required fields for the current module."""
+    result = build_question_prompt(_make_state(current_module=EModule.M1_PROPERTY_NEEDS))
+    assert "Missing required fields" in result
+    assert "property_type" in result
+
+
+def test_question_prompt_contains_task_instruction() -> None:
+    """SC-14: build_question_prompt includes the one-question task instruction."""
+    result = build_question_prompt(_make_state())
+    assert "Generate exactly ONE" in result
+
+
+def test_question_prompt_guardrail_rules_present() -> None:
+    """SC-15: build_question_prompt contains all six guardrail rules."""
+    result = build_question_prompt(_make_state())
+    for rule_number in range(1, 7):
+        assert f"Rule {rule_number}" in result
+
+
+def test_question_prompt_is_nonempty_string() -> None:
+    """SC-16: build_question_prompt returns a non-empty string without raising."""
+    result = build_question_prompt(_make_state())
     assert isinstance(result, str)
     assert len(result) > 0

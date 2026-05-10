@@ -6,7 +6,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from main import app
-from models.schemas import ConversationStateDTO
+from models.conversation_state import ConversationStateDTO
 
 
 @pytest.fixture

@@ -8,36 +8,36 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Detailed standards live in `.claude/rules/` — read the relevant file before touching that area:
 
-| File | When to read |
-|---|---|
-| [coding-standards.md](.claude/rules/coding-standards.md) | Any time you write or review code — naming, types, docstrings, SOLID/DRY/KISS |
+| File                                                     | When to read                                                                   |
+| -------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| [coding-standards.md](.claude/rules/coding-standards.md) | Any time you write or review code — naming, types, docstrings, SOLID/DRY/KISS  |
 | [backend-patterns.md](.claude/rules/backend-patterns.md) | Config, logging, exceptions, API error envelope, prompt placement, null-safety |
-| [testing.md](.claude/rules/testing.md) | Writing or modifying tests — coverage thresholds, mock rules, test naming |
-| [git-workflow.md](.claude/rules/git-workflow.md) | Commits, branches, PRs, pre-commit hooks |
+| [testing.md](.claude/rules/testing.md)                   | Writing or modifying tests — coverage thresholds, mock rules, test naming      |
+| [git-workflow.md](.claude/rules/git-workflow.md)         | Commits, branches, PRs, pre-commit hooks                                       |
 
 ## Docs Index
 
-| File | Contents |
-|---|---|
+| File                                                               | Contents                                                                         |
+| ------------------------------------------------------------------ | -------------------------------------------------------------------------------- |
 | [docs/part1-p0-implementation.md](docs/part1-p0-implementation.md) | Part 1 P0 story completion, E2E criteria, architectural decisions, test coverage |
 
 ---
 
 ## Tech Stack
 
-| Layer | Technology |
-|---|---|
-| Language | Python 3.12 |
-| API framework | FastAPI |
-| Data validation | Pydantic v2 |
-| LLM gateway | OpenRouter API |
-| Session store | Redis (P1 — not active in P0) |
-| Database | PostgreSQL (JSONB for semi-structured fields) |
-| Dependency manager | uv + `pyproject.toml` |
-| Formatter + Linter | Ruff (line-length 100) |
-| Type checker | mypy `--strict` |
-| Test framework | pytest (asyncio_mode = auto) |
-| Logging | structlog (JSON output) |
+| Layer              | Technology                                    |
+| ------------------ | --------------------------------------------- |
+| Language           | Python 3.12                                   |
+| API framework      | FastAPI                                       |
+| Data validation    | Pydantic v2                                   |
+| LLM gateway        | OpenRouter API                                |
+| Session store      | Redis (P1 — not active in P0)                 |
+| Database           | PostgreSQL (JSONB for semi-structured fields) |
+| Dependency manager | uv + `pyproject.toml`                         |
+| Formatter + Linter | Ruff (line-length 100)                        |
+| Type checker       | mypy `--strict`                               |
+| Test framework     | pytest (asyncio_mode = auto)                  |
+| Logging            | structlog (JSON output)                       |
 
 ---
 
@@ -93,8 +93,13 @@ backend/
 ├── requirements.txt               pip mirror of pyproject.toml — keep in sync manually
 │
 ├── models/
-│   └── schemas.py                 All Pydantic DTOs and domain models (ConversationStateDTO,
-│                                  CollectedData, ChatRequest, ChatResponse, SummaryResponse)
+│   ├── base.py                    PropertyAIBaseModel — shared Pydantic base with camelCase
+│   │                              alias_generator; all public DTOs inherit from this class
+│   ├── conversation_state.py      Enums (EModule, EStatus, ESubmodel, ESubmodelLabel),
+│   │                              M1–M4 sub-models, CollectedData, CompletionStatus,
+│   │                              ConversationStateDTO — the core conversation domain
+│   ├── chat.py                    Chat API contract: ChatRequest, ChatResponse, RoutingPayload
+│   └── summary.py                 Summary API contract: SummaryRequest, SummaryResponse
 │
 ├── conversation/
 │   ├── state_machine.py           Module progression — merges extracted fields, advances module,
@@ -140,12 +145,16 @@ POST /api/v1/chat
     │
     ├── routers/chat.py
     │       1. Append user message to conversationHistory
-    │       2. Build system prompt  →  prompts/system_prompt_builder.py
-    │       3. Call LLM with tool   →  services/llm_client.py
+    │       ── Round 1: Extraction ──────────────────────────────────────
+    │       2. build_extraction_prompt(state)  →  prompts/system_prompt_builder.py
+    │       3. chat_with_tools_async()         →  services/llm_client.py  → extracted dict
     │       4. Merge extracted fields, advance module  →  conversation/state_machine.py
-    │       5. Append assistant reply to conversationHistory
-    │       6. Classify intent  →  conversation/intent_router.py
-    │       7. Return ChatResponse (reply + extracted + updated_state + routing)
+    │       ── Round 2: Question Generation ──────────────────────────────
+    │       5. build_question_prompt(updated_state)  →  prompts/system_prompt_builder.py
+    │       6. complete_async()               →  services/llm_client.py  → reply str
+    │       7. Append reply to conversationHistory
+    │       8. Classify intent  →  conversation/intent_router.py
+    │       9. Return ChatResponse (reply + extracted + updated_state + routing)
     │
 POST /api/v1/chat/summary
     │
@@ -160,12 +169,12 @@ EModule:  M1_PROPERTY_NEEDS → M2_LIFESTYLE → M3_SUBURB_PREFERENCE → M4_BUD
 EStatus:  IN_PROGRESS ────────────────────────────────────────────► REQUIREMENTS_COMPLETE
 ```
 
-| Module | Required fields to advance |
-|---|---|
-| M1 | `property_type`, `min_bedrooms`, `intended_use` |
-| M2 | `household_size`, `has_children` (+ `target_tenant` when `intended_use == "investment"`) |
-| M3 | `commute_destination`, `commute_max_mins` |
-| M4 | `budget_max` |
+| Module | Required fields to advance                                                               |
+| ------ | ---------------------------------------------------------------------------------------- |
+| M1     | `property_type`, `min_bedrooms`, `intended_use`                                          |
+| M2     | `household_size`, `has_children` (+ `target_tenant` when `intended_use == "investment"`) |
+| M3     | `commute_destination`, `commute_max_mins`                                                |
+| M4     | `budget_max`                                                                             |
 
 ---
 
@@ -189,13 +198,13 @@ These are non-obvious constraints that must never be violated, regardless of con
 
 ## Naming Quick Reference
 
-| Construct | Pattern | Example |
-|---|---|---|
-| Async function | `snake_case_async` | `call_llm_async`, `chat_async` |
-| Enum class | `E` + PascalCase | `EModule`, `EUserIntent` |
-| Protocol (interface) | `I` + PascalCase | `ILLMClient`, `IChatService` |
-| TypeVar / TypeAlias | `T` + PascalCase | `TState`, `TResponse` |
-| Private attribute | `_` + snake_case | `_session_id`, `_build_context` |
-| Constant | SCREAMING_SNAKE | `MAX_TOKENS`, `DEFAULT_MODEL` |
+| Construct            | Pattern            | Example                         |
+| -------------------- | ------------------ | ------------------------------- |
+| Async function       | `snake_case_async` | `call_llm_async`, `chat_async`  |
+| Enum class           | `E` + PascalCase   | `EModule`, `EUserIntent`        |
+| Protocol (interface) | `I` + PascalCase   | `ILLMClient`, `IChatService`    |
+| TypeVar / TypeAlias  | `T` + PascalCase   | `TState`, `TResponse`           |
+| Private attribute    | `_` + snake_case   | `_session_id`, `_build_context` |
+| Constant             | SCREAMING_SNAKE    | `MAX_TOKENS`, `DEFAULT_MODEL`   |
 
 Full conventions: [coding-standards.md](.claude/rules/coding-standards.md)

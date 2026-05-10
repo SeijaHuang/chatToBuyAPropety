@@ -18,8 +18,8 @@ class ILLMClient(Protocol):
         system_prompt: str,
         messages: list[dict[str, object]],
         tools: list[dict[str, object]],
-    ) -> tuple[str, dict[str, object]]:
-        """Call the LLM with tool support.
+    ) -> dict[str, object]:
+        """Call the LLM with tool support and return extracted business fields.
 
         Args:
             system_prompt: System prompt prepended internally; must not appear in messages.
@@ -27,8 +27,7 @@ class ILLMClient(Protocol):
             tools: OpenAI-format tool definitions.
 
         Returns:
-            Tuple of (assistant_reply_text, extracted_fields_dict).
-            extracted_fields_dict is empty when no tool call is returned.
+            Extracted business fields dict; empty dict when no tool call is returned.
         """
         ...
 
@@ -63,12 +62,10 @@ class OpenRouterClient(ILLMClient):
         system_prompt: str,
         messages: list[dict[str, object]],
         tools: list[dict[str, object]],
-    ) -> tuple[str, dict[str, object]]:
-        """Send a chat request with tool support and return the reply and extracted fields.
+    ) -> dict[str, object]:
+        """Send a chat request with tool support and return extracted business fields.
 
         Prepends the system prompt as the first message internally.
-        Strips control keys (module_complete, next_question, user_intent) from the
-        returned extracted dict so callers only receive business fields.
 
         Args:
             system_prompt: The system prompt to prepend.
@@ -76,7 +73,7 @@ class OpenRouterClient(ILLMClient):
             tools: OpenAI-format tool definitions.
 
         Returns:
-            Tuple of (assistant_reply_text, extracted_fields_dict).
+            Extracted business fields dict; empty dict when no tool call is returned.
 
         Raises:
             LLMServiceError: When the OpenRouter API call fails.
@@ -97,13 +94,10 @@ class OpenRouterClient(ILLMClient):
         choice = response.choices[0]
         tool_calls = choice.message.tool_calls
         if not tool_calls:
-            return choice.message.content or "", {}
+            return {}
 
         raw: dict[str, object] = json.loads(tool_calls[0].function.arguments)
-        reply: str = str(raw.pop("next_question", ""))
-        raw.pop("module_complete", None)
-        raw.pop("user_intent", None)
-        return reply, raw
+        return raw
 
     async def complete_async(
         self,

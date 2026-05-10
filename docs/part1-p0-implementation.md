@@ -61,7 +61,8 @@
 
 | Module | Target | Notes |
 |---|---|---|
-| `models/schemas.py` | 100% | |
+| `models/base.py` | 100% | `PropertyAIBaseModel` — extracted from former `schemas.py` |
+| `models/conversation_state.py` | 100% | |
 | `tools/extraction_schema.py` | 100% | |
 | `conversation/state_machine.py` | 100% | |
 | `conversation/intent_router.py` | 100% | Extra tests added beyond PRD spec |

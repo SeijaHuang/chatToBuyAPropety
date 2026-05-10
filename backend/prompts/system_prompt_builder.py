@@ -1,7 +1,7 @@
 """Constructs LLM system prompts for each conversation module — the sole source of prompt strings."""
 
 from conversation.state_machine import MODULE_COMPLETION_RULES
-from models.schemas import (
+from models.conversation_state import (
     CollectedData,
     CompletionStatus,
     ConversationStateDTO,
@@ -38,6 +38,17 @@ _INVESTMENT_CONTEXT = """\
 Context: The buyer is an investor. Focus on tenant profile, rental yield priority,
 and property management considerations when asking about module 2 requirements."""
 
+_EXTRACTION_INSTRUCTION = (
+    "Extract only the property requirement fields explicitly stated in the user's message. "
+    "Do not infer or guess missing values. Populate only fields that are clearly mentioned."
+)
+
+_QUESTION_TASK_INSTRUCTION = (
+    "Task: Generate exactly ONE short, natural, conversational question targeting the most "
+    "important missing required field for the current module. "
+    "Do not re-ask fields already collected."
+)
+
 
 def _build_completed_list(completion: CompletionStatus) -> str:
     """Return a comma-separated list of completed module names, or 'none'."""
@@ -70,6 +81,58 @@ def _build_missing_fields(module: EModule, data: CollectedData) -> str:
     required = rules.required_fields | rules.extra_required(data)
     missing = [f for f in required if dumped.get(f) is None]
     return ", ".join(missing) if missing else "none"
+
+
+def build_extraction_prompt(state: ConversationStateDTO) -> str:
+    """Build a minimal system prompt focused solely on field extraction.
+
+    Args:
+        state: The current conversation state (used to indicate active module focus).
+
+    Returns:
+        A concise system prompt string for extraction-only LLM calls.
+    """
+    return (
+        f"You are a data extraction assistant for a property buying conversation.\n"
+        f"Active module: {state.current_module.value}\n\n"
+        f"{_EXTRACTION_INSTRUCTION}"
+    )
+
+
+def build_question_prompt(state: ConversationStateDTO) -> str:
+    """Build the system prompt for the Round 2 question-generation LLM call.
+
+    Sees the state after Round 1 extraction so the generated question targets the
+    freshest missing-fields reality. Assembles role definition, updated state, optional
+    M1→M2 inference context, guardrail rules, and a question-task instruction.
+
+    Args:
+        state: The updated conversation state after field extraction.
+
+    Returns:
+        A fully assembled system prompt string for question-generation calls.
+    """
+    sections: list[str] = [_ROLE_DEFINITION]
+
+    state_section = (
+        f"Current module: {state.current_module.value}\n"
+        f"Completed modules: {_build_completed_list(state.completion_status)}\n"
+        f"Already collected: {_build_collected_summary(state.collected_data)}\n"
+        f"Missing required fields: {_build_missing_fields(state.current_module, state.collected_data)}"
+    )
+    sections.append(state_section)
+
+    if state.completion_status.M1:
+        intended_use = state.collected_data.m1.intended_use
+        if intended_use == "investment":
+            sections.append(_INVESTMENT_CONTEXT)
+        else:
+            sections.append(_OWNER_OCCUPIER_CONTEXT)
+
+    sections.append(_GUARDRAIL_RULES)
+    sections.append(_QUESTION_TASK_INSTRUCTION)
+
+    return "\n\n".join(sections)
 
 
 def build_system_prompt(state: ConversationStateDTO) -> str:

@@ -1,7 +1,7 @@
 """Tests for conversation/intent_router.py — Story S-E."""
 
 from conversation.intent_router import classify_intent
-from models.schemas import CompletionStatus, ConversationStateDTO
+from models.conversation_state import CompletionStatus, ConversationStateDTO
 
 
 def _incomplete_state(session_id: str = "test-session-001") -> ConversationStateDTO:

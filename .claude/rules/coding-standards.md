@@ -59,7 +59,7 @@ Any string value that is reused in more than one place, used as a key/identifier
 This applies to: module identifiers, status codes, role names, field attribute names, display labels, intent names, and any other categorical value.
 
 ```python
-# Correct — canonical definition in schemas.py, referenced everywhere
+# Correct — canonical definition in models/conversation_state.py, referenced everywhere
 class ESubmodel(StrEnum):
     M1 = "m1"
     M2 = "m2"
@@ -72,7 +72,7 @@ for attr in ("m1", "m2", "m3", "m4"):
     getattr(data, attr)
 ```
 
-Enum classes belong in `models/schemas.py` unless they are exclusively used within a single module (in which case they live at the top of that module). When in doubt, put them in `schemas.py`.
+Enum classes belong in `models/conversation_state.py` unless they are exclusively used within a single module (in which case they live at the top of that module). When in doubt, put them in `conversation_state.py`.
 
 ### Enum Example
 

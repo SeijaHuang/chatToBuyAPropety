@@ -1,10 +1,11 @@
-"""Single source of truth for all Pydantic request/response models and domain DTOs."""
+"""Enums, sub-models, and session-state DTOs for the conversation domain."""
 
 from enum import StrEnum
 from typing import Literal, cast
 
-from pydantic import BaseModel, ConfigDict, Field, computed_field
-from pydantic.alias_generators import to_camel
+from pydantic import BaseModel, Field, computed_field
+
+from models.base import PropertyAIBaseModel
 
 
 class EModule(StrEnum):
@@ -42,7 +43,7 @@ class ESubmodelLabel(StrEnum):
     M4 = "Budget"
 
 
-class M1PropertyNeeds(BaseModel):
+class M1PropertyNeeds(PropertyAIBaseModel):
     """Collected fields for module 1: property type and physical requirements."""
 
     property_type: Literal["house", "townhouse", "unit", "apartment", "villa", "any"] | None = None
@@ -58,7 +59,7 @@ class M1PropertyNeeds(BaseModel):
     intended_use: Literal["owner_occupier", "investment", "both"] | None = None
 
 
-class M2Lifestyle(BaseModel):
+class M2Lifestyle(PropertyAIBaseModel):
     """Collected fields for module 2: lifestyle and household requirements."""
 
     household_size: int | None = None
@@ -69,7 +70,7 @@ class M2Lifestyle(BaseModel):
     target_tenant: Literal["family", "professional", "student", "any"] | None = None
 
 
-class M3SuburbPreference(BaseModel):
+class M3SuburbPreference(PropertyAIBaseModel):
     """Collected fields for module 3: suburb and commute preferences."""
 
     commute_destination: str | None = None
@@ -80,7 +81,7 @@ class M3SuburbPreference(BaseModel):
     lifestyle_vibe: Literal["inner_city", "suburban", "leafy", "coastal", "any"] | None = None
 
 
-class M4Budget(BaseModel):
+class M4Budget(PropertyAIBaseModel):
     """Collected fields for module 4: budget and financial readiness."""
 
     budget_min: int | None = None
@@ -95,7 +96,7 @@ class M4Budget(BaseModel):
 TSubmodel = M1PropertyNeeds | M2Lifestyle | M3SuburbPreference | M4Budget
 
 
-class CollectedData(BaseModel):
+class CollectedData(PropertyAIBaseModel):
     """Flat accumulator for all extracted fields across all modules."""
 
     m1: M1PropertyNeeds = Field(default_factory=M1PropertyNeeds)
@@ -109,7 +110,11 @@ class CollectedData(BaseModel):
 
 
 class CompletionStatus(BaseModel):
-    """Tracks which modules have had all required fields collected."""
+    """Tracks which modules have had all required fields collected.
+
+    Intentionally does NOT inherit PropertyAIBaseModel — to_camel would
+    lowercase M1→m1, breaking the API contract for completionStatus keys.
+    """
 
     M1: bool = False
     M2: bool = False
@@ -145,17 +150,12 @@ class CompletionStatus(BaseModel):
         return EModule.COMPLETE
 
 
-class ConversationStateDTO(BaseModel):
+class ConversationStateDTO(PropertyAIBaseModel):
     """Full session state for a single user conversation.
 
     Serialises to camelCase JSON for API transport while retaining
     snake_case access internally via populate_by_name.
     """
-
-    model_config = ConfigDict(
-        alias_generator=to_camel,
-        populate_by_name=True,
-    )
 
     session_id: str
     status: EStatus = EStatus.IN_PROGRESS
@@ -164,107 +164,3 @@ class ConversationStateDTO(BaseModel):
     collected_data: CollectedData = Field(default_factory=CollectedData)
     conversation_history: list[dict[str, object]] = Field(default_factory=list)
     final_needs: CollectedData | None = None
-
-
-class SummaryRequest(BaseModel):
-    """Inbound payload for the summary endpoint."""
-
-    model_config = ConfigDict(
-        alias_generator=to_camel,
-        populate_by_name=True,
-        json_schema_extra={
-            "example": {
-                "collectedData": {
-                    "m1": {
-                        "propertyType": "house",
-                        "minBedrooms": 3,
-                        "intendedUse": "owner_occupier",
-                    },
-                    "m2": {"householdSize": 2, "hasChildren": False},
-                    "m3": {"commuteDestination": "Melbourne CBD", "commuteMaxMins": 40},
-                    "m4": {"budgetMax": 850000},
-                }
-            }
-        },
-    )
-
-    collected_data: CollectedData
-
-
-class SummaryResponse(BaseModel):
-    """Outbound payload from the summary endpoint."""
-
-    model_config = ConfigDict(
-        alias_generator=to_camel,
-        populate_by_name=True,
-    )
-
-    summary_text: str
-    structured: CollectedData
-
-
-class RoutingPayload(BaseModel):
-    """Bundled routing context passed between conversation layers."""
-
-    model_config = ConfigDict(
-        alias_generator=to_camel,
-        populate_by_name=True,
-    )
-
-    intent: str
-    collected_data: CollectedData
-    session_id: str
-
-
-class ChatRequest(BaseModel):
-    """Inbound payload for a single conversation turn.
-
-    Attributes:
-        message: The user's message text. Must be non-empty.
-        state: The full current conversation state held by the client.
-    """
-
-    model_config = ConfigDict(
-        json_schema_extra={
-            "example": {
-                "message": "I want to buy a 3-bedroom house to live in",
-                "state": {
-                    "sessionId": "test-session-001",
-                    "status": "IN_PROGRESS",
-                    "currentModule": "M1_PROPERTY_NEEDS",
-                    "completionStatus": {
-                        "M1": False,
-                        "M2": False,
-                        "M3": False,
-                        "M4": False,
-                    },
-                    "collectedData": {"m1": {}, "m2": {}, "m3": {}, "m4": {}},
-                    "conversationHistory": [],
-                },
-            }
-        }
-    )
-
-    message: str = Field(min_length=1)
-    state: ConversationStateDTO
-
-
-class ChatResponse(BaseModel):
-    """Outbound payload returned after processing a conversation turn.
-
-    Attributes:
-        reply: The assistant's reply text.
-        extracted: Full LLM tool call fields including control keys.
-        updated_state: Conversation state after merging extracted fields and advancing modules.
-        routing: Populated when the state is complete or a routing keyword is detected.
-    """
-
-    model_config = ConfigDict(
-        alias_generator=to_camel,
-        populate_by_name=True,
-    )
-
-    reply: str
-    extracted: dict[str, object]
-    updated_state: ConversationStateDTO
-    routing: RoutingPayload | None = None
