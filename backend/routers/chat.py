@@ -2,6 +2,7 @@
 
 from typing import Annotated
 
+import structlog
 from fastapi import APIRouter, Depends
 
 from conversation.intent_router import classify_intent
@@ -19,6 +20,7 @@ from services.llm_client import ILLMClient, OpenRouterClient
 from tools.extraction_schema import EXTRACT_REQUIREMENTS_TOOL
 
 router = APIRouter()
+logger = structlog.get_logger()
 
 _default_llm_client: ILLMClient = OpenRouterClient()
 
@@ -47,6 +49,12 @@ async def chat_async(
         ChatResponse with reply, extracted fields, updated state, and optional routing.
     """
     state = request.state
+    log = logger.bind(
+        session_id=state.session_id,
+        current_module=state.current_module,
+    )
+    log.info("chat_request_received", message_length=len(request.message))
+
     state.conversation_history.append({"role": "user", "content": request.message})
 
     extraction_prompt = build_extraction_prompt(state)
@@ -55,8 +63,18 @@ async def chat_async(
         state.conversation_history,
         [EXTRACT_REQUIREMENTS_TOOL],
     )
+    log.info(
+        "extraction_complete",
+        extracted_field_count=len(extracted),
+        extracted_fields=list(extracted.keys()),
+    )
 
     merge_extracted_fields(state, extracted)
+    log.info(
+        "state_advanced",
+        new_module=state.current_module,
+        completion_status=state.completion_status.model_dump(),
+    )
 
     question_prompt = build_question_prompt(state)
     reply = await llm_client.complete_async(question_prompt, request.message)
@@ -64,6 +82,7 @@ async def chat_async(
     state.conversation_history.append({"role": "assistant", "content": reply})
 
     routing = classify_intent(request.message, state)
+    log.info("chat_response_ready", has_routing=routing is not None)
 
     return ChatResponse(
         reply=reply,
@@ -103,10 +122,13 @@ async def chat_summary_async(
         for value in getattr(data, submodel).model_dump().values()
     )
     if all_none:
+        logger.warning("summary_rejected_all_none")
         raise SummaryValidationError("No data collected — cannot generate summary.")
 
+    logger.info("summary_request_received")
     system_prompt = build_summary_prompt(data)
     reply = await llm_client.complete_async(
         system_prompt, "Please generate the requirements summary."
     )
+    logger.info("summary_generated", summary_length=len(reply))
     return SummaryResponse(summary_text=reply, structured=data)
