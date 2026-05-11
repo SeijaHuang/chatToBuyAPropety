@@ -138,3 +138,36 @@ Only write a comment when the *why* is non-obvious: a hidden constraint, a subtl
 
 ### Formatting
 Ruff handles all formatting. Do not override Ruff decisions with `# fmt: skip` or `# noqa` without a documented reason in the same comment.
+
+---
+
+## Pydantic vs dataclass
+
+| Use case | Tool |
+|---|---|
+| External / public data structure (DTO, API request/response, crosses HTTP boundary) | Pydantic `BaseModel` |
+| Internal data transfer object (passes between functions/modules, never serialised to HTTP) | `@dataclass` |
+
+Public DTOs that cross the HTTP boundary must inherit from `PropertyAIBaseModel` (from `models/base.py`) to get camelCase aliases. Internal dataclasses use `@dataclass(frozen=True)` when immutability is required.
+
+```python
+# Correct — public DTO inherits PropertyAIBaseModel
+from models.base import PropertyAIBaseModel
+
+class ChatResponse(PropertyAIBaseModel):
+    reply: str
+    current_module: str
+
+# Correct — internal value object uses dataclass
+from dataclasses import dataclass
+
+@dataclass(frozen=True)
+class ModuleRequirements:
+    submodel_attr: ESubmodel
+    required_fields: frozenset[str]
+
+# Incorrect — internal struct using Pydantic (unnecessary overhead + camelCase aliases)
+class ModuleRequirements(BaseModel):
+    submodel_attr: ESubmodel
+    required_fields: frozenset[str]
+```

@@ -17,9 +17,10 @@ Detailed standards live in `.claude/rules/` — read the relevant file before to
 
 ## Docs Index
 
-| File                                                               | Contents                                                                         |
-| ------------------------------------------------------------------ | -------------------------------------------------------------------------------- |
-| [docs/part1-p0-implementation.md](docs/part1-p0-implementation.md) | Part 1 P0 story completion, E2E criteria, architectural decisions, test coverage |
+| File                                                               | Contents                                                                                          |
+| ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------- |
+| [docs/part1-p0-implementation.md](docs/part1-p0-implementation.md) | Part 1 P0 story completion, E2E criteria, architectural decisions, test coverage                  |
+| [PRD/PropertyAI_Part1_Technical_PRD_v1_1.md](../PRD/PropertyAI_Part1_Technical_PRD_v1_1.md) | Authoritative PRD v1.1 — P0 stories S-A→S-H, P1 stories §20–26, data models, error handling spec |
 
 ---
 
@@ -99,7 +100,12 @@ backend/
 │   │                              M1–M4 sub-models, CollectedData, CompletionStatus,
 │   │                              ConversationStateDTO — the core conversation domain
 │   ├── chat.py                    Chat API contract: ChatRequest, ChatResponse, RoutingPayload
-│   └── summary.py                 Summary API contract: SummaryRequest, SummaryResponse
+│   │                              (v1.1: RoutingPayload now embeds UserNeeds, execution_mode,
+│   │                              agents_hint, trigger_source, triggered_at)
+│   ├── summary.py                 Summary API contract: SummaryRequest, SummaryResponse
+│   └── user_needs.py              Part 1 → Part 2 output contract: UserNeeds, InferredNeeds
+│                                  (buyer_type, household_profile, budget_tier, borrowing_capacity,
+│                                  commute_polygon, priority_score)
 │
 ├── conversation/
 │   ├── state_machine.py           Module progression — merges extracted fields, advances module,
@@ -112,8 +118,12 @@ backend/
 │                                  anywhere else in the codebase
 │
 ├── services/
-│   └── llm_client.py              OpenRouter async wrapper — implements ILLMClient Protocol,
-│                                  chat_with_tools_async (tool-calling) and complete_async (plain)
+│   ├── llm_client.py              OpenRouter async wrapper — implements ILLMClient Protocol,
+│   │                              chat_with_tools_async (tool-calling) and complete_async (plain)
+│   ├── borrowing_capacity.py      S-G: estimates borrowing capacity from salary data (28% DTI,
+│   │                              ~25yr loan); returns BorrowingCapacityResult with disclaimer
+│   └── budget_gap_detector.py     S-H: compares budget_max against Domain API median price;
+│                                  returns BudgetGapResult and injects warning into system prompt
 │
 ├── tools/
 │   └── extraction_schema.py       OpenAI-format tool definition that instructs the LLM to
@@ -129,7 +139,10 @@ backend/
     ├── test_system_prompt.py       S-C unit tests
     ├── test_chat_endpoint.py       S-D integration tests
     ├── test_intent_router.py       S-E unit tests
-    └── test_summary.py             S-F integration tests
+    ├── test_summary.py             S-F integration tests
+    ├── test_borrowing_capacity.py  S-G unit tests
+    ├── test_budget_gap_detector.py S-H unit tests
+    └── test_guardrail_rules.py     6 guardrail rule injection tests (mock LLM, verify system prompt)
 ```
 
 ---

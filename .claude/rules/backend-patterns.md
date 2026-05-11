@@ -125,15 +125,82 @@ from models.schemas import CollectedData  # ModuleNotFoundError
 
 ## Prompt Management
 
-All LLM system prompts live exclusively in `prompts/system_prompt_builder.py`. No prompt string literals are permitted in routers, services, or any other file.
+All LLM prompt content lives exclusively inside the `prompts/` package. No prompt string literals are permitted in routers, services, or any other file outside `prompts/`.
+
+### Package layout
+
+| File | Contains |
+|------|----------|
+| `prompts/system_prompt_builder.py` | **Sole public interface** — four `build_*` functions that assemble and return prompt strings |
+| `prompts/sections/role.py` | `ROLE_DEFINITION` — static assistant role |
+| `prompts/sections/guardrails.py` | `GUARDRAIL_RULES` — six compliance guardrail rules |
+| `prompts/sections/context.py` | `OWNER_OCCUPIER_CONTEXT`, `INVESTMENT_CONTEXT` — M1-intent context blocks |
+| `prompts/sections/instructions.py` | `EXTRACTION_INSTRUCTION`, `QUESTION_TASK_INSTRUCTION` — task directives |
+| `prompts/sections/state.py` | `build_state_section`, `build_completed_list`, `build_collected_summary`, `build_missing_fields` |
+| `prompts/sections/financial.py` | `build_borrowing_capacity_section` |
+
+Callers import only from `prompts.system_prompt_builder`. The `sections/` sub-package is internal to `prompts/` — do not import from it outside the `prompts/` package.
 
 ```python
-# Correct
-from prompts.system_prompt_builder import build_system_prompt_async
+# Correct — import only the public builder
+from prompts.system_prompt_builder import build_question_prompt
+
+# Incorrect — bypasses the assembler
+from prompts.sections.guardrails import GUARDRAIL_RULES
 
 # Incorrect — prompt string inline in a router or service
 system_prompt = "You are an AI property buying assistant..."
 ```
+
+### Four public builder functions
+
+| Function | Call site | Purpose |
+|----------|-----------|---------|
+| `build_extraction_prompt(state)` | Round 1 (extraction) | Minimal prompt — active module + `EXTRACTION_INSTRUCTION` only; no role/guardrails |
+| `build_question_prompt(state)` | Round 2 (question gen) | Full stack — role, state, optional context, optional borrowing capacity, guardrails, task instruction |
+| `build_system_prompt(state)` | Legacy combined call | Role, state, optional intent context, guardrails; no task instruction |
+| `build_summary_prompt(collected_data)` | `/chat/summary` | Inline assembly of collected fields for natural-language brief |
+
+`build_extraction_prompt` is intentionally minimal — it must not include `GUARDRAIL_RULES` or role preamble, since Round 1 is a tool-calling extraction pass, not a conversational turn.
+
+### Section assembly pattern
+
+Sections are accumulated in a `list[str]` and joined with `"\n\n"`. Never concatenate prompt strings with `+` or f-strings at the builder level.
+
+```python
+# Correct
+sections: list[str] = [ROLE_DEFINITION, build_state_section(state)]
+if state.completion_status.M1:
+    sections.append(INVESTMENT_CONTEXT if intended_use == "investment" else OWNER_OCCUPIER_CONTEXT)
+sections.append(GUARDRAIL_RULES)
+return "\n\n".join(sections)
+
+# Incorrect — string concatenation at builder level
+return ROLE_DEFINITION + "\n\n" + build_state_section(state) + "\n\n" + GUARDRAIL_RULES
+```
+
+### Optional section pattern
+
+Section builders that may produce no output return an **empty string** (`""`), not `None`. The caller checks truthiness before appending.
+
+```python
+# prompts/sections/financial.py
+def build_borrowing_capacity_section(result: BorrowingCapacityResult | None) -> str:
+    if result is None:
+        return ""          # ← empty string, not None
+    return f"Borrowing Capacity Estimate:\n  ..."
+
+# prompts/system_prompt_builder.py — caller
+capacity_section = build_borrowing_capacity_section(state.borrowing_capacity)
+if capacity_section:       # ← truthiness check
+    sections.append(capacity_section)
+```
+
+### Adding new prompt content
+
+1. Add the new constant or builder function to the appropriate file under `prompts/sections/`.
+2. Import it in `prompts/system_prompt_builder.py` and insert it into the relevant `build_*` function's section list.
+3. Do **not** create a new top-level file under `prompts/` — all section content belongs under `prompts/sections/`.
 
 ---
 

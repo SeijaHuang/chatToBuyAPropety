@@ -16,6 +16,8 @@ from prompts.system_prompt_builder import (
     build_question_prompt,
     build_summary_prompt,
 )
+from services.borrowing_capacity import estimate_borrowing_capacity_async
+from services.budget_gap_detector import detect_budget_gap_async
 from services.llm_client import ILLMClient, OpenRouterClient
 from tools.extraction_schema import EXTRACT_REQUIREMENTS_TOOL
 
@@ -75,6 +77,22 @@ async def chat_async(
         new_module=state.current_module,
         completion_status=state.completion_status.model_dump(),
     )
+
+    if state.collected_data.m4.pre_tax_salary is not None:
+        state.borrowing_capacity = await estimate_borrowing_capacity_async(state.collected_data.m4)
+
+    m3 = state.collected_data.m3
+    m4 = state.collected_data.m4
+    gap_suburbs: list[str] = list(m3.preferred_suburbs or [])
+    if not gap_suburbs and m3.commute_destination is not None:
+        gap_suburbs = [m3.commute_destination]
+    if m4.budget_max is not None and gap_suburbs:
+        state.budget_gap = await detect_budget_gap_async(
+            budget_max=m4.budget_max,
+            property_type=state.collected_data.m1.property_type,
+            min_bedrooms=state.collected_data.m1.min_bedrooms,
+            suburbs=gap_suburbs,
+        )
 
     question_prompt = build_question_prompt(state)
     reply = await llm_client.complete_async(question_prompt, request.message)

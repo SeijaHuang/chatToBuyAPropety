@@ -67,6 +67,7 @@ EXTRACT_REQUIREMENTS_TOOL: dict[str, object] = {
                 "is_joint": {"type": "boolean"},
                 "partner_salary": {"type": "integer"},
                 "first_home_buyer": {"type": "boolean"},
+                "loan_term_years": {"type": "integer"},
             },
             "required": [],
         },

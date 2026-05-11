@@ -1,0 +1,315 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mxfile host="app.diagrams.net" modified="2026-05-10T00:00:00.000Z" agent="Claude" version="21.0.0">
+  <diagram name="PropertyAI Part1 - System Data Flow" id="propertyai-part1-flow">
+    <mxGraphModel dx="1422" dy="762" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1654" pageHeight="1169" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- ========== SWIMLANE BACKGROUNDS ========== -->
+
+        <!-- User Lane -->
+        <mxCell id="lane-user-bg" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=none;opacity=40;" vertex="1" parent="1">
+          <mxGeometry x="40" y="100" width="180" height="900" as="geometry" />
+        </mxCell>
+        <mxCell id="lane-user-label" value="USER" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=13;fontStyle=1;fontColor=#0050A0;" vertex="1" parent="1">
+          <mxGeometry x="40" y="60" width="180" height="30" as="geometry" />
+        </mxCell>
+
+        <!-- Backend Lane -->
+        <mxCell id="lane-backend-bg" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=none;opacity=40;" vertex="1" parent="1">
+          <mxGeometry x="260" y="100" width="320" height="900" as="geometry" />
+        </mxCell>
+        <mxCell id="lane-backend-label" value="BACKEND (FastAPI)" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=13;fontStyle=1;fontColor=#1A6B1A;" vertex="1" parent="1">
+          <mxGeometry x="260" y="60" width="320" height="30" as="geometry" />
+        </mxCell>
+
+        <!-- LLM Lane -->
+        <mxCell id="lane-llm-bg" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=none;opacity=40;" vertex="1" parent="1">
+          <mxGeometry x="620" y="100" width="220" height="900" as="geometry" />
+        </mxCell>
+        <mxCell id="lane-llm-label" value="LLM (OpenRouter / Claude)" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=13;fontStyle=1;fontColor=#856B00;" vertex="1" parent="1">
+          <mxGeometry x="620" y="60" width="220" height="30" as="geometry" />
+        </mxCell>
+
+        <!-- Redis Lane -->
+        <mxCell id="lane-redis-bg" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=none;opacity=40;" vertex="1" parent="1">
+          <mxGeometry x="880" y="100" width="200" height="900" as="geometry" />
+        </mxCell>
+        <mxCell id="lane-redis-label" value="REDIS" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=13;fontStyle=1;fontColor=#A00020;" vertex="1" parent="1">
+          <mxGeometry x="880" y="60" width="200" height="30" as="geometry" />
+        </mxCell>
+
+        <!-- DB Lane -->
+        <mxCell id="lane-db-bg" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=none;opacity=40;" vertex="1" parent="1">
+          <mxGeometry x="1120" y="100" width="200" height="900" as="geometry" />
+        </mxCell>
+        <mxCell id="lane-db-label" value="PostgreSQL (DB)" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=13;fontStyle=1;fontColor=#5A2D82;" vertex="1" parent="1">
+          <mxGeometry x="1120" y="60" width="200" height="30" as="geometry" />
+        </mxCell>
+
+        <!-- ========== P0 SECTION LABEL ========== -->
+        <mxCell id="p0-label" value="P0 — Core Chain (Frontend-held state)" style="text;html=1;strokeColor=#999999;fillColor=#f5f5f5;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=1;fontSize=11;fontStyle=1;fontColor=#333333;" vertex="1" parent="1">
+          <mxGeometry x="40" y="108" width="300" height="24" as="geometry" />
+        </mxCell>
+
+        <!-- ========== NODES: USER ========== -->
+        <mxCell id="u1" value="User types message" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="55" y="155" width="150" height="40" as="geometry" />
+        </mxCell>
+
+        <mxCell id="u2" value="Receives AI reply + updated state" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="55" y="420" width="150" height="40" as="geometry" />
+        </mxCell>
+
+        <mxCell id="u3" value="Repeats M1→M4 until all_complete" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="55" y="490" width="150" height="40" as="geometry" />
+        </mxCell>
+
+        <mxCell id="u4" value="Requests summary / triggers Part 2" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="55" y="600" width="150" height="40" as="geometry" />
+        </mxCell>
+
+        <!-- ========== NODES: BACKEND ========== -->
+        <mxCell id="b1" value="POST /chat&#xa;{message, state}" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="275" y="155" width="150" height="40" as="geometry" />
+        </mxCell>
+
+        <mxCell id="b2" value="build_system_prompt()&#xa;Sections 1–4 + Budget Gap" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="275" y="220" width="180" height="40" as="geometry" />
+        </mxCell>
+
+        <mxCell id="b3" value="llm_client.chat_with_tools()&#xa;model=MODEL_STRONG, temp=0.7" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="275" y="285" width="180" height="40" as="geometry" />
+        </mxCell>
+
+        <mxCell id="b4" value="parse tool_call&#xa;merge_extracted_fields()&#xa;update_completion()" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="275" y="350" width="180" height="50" as="geometry" />
+        </mxCell>
+
+        <mxCell id="b5" value="classify_intent()&#xa;→ RoutingPayload (if triggered)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="275" y="420" width="180" height="40" as="geometry" />
+        </mxCell>
+
+        <mxCell id="b6" value="Return ChatResponse&#xa;{reply, extracted, updated_state, routing}" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="275" y="490" width="180" height="40" as="geometry" />
+        </mxCell>
+
+        <mxCell id="b7" value="on_module_complete()&#xa;asyncio.create_task(upsert)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="460" y="420" width="100" height="40" as="geometry" />
+        </mxCell>
+
+        <mxCell id="b8" value="POST /chat/summary&#xa;generate summary text" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="275" y="600" width="180" height="40" as="geometry" />
+        </mxCell>
+
+        <mxCell id="b9" value="borrowing_capacity()&#xa;budget_gap_detector()&#xa;→ inject to prompt" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="460" y="220" width="100" height="55" as="geometry" />
+        </mxCell>
+
+        <!-- ========== NODES: LLM ========== -->
+        <mxCell id="l1" value="Receives system prompt&#xa;+ conversation history&#xa;+ extract_requirements tool" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="635" y="275" width="185" height="55" as="geometry" />
+        </mxCell>
+
+        <mxCell id="l2" value="Returns:&#xa;content (reply text)&#xa;tool_calls (extracted fields)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="635" y="360" width="185" height="55" as="geometry" />
+        </mxCell>
+
+        <mxCell id="l3" value="LLM (Haiku)&#xa;generate session title&#xa;(async, P1)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;strokeDashArray=5 5;" vertex="1" parent="1">
+          <mxGeometry x="635" y="700" width="185" height="50" as="geometry" />
+        </mxCell>
+
+        <!-- ========== NODES: REDIS ========== -->
+        <mxCell id="r1" value="session:{id}&#xa;ConversationStateDTO&#xa;TTL: 7 days&#xa;[P1]" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11;strokeDashArray=5 5;" vertex="1" parent="1">
+          <mxGeometry x="895" y="220" width="160" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="r2" value="routing:{id}&#xa;RoutingPayload&#xa;TTL: 24h&#xa;[P1 → Part 2]" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11;strokeDashArray=5 5;" vertex="1" parent="1">
+          <mxGeometry x="895" y="490" width="160" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="r3" value="price:{suburb}&#xa;overlay:{lat}:{lng}&#xa;Agent cache [Part 2]" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="895" y="600" width="160" height="50" as="geometry" />
+        </mxCell>
+
+        <!-- ========== NODES: DB ========== -->
+        <mxCell id="d1" value="sessions table&#xa;upsert per module&#xa;(async, P0)" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1135" y="390" width="160" height="70" as="geometry" />
+        </mxCell>
+
+        <mxCell id="d2" value="users table&#xa;browser_fp / email&#xa;[P1 Auth]" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;strokeDashArray=5 5;" vertex="1" parent="1">
+          <mxGeometry x="1135" y="220" width="160" height="70" as="geometry" />
+        </mxCell>
+
+        <mxCell id="d3" value="user_profiles table&#xa;CollectedData snapshot&#xa;[P1 User Profile]" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;strokeDashArray=5 5;" vertex="1" parent="1">
+          <mxGeometry x="1135" y="600" width="160" height="70" as="geometry" />
+        </mxCell>
+
+        <!-- ========== P1 SECTION LABEL ========== -->
+        <mxCell id="p1-label" value="P1 — Additions (dashed borders)" style="text;html=1;strokeColor=#999999;fillColor=#f5f5f5;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=1;fontSize=11;fontStyle=1;fontColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="40" y="668" width="300" height="24" as="geometry" />
+        </mxCell>
+
+        <mxCell id="u5" value="[P1] Session restore&#xa;on page load" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;strokeDashArray=5 5;" vertex="1" parent="1">
+          <mxGeometry x="55" y="710" width="150" height="40" as="geometry" />
+        </mxCell>
+
+        <mxCell id="b10" value="[P1] GET /session/{id}&#xa;Redis GET → restore state" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;strokeDashArray=5 5;" vertex="1" parent="1">
+          <mxGeometry x="275" y="710" width="180" height="40" as="geometry" />
+        </mxCell>
+
+        <mxCell id="b11" value="[P1] SSE: stream tokens&#xa;+ done event w/ state" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;strokeDashArray=5 5;" vertex="1" parent="1">
+          <mxGeometry x="275" y="770" width="180" height="40" as="geometry" />
+        </mxCell>
+
+        <mxCell id="b12" value="[P1] Write routing:{id}&#xa;to Redis for Part 2" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;strokeDashArray=5 5;" vertex="1" parent="1">
+          <mxGeometry x="460" y="490" width="100" height="40" as="geometry" />
+        </mxCell>
+
+        <!-- ========== EDGES: User → Backend ========== -->
+        <mxCell id="e-u1-b1" value="POST /chat&#xa;{message, state(P0)}" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;fontSize=10;fillColor=#023858;strokeColor=#023858;fontColor=#023858;" edge="1" source="u1" target="b1" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e-b6-u2" value="ChatResponse&#xa;{reply, updated_state}" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;fontSize=10;fillColor=#023858;strokeColor=#023858;fontColor=#023858;" edge="1" source="b6" target="u2" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e-u4-b8" value="POST /chat/summary&#xa;{collected_data}" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;fontSize=10;fillColor=#023858;strokeColor=#023858;fontColor=#023858;" edge="1" source="u4" target="b8" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ========== EDGES: Backend internal ========== -->
+        <mxCell id="e-b1-b2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;fontSize=10;" edge="1" source="b1" target="b2" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e-b2-b3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;fontSize=10;" edge="1" source="b2" target="b3" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e-b3-b4" style="edgeStyle=orthogonalEdgeStyle;rounded=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;fontSize=10;" edge="1" source="b3" target="b4" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e-b4-b5" style="edgeStyle=orthogonalEdgeStyle;rounded=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;fontSize=10;" edge="1" source="b4" target="b5" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e-b5-b6" style="edgeStyle=orthogonalEdgeStyle;rounded=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;fontSize=10;" edge="1" source="b5" target="b6" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e-b2-b9" value="trigger S-G, S-H" style="edgeStyle=orthogonalEdgeStyle;rounded=0;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;fontSize=10;strokeColor=#666666;dashed=1;" edge="1" source="b2" target="b9" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e-b5-b7" value="if module complete" style="edgeStyle=orthogonalEdgeStyle;rounded=0;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;fontSize=10;strokeColor=#666666;dashed=1;" edge="1" source="b5" target="b7" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ========== EDGES: Backend → LLM ========== -->
+        <mxCell id="e-b3-l1" value="system_prompt + history&#xa;+ tools schema" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;fontSize=10;strokeColor=#B8860B;fontColor=#B8860B;" edge="1" source="b3" target="l1" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e-l2-b4" value="reply text&#xa;tool_call JSON" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;fontSize=10;strokeColor=#B8860B;fontColor=#B8860B;" edge="1" source="l2" target="b4" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e-l1-l2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;fontSize=10;" edge="1" source="l1" target="l2" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e-b8-l3" value="[P1] generate title&#xa;(async, Haiku)" style="edgeStyle=orthogonalEdgeStyle;rounded=0;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;fontSize=10;strokeColor=#B8860B;fontColor=#B8860B;dashed=1;" edge="1" source="b8" target="l3" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ========== EDGES: Backend → Redis (P1) ========== -->
+        <mxCell id="e-b1-r1" value="[P1] GET session state" style="edgeStyle=orthogonalEdgeStyle;rounded=0;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;fontSize=10;strokeColor=#A00020;fontColor=#A00020;dashed=1;" edge="1" source="b1" target="r1" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e-b6-r1" value="[P1] SET updated state" style="edgeStyle=orthogonalEdgeStyle;rounded=0;exitX=1;exitY=0.25;exitDx=0;exitDy=0;entryX=0;entryY=0.75;entryDx=0;entryDy=0;fontSize=10;strokeColor=#A00020;fontColor=#A00020;dashed=1;" edge="1" source="b6" target="r1" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e-b12-r2" value="[P1] write routing payload" style="edgeStyle=orthogonalEdgeStyle;rounded=0;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;fontSize=10;strokeColor=#A00020;fontColor=#A00020;dashed=1;" edge="1" source="b12" target="r2" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ========== EDGES: Backend → DB ========== -->
+        <mxCell id="e-b7-d1" value="upsert CollectedData snapshot&#xa;(async, per module)" style="edgeStyle=orthogonalEdgeStyle;rounded=0;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;fontSize=10;strokeColor=#5A2D82;fontColor=#5A2D82;" edge="1" source="b7" target="d1" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e-b1-d2" value="[P1] lookup / create user&#xa;by browser_fp" style="edgeStyle=orthogonalEdgeStyle;rounded=0;exitX=1;exitY=0.25;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;fontSize=10;strokeColor=#5A2D82;fontColor=#5A2D82;dashed=1;" edge="1" source="b1" target="d2" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e-b8-d3" value="[P1] upsert user_profile&#xa;on session close" style="edgeStyle=orthogonalEdgeStyle;rounded=0;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;fontSize=10;strokeColor=#5A2D82;fontColor=#5A2D82;dashed=1;" edge="1" source="b8" target="d3" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ========== EDGES: P1 Session Restore ========== -->
+        <mxCell id="e-u5-b10" value="[P1] page load" style="edgeStyle=orthogonalEdgeStyle;rounded=0;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;fontSize=10;dashed=1;" edge="1" source="u5" target="b10" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e-b10-r1" value="[P1] Redis GET" style="edgeStyle=orthogonalEdgeStyle;rounded=0;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=1;entryDx=0;entryDy=0;fontSize=10;strokeColor=#A00020;fontColor=#A00020;dashed=1;" edge="1" source="b10" target="r1" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ========== EDGES: Loop back ========== -->
+        <mxCell id="e-u3-u1" value="next message" style="edgeStyle=orthogonalEdgeStyle;rounded=0;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;fontSize=10;dashed=1;" edge="1" source="u3" target="u1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="30" y="510" />
+              <mxPoint x="30" y="175" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- ========== LEGEND ========== -->
+        <mxCell id="legend-bg" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999999;" vertex="1" parent="1">
+          <mxGeometry x="1350" y="108" width="260" height="220" as="geometry" />
+        </mxCell>
+        <mxCell id="legend-title" value="Legend" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=12;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1365" y="115" width="200" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="leg1" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;fontSize=10;strokeColor=#023858;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="1365" y="155"/><mxPoint x="1415" y="155"/></Array></mxGeometry>
+        </mxCell>
+        <mxCell id="leg1-label" value="P0 data flow" style="text;html=1;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1420" y="145" width="140" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="leg2" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;fontSize=10;strokeColor=#023858;dashed=1;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="1365" y="185"/><mxPoint x="1415" y="185"/></Array></mxGeometry>
+        </mxCell>
+        <mxCell id="leg2-label" value="P1 data flow (dashed)" style="text;html=1;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1420" y="175" width="160" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="leg3" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1365" y="205" width="50" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="leg3-label" value="Backend node (P0)" style="text;html=1;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1420" y="205" width="160" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="leg4" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;strokeDashArray=5 5;" vertex="1" parent="1">
+          <mxGeometry x="1365" y="235" width="50" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="leg4-label" value="Node added in P1" style="text;html=1;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1420" y="235" width="160" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="leg5" value="" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1365" y="260" width="50" height="25" as="geometry" />
+        </mxCell>
+        <mxCell id="leg5-label" value="Database (cylinder)" style="text;html=1;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1420" y="262" width="160" height="20" as="geometry" />
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

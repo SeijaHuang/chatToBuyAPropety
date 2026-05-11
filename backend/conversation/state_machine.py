@@ -104,6 +104,7 @@ MODULE_COMPLETION_RULES: dict[EModule, ModuleRequirements] = {
                 "partner_salary",
                 "is_joint",
                 "first_home_buyer",
+                "loan_term_years",
             }
         ),
         required_fields=frozenset({"budget_max"}),

@@ -1,0 +1,250 @@
+<mxfile host="65bd71144e">
+    <diagram id="xL8G9Xmre-tCRTKAQLdI" name="Page-1">
+        <mxGraphModel dx="1673" dy="975" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1920" pageHeight="1400" math="0" shadow="0">
+            <root>
+                <mxCell id="0"/>
+                <mxCell id="1" parent="0"/>
+                <mxCell id="title" value="PropertyAI — System Architecture v1.1" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;fontSize=20;fontStyle=1;fontColor=#1a1a1a;" parent="1" vertex="1">
+                    <mxGeometry x="400" y="10" width="900" height="32" as="geometry"/>
+                </mxCell>
+                <mxCell id="user" value="User (web browser)" style="rounded=1;arcSize=20;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontColor=#333333;fontSize=12;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="580" y="52" width="180" height="44" as="geometry"/>
+                </mxCell>
+                <mxCell id="p1bg" value="Part 1 — Conversation Layer" style="rounded=1;arcSize=3;whiteSpace=wrap;html=1;dashed=1;dashPattern=8 4;strokeColor=#82b366;fillColor=none;fontSize=13;fontStyle=1;verticalAlign=top;align=left;spacingLeft=12;spacingTop=10;" parent="1" vertex="1">
+                    <mxGeometry x="80" y="110" width="1160" height="560" as="geometry"/>
+                </mxCell>
+                <mxCell id="conv_agent" value="Conversation Agent&#xa;Claude Sonnet · tool use · 6 guardrail rules" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;fontStyle=1;verticalAlign=middle;" parent="1" vertex="1">
+                    <mxGeometry x="450" y="160" width="360" height="52" as="geometry"/>
+                </mxCell>
+                <mxCell id="tool_note" value="tool_use block&#xa;extract_requirements" style="shape=mxgraph.flowchart.annotation_2;whiteSpace=wrap;html=1;fontSize=10;strokeColor=#999999;fontColor=#666666;align=left;direction=west;" parent="1" vertex="1">
+                    <mxGeometry x="830" y="166" width="160" height="40" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_tool" style="edgeStyle=none;dashed=1;strokeColor=#999999;" parent="1" source="conv_agent" target="tool_note" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="m1" value="M1 — Property Needs&#xa;type · beds · baths · land · use" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="100" y="270" width="180" height="52" as="geometry"/>
+                </mxCell>
+                <mxCell id="m4" value="M4 — Budget (collected last)&#xa;range · deposit · salary · FHB" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="730" y="270" width="200" height="52" as="geometry"/>
+                </mxCell>
+                <mxCell id="m2" value="M2 — Lifestyle&#xa;household · school · pets · WFH" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="310" y="270" width="180" height="52" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_m1m2" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#82b366;" parent="1" source="m1" target="m2" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_m2m3" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#82b366;" parent="1" source="m2" target="m3" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_m3m4" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#82b366;" parent="1" source="m3" target="m4" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_ca_m1" style="edgeStyle=orthogonalEdgeStyle;" parent="1" source="conv_agent" target="m1" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_ca_m2" style="edgeStyle=orthogonalEdgeStyle;" parent="1" source="conv_agent" target="m2" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_ca_m3" style="edgeStyle=orthogonalEdgeStyle;" parent="1" source="conv_agent" target="m3" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_ca_m4" style="edgeStyle=orthogonalEdgeStyle;" parent="1" source="conv_agent" target="m4" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="sg" value="S-G Borrowing Capacity&#xa;salary → estimated capacity&#xa;DTI 28% · disclaimer required" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;fontStyle=1;verticalAlign=top;spacingTop=6;" parent="1" vertex="1">
+                    <mxGeometry x="960" y="260" width="190" height="70" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_m4_sg" style="edgeStyle=orthogonalEdgeStyle;dashed=1;strokeColor=#d6b656;" parent="1" source="m4" target="sg" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="sh" value="S-H Budget Gap Detection&#xa;budget vs median price (&gt;15%)&#xa;injects warning → system prompt" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;fontStyle=1;verticalAlign=top;spacingTop=6;" parent="1" vertex="1">
+                    <mxGeometry x="960" y="360" width="190" height="70" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_m3_sh" style="edgeStyle=orthogonalEdgeStyle;dashed=1;strokeColor=#d6b656;" parent="1" source="m3" target="sh" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_m4_sh" style="edgeStyle=orthogonalEdgeStyle;dashed=1;strokeColor=#d6b656;" parent="1" source="m4" target="sh" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_sh_ca" value="inject warning" style="edgeStyle=orthogonalEdgeStyle;dashed=1;strokeColor=#d6b656;fontSize=9;fontColor=#d6b656;" parent="1" source="sh" target="conv_agent" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="redis1" value="Redis — Session Store  [P1]&#xa;session:{id} · TTL 7 days · ConversationStateDTO&#xa;routing:{id} · TTL 24h · RoutingPayload" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11;fontStyle=1;strokeDashArray=5 5;" parent="1" vertex="1">
+                    <mxGeometry x="310" y="390" width="440" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="db_write" value="PostgreSQL — sessions table  [P0]&#xa;async upsert per module completion&#xa;final_needs JSONB · status COMPLETED" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="310" y="490" width="440" height="70" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_m1_redis" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#b85450;dashed=1;" parent="1" source="m1" target="redis1" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_m4_redis" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#b85450;dashed=1;" parent="1" source="m4" target="redis1" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_m4_db" value="async upsert" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#9673a6;fontSize=9;fontColor=#9673a6;" parent="1" source="m4" target="db_write" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_m1_db" value="async upsert" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#9673a6;fontSize=9;fontColor=#9673a6;" parent="1" source="m1" target="db_write" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="userjson" value="UserNeeds JSON + RoutingPayload  →  Part 2&#xa;CollectedData · InferredNeeds · execution_mode · agents_hint" style="rounded=1;arcSize=20;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;fontStyle=3;" parent="1" vertex="1">
+                    <mxGeometry x="310" y="600" width="440" height="44" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_redis_json" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#9673a6;" parent="1" source="db_write" target="userjson" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_sg_json" value="borrowing_capacity" style="edgeStyle=orthogonalEdgeStyle;dashed=1;strokeColor=#d6b656;fontSize=9;fontColor=#d6b656;" parent="1" source="sg" target="userjson" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_user_ca" style="edgeStyle=orthogonalEdgeStyle;" parent="1" source="user" target="conv_agent" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2bg" value="Part 2 — Data Agent Layer" style="rounded=1;arcSize=3;whiteSpace=wrap;html=1;dashed=1;dashPattern=8 4;strokeColor=#9673a6;fillColor=none;fontSize=13;fontStyle=1;verticalAlign=top;align=left;spacingLeft=12;spacingTop=10;" parent="1" vertex="1">
+                    <mxGeometry x="80" y="710" width="1600" height="640" as="geometry"/>
+                </mxCell>
+                <mxCell id="orch" value="Intent Router + Orchestrator&#xa;geocode pre-check · intent classify · error threshold · aggregate results" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=12;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="480" y="760" width="440" height="52" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_p1p2" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#9673a6;strokeWidth=2;" parent="1" source="userjson" target="orch" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="mode_a_label" value="Mode A — Code-Driven Dispatch&#xa;intent → fixed agent set → asyncio.gather()" style="text;html=1;align=center;fontSize=10;fontColor=#5A2D82;fontStyle=2;strokeColor=none;fillColor=none;" parent="1" vertex="1">
+                    <mxGeometry x="200" y="828" width="360" height="32" as="geometry"/>
+                </mxCell>
+                <mxCell id="mode_b_label" value="Mode B — LLM Agentic Loop&#xa;LLM autonomously selects agents as tools" style="text;html=1;align=center;fontSize=10;fontColor=#856B00;fontStyle=2;strokeColor=none;fillColor=none;" parent="1" vertex="1">
+                    <mxGeometry x="860" y="828" width="340" height="32" as="geometry"/>
+                </mxCell>
+                <mxCell id="mode_b_llm" value="LLM Agentic Loop&#xa;Claude Sonnet · all 7 agents as tools&#xa;open-ended queries" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="920" y="866" width="220" height="64" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_orch_modb" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#d6b656;dashed=1;" parent="1" source="orch" target="mode_b_llm" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="intent_note" value="recommend_suburbs → Suburb+Price&#xa;list_properties → Suburb+Price&#xa;property_detail → all 6 agents&#xa;compare_properties → all 6 agents&#xa;open_ended_query → Mode B" style="rounded=1;arcSize=6;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#cccccc;fontSize=10;align=left;spacingLeft=8;verticalAlign=top;spacingTop=6;" parent="1" vertex="1">
+                    <mxGeometry x="1180" y="756" width="220" height="100" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_orch_note" style="edgeStyle=none;dashed=1;strokeColor=#cccccc;" parent="1" source="orch" target="intent_note" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="a_suburb" value="Suburb Agent&#xa;─────────&#xa;Domain API&#xa;Claude Haiku&#xa;timeout: 8s" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="100" y="876" width="140" height="90" as="geometry"/>
+                </mxCell>
+                <mxCell id="a_price" value="Price Agent&#xa;─────────&#xa;Domain API&#xa;+ Gov quarterly&#xa;Claude Haiku · 8s" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="260" y="876" width="140" height="90" as="geometry"/>
+                </mxCell>
+                <mxCell id="a_overlay" value="Overlay Agent&#xa;─────────&#xa;Vicmap REST API&#xa;no LLM&#xa;timeout: 6s" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="420" y="876" width="140" height="90" as="geometry"/>
+                </mxCell>
+                <mxCell id="a_school" value="School Agent&#xa;─────────&#xa;data.vic.gov.au&#xa;shapely spatial&#xa;timeout: 5s" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="580" y="876" width="140" height="90" as="geometry"/>
+                </mxCell>
+                <mxCell id="a_building" value="Building Agent&#xa;─────────&#xa;VBA permits&#xa;+ Domain attrs&#xa;Claude Haiku · 6s" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="740" y="876" width="140" height="90" as="geometry"/>
+                </mxCell>
+                <mxCell id="a_neighbourhood" value="Neighbourhood Agent&#xa;─────────&#xa;Google Places API&#xa;Claude Haiku · 8s&#xa;★ NEW v1.1" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=11;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="100" y="990" width="140" height="95" as="geometry"/>
+                </mxCell>
+                <mxCell id="a_transport" value="Transport Agent&#xa;─────────&#xa;PTV API&#xa;+ Google Distance&#xa;no/light LLM · 8s&#xa;★ NEW v1.1" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=11;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="260" y="990" width="140" height="95" as="geometry"/>
+                </mxCell>
+                <mxCell id="eo1" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#d6b656;" parent="1" source="orch" target="a_suburb" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="eo2" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#d6b656;" parent="1" source="orch" target="a_price" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="eo3" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#d6b656;" parent="1" source="orch" target="a_overlay" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="eo4" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#d6b656;" parent="1" source="orch" target="a_school" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="eo5" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#d6b656;" parent="1" source="orch" target="a_building" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="eo6" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#d79b00;" parent="1" source="orch" target="a_neighbourhood" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="eo7" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#d79b00;" parent="1" source="orch" target="a_transport" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="connector_bg" value="Connector Layer — auth · rate limiting · retry · caching" style="rounded=1;arcSize=4;whiteSpace=wrap;html=1;dashed=1;dashPattern=4 3;strokeColor=#6c8ebf;fillColor=#f0f7ff;fontSize=11;fontStyle=1;verticalAlign=top;spacingTop=6;" parent="1" vertex="1">
+                    <mxGeometry x="480" y="960" width="660" height="130" as="geometry"/>
+                </mxCell>
+                <mxCell id="conn_domain" value="DomainConnector&#xa;Suburb · Price · Building" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;" parent="1" vertex="1">
+                    <mxGeometry x="494" y="986" width="140" height="44" as="geometry"/>
+                </mxCell>
+                <mxCell id="conn_gov" value="GovernmentConnector&#xa;Overlay · School&#xa;fallback: S3 GeoJSON" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;" parent="1" vertex="1">
+                    <mxGeometry x="648" y="986" width="140" height="44" as="geometry"/>
+                </mxCell>
+                <mxCell id="conn_gplaces" value="GooglePlacesConnector&#xa;Neighbourhood Agent" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=10;" parent="1" vertex="1">
+                    <mxGeometry x="802" y="986" width="140" height="44" as="geometry"/>
+                </mxCell>
+                <mxCell id="conn_ptv" value="PTVConnector&#xa;Transport Agent" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=10;" parent="1" vertex="1">
+                    <mxGeometry x="956" y="986" width="140" height="44" as="geometry"/>
+                </mxCell>
+                <mxCell id="cache" value="Redis — Agent Cache&#xa;overlay TTL 7d  ·  school TTL 30d  ·  price TTL 24h  ·  report TTL 6h" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="480" y="1110" width="520" height="48" as="geometry"/>
+                </mxCell>
+                <mxCell id="ec1" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#b85450;" parent="1" source="a_suburb" target="cache" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="ec2" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#b85450;" parent="1" source="a_price" target="cache" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="ec3" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#b85450;" parent="1" source="a_overlay" target="cache" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="ec4" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#b85450;" parent="1" source="a_school" target="cache" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="ec5" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#b85450;" parent="1" source="a_building" target="cache" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="ec6" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#b85450;" parent="1" source="a_neighbourhood" target="cache" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="ec7" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#b85450;" parent="1" source="a_transport" target="cache" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="synthesis" value="Report Synthesis Agent&#xa;Claude Sonnet · merges all agent outputs · degrades to template if LLM fails" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=12;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="480" y="1188" width="520" height="52" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_cache_synth" style="edgeStyle=orthogonalEdgeStyle;" parent="1" source="cache" target="synthesis" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="report" value="Property Report — web display · exportable PDF" style="rounded=1;arcSize=20;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="540" y="1278" width="400" height="44" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_synth_report" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#82b366;strokeWidth=2;" parent="1" source="synthesis" target="report" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="datasources" value="External Data Sources&#xa;───────────────────&#xa;Domain Developer API&#xa;Vicmap Planning REST API&#xa;data.vic.gov.au (flood, overlays)&#xa;VBA Building Permit Data&#xa;findmyschool.vic.gov.au&#xa;Google Places API  ★ v1.1&#xa;PTV API + Google Distance Matrix  ★ v1.1&#xa;VIC Gov quarterly price reports" style="rounded=1;arcSize=6;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;verticalAlign=top;align=left;spacingLeft=10;spacingTop=8;" parent="1" vertex="1">
+                    <mxGeometry x="1200" y="876" width="220" height="230" as="geometry"/>
+                </mxCell>
+                <mxCell id="eds1" style="edgeStyle=none;dashed=1;strokeColor=#6c8ebf;" parent="1" source="conn_domain" target="datasources" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="eds2" style="edgeStyle=none;dashed=1;strokeColor=#6c8ebf;" parent="1" source="conn_gov" target="datasources" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="eds3" style="edgeStyle=none;dashed=1;strokeColor=#d79b00;" parent="1" source="conn_gplaces" target="datasources" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="eds4" style="edgeStyle=none;dashed=1;strokeColor=#d79b00;" parent="1" source="conn_ptv" target="datasources" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="m3" value="M3 — Suburb Preference&#xa;commute · vibe · zones" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="520" y="270" width="180" height="52" as="geometry"/>
+                </mxCell>
+                <mxCell id="err_note" value="Error Handling:&#xa;· Geocode fails → block all agents&#xa;· 429 rate limit → backoff → cache&#xa;· Gov API down → S3 GeoJSON fallback&#xa;· ≥3 critical agents fail → abort&#xa;· LLM malformed → template render" style="rounded=1;arcSize=6;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;verticalAlign=top;align=left;spacingLeft=8;spacingTop=6;" parent="1" vertex="1">
+                    <mxGeometry x="1200" y="1120" width="210" height="120" as="geometry"/>
+                </mxCell>
+                <mxCell id="legend" value="Model strategy:  Conversation Agent + Report Synthesis → Claude Sonnet (strong reasoning)  ·  Suburb / Price / Building / Neighbourhood agents → Claude Haiku (low cost)  ·  Overlay / School / Transport agents → no LLM (pure API / light)" style="text;html=1;align=left;verticalAlign=middle;resizable=0;strokeColor=none;fillColor=#f5f5f5;fontSize=10;fontColor=#666666;spacingLeft=8;rounded=1;" parent="1" vertex="1">
+                    <mxGeometry x="80" y="1366" width="1600" height="28" as="geometry"/>
+                </mxCell>
+            </root>
+        </mxGraphModel>
+    </diagram>
+</mxfile>
