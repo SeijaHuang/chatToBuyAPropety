@@ -6,6 +6,7 @@ from typing import Literal, cast
 from pydantic import BaseModel, Field, computed_field
 
 from models.base import PropertyAIBaseModel
+from models.financial import BorrowingCapacityResult
 
 
 class EModule(StrEnum):
@@ -91,6 +92,7 @@ class M4Budget(PropertyAIBaseModel):
     partner_salary: int | None = None
     is_joint: bool | None = None
     first_home_buyer: bool | None = None
+    loan_term_years: int | None = None
 
 
 TSubmodel = M1PropertyNeeds | M2Lifestyle | M3SuburbPreference | M4Budget
@@ -164,3 +166,4 @@ class ConversationStateDTO(PropertyAIBaseModel):
     collected_data: CollectedData = Field(default_factory=CollectedData)
     conversation_history: list[dict[str, object]] = Field(default_factory=list)
     final_needs: CollectedData | None = None
+    borrowing_capacity: BorrowingCapacityResult | None = None

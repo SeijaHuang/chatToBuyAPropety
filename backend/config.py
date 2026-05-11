@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     model_strong: str = "anthropic/claude-sonnet-4-5"
     model_fast: str = "anthropic/claude-haiku-4-5"
     llm_base_url: str | None = None
+    standard_variable_rate: float = 6.30
+    default_loan_term: int = 30
+    borrowing_capacity_dti: float = 0.28
 
     @field_validator("llm_base_url", mode="before")
     @classmethod

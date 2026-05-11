@@ -125,11 +125,28 @@ from models.schemas import CollectedData  # ModuleNotFoundError
 
 ## Prompt Management
 
-All LLM system prompts live exclusively in `prompts/system_prompt_builder.py`. No prompt string literals are permitted in routers, services, or any other file.
+All LLM prompt content lives exclusively inside the `prompts/` package. No prompt string literals are permitted in routers, services, or any other file outside `prompts/`.
+
+The package is split by concern:
+
+| File | Contains |
+|------|----------|
+| `prompts/system_prompt_builder.py` | **Sole public interface** — four `build_*` functions that assemble and return prompt strings |
+| `prompts/sections/role.py` | `ROLE_DEFINITION` — static assistant role |
+| `prompts/sections/guardrails.py` | `GUARDRAIL_RULES` — six compliance guardrail rules |
+| `prompts/sections/context.py` | `OWNER_OCCUPIER_CONTEXT`, `INVESTMENT_CONTEXT` — M1-intent context blocks |
+| `prompts/sections/instructions.py` | `EXTRACTION_INSTRUCTION`, `QUESTION_TASK_INSTRUCTION` — task directives |
+| `prompts/sections/state.py` | `build_state_section`, `build_completed_list`, `build_collected_summary`, `build_missing_fields` |
+| `prompts/sections/financial.py` | `build_borrowing_capacity_section` |
+
+Callers import only from `prompts.system_prompt_builder`. The `sections/` sub-package is internal to `prompts/` — do not import from it outside the `prompts/` package.
 
 ```python
-# Correct
-from prompts.system_prompt_builder import build_system_prompt_async
+# Correct — import only the public builder
+from prompts.system_prompt_builder import build_question_prompt
+
+# Incorrect — bypasses the assembler
+from prompts.sections.guardrails import GUARDRAIL_RULES
 
 # Incorrect — prompt string inline in a router or service
 system_prompt = "You are an AI property buying assistant..."

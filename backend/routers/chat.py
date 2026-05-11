@@ -16,6 +16,7 @@ from prompts.system_prompt_builder import (
     build_question_prompt,
     build_summary_prompt,
 )
+from services.borrowing_capacity import estimate_borrowing_capacity_async
 from services.llm_client import ILLMClient, OpenRouterClient
 from tools.extraction_schema import EXTRACT_REQUIREMENTS_TOOL
 
@@ -75,6 +76,9 @@ async def chat_async(
         new_module=state.current_module,
         completion_status=state.completion_status.model_dump(),
     )
+
+    if state.collected_data.m4.pre_tax_salary is not None:
+        state.borrowing_capacity = await estimate_borrowing_capacity_async(state.collected_data.m4)
 
     question_prompt = build_question_prompt(state)
     reply = await llm_client.complete_async(question_prompt, request.message)
