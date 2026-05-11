@@ -147,7 +147,8 @@ M3: commute_destination, commute_max_mins, commute_mode,
     preferred_suburbs, excluded_suburbs, lifestyle_vibe
 
 M4: budget_min, budget_max, deposit_amount,
-    pre_tax_salary, is_joint, partner_salary, first_home_buyer
+    pre_tax_salary, is_joint, partner_salary, first_home_buyer,
+    loan_term_years
 
 Control: module_complete (required), next_question, user_intent (required)
 ```
@@ -827,6 +828,8 @@ async def test_full_conversation_e2e():
 | `OPENROUTER_API_KEY` | Yes | — | OpenRouter API key |
 | `MODEL_STRONG` | No | `anthropic/claude-sonnet-4-5` | Model for conversation turns |
 | `MODEL_FAST` | No | `anthropic/claude-haiku-4-5` | Model for lightweight extraction |
+| `STANDARD_VARIABLE_RATE` | No | `6.30` | Fallback 年利率（%），RBA F5 不可用时使用（S-G） |
+| `DEFAULT_LOAN_TERM` | No | `30` | 默认贷款年限（年）（S-G） |
 
 ---
 
@@ -856,7 +859,7 @@ The P0 implementation is considered complete when all of the following are satis
 
 ### Objective
 
-当 M4 收集到薪资数据后，自动计算简单借款能力估算值，供对话 AI 在回应中引用。估算结果仅作参考，不构成金融建议（对应守卫规则 5）。
+当 M4 收集到薪资数据后，自动计算借款能力估算值，供对话 AI 在回应中引用。估算结果仅作参考，不构成金融建议（对应守卫规则 5）。
 
 ### File
 
@@ -866,49 +869,127 @@ backend/services/borrowing_capacity.py
 
 ### Specification
 
-**估算公式（保守澳洲市场惯例）：**
+#### 参考利率 — RBA F5 + Fallback 机制
 
+利率在应用启动时从 RBA F5 统计表（Indicator Lending Rates）获取，结果缓存 24 小时。若 fetch 失败，则回退至环境变量默认值。
+
+```python
+F5_CSV_URL      = "https://www.rba.gov.au/statistics/tables/csv/f5-data.csv"
+F5_TARGET_FIELD = "FILRHLBVD"  # Lending rates; Housing loans; Banks; Variable; Discounted; Owner-occupier
+
+async def get_reference_rate() -> tuple[float, str]:
+    """
+    返回 (年利率%, 利率来源描述)。
+    启动时获取并缓存，TTL 24 小时。
+    """
+    try:
+        resp = await httpx.AsyncClient().get(F5_CSV_URL, timeout=5.0)
+        rate = _parse_f5_latest(resp.text, series_id=F5_TARGET_FIELD)
+        source = f"RBA F5 浮动折扣自住利率 {rate:.2f}% p.a."
+        return (rate, source)
+    except Exception:
+        fallback = float(os.getenv("STANDARD_VARIABLE_RATE", "6.30"))
+        source = f"参考利率 {fallback:.2f}% p.a.（RBA F5 暂时不可用）"
+        return (fallback, source)
 ```
-monthly_income = (pre_tax_salary * 0.67) / 12
-if is_joint and partner_salary:
-    monthly_income += (partner_salary * 0.67) / 12
 
-max_monthly_repayment = monthly_income * 0.28       # 28% DTI 上限
-borrowing_capacity = max_monthly_repayment * 300    # ~25年贷款，利率6%简化因子
-```
+> F5 已反映实际银行住房贷款利率，无需额外加利差。
+> `_parse_f5_latest()` 需跳过 CSV 头部 metadata 行，定位 `FILRHLBVD` 系列，并返回最新非空值。
 
-> 此公式为简化估算，实际借款能力因银行政策、现有债务、生活支出等因素而异。
+#### 计算公式
 
-**免责声明（必须附带，不可省略）：**
+```python
+DTI_LIMIT    = float(os.getenv("BORROWING_CAPACITY_DTI", "0.28"))
+DEFAULT_TERM = int(os.getenv("DEFAULT_LOAN_TERM", "30"))
 
-```
-此借款能力估算仅供参考，基于简化公式计算。实际可贷金额因银行政策、
-现有债务及生活支出而异。请咨询持牌贷款经纪人或银行获取准确评估。
+def _annuity_factor(annual_rate_pct: float, years: int) -> float:
+    """标准等额还款年金因子（正确摊销公式，替代原简化因子）。"""
+    r = annual_rate_pct / 100 / 12   # 月利率
+    n = years * 12                    # 还款总期数
+    return (1 - (1 + r) ** -n) / r
+
+async def estimate_borrowing_capacity(m4: M4Budget) -> Optional[BorrowingCapacityResult]:
+    if m4.pre_tax_salary is None:
+        return None
+
+    annual_rate, rate_source = await get_reference_rate()
+    loan_term = m4.loan_term_years or DEFAULT_TERM
+
+    # 保守税后月收入估算（有效税率约 33%）
+    net_monthly = (m4.pre_tax_salary * 0.67) / 12
+    if m4.is_joint and m4.partner_salary:
+        net_monthly += (m4.partner_salary * 0.67) / 12
+
+    max_monthly_repayment = net_monthly * DTI_LIMIT
+    raw_capacity          = max_monthly_repayment * _annuity_factor(annual_rate, loan_term)
+    estimated_capacity    = round(raw_capacity / 10_000) * 10_000
+
+    disclaimer = (
+        f"此借款能力估算基于{rate_source}、"
+        f"{loan_term} 年贷款期限及 {DTI_LIMIT*100:.0f}% 月收入还款上限，仅供参考。"
+        f"实际可贷金额因银行政策、现有债务、LVR 及个人信用状况而异。"
+        f"请咨询持牌贷款经纪人或银行获取准确评估。"
+    )
+
+    return BorrowingCapacityResult(
+        estimated_capacity = estimated_capacity,
+        monthly_repayment  = int(max_monthly_repayment),
+        based_on_salary    = m4.pre_tax_salary + (m4.partner_salary or 0),
+        is_joint           = bool(m4.is_joint and m4.partner_salary),
+        annual_rate        = annual_rate,
+        loan_term_years    = loan_term,
+        rate_source        = rate_source,
+        disclaimer         = disclaimer,
+    )
 ```
 
 **触发条件：** M4 模块中 `pre_tax_salary` 字段变为非 None 时自动触发。
 
-**输出结构：**
+#### 输出结构
 
 ```python
 @dataclass
 class BorrowingCapacityResult:
     estimated_capacity: int    # AUD，四舍五入至最近 $10,000
-    monthly_repayment:  int    # AUD/月
-    based_on_salary:    int    # 用于计算的薪资总额（税前）
+    monthly_repayment:  int    # AUD/月（计算中使用的月还款上限）
+    based_on_salary:    int    # 用于计算的税前薪资总额（单人或合计）
     is_joint:           bool
-    disclaimer:         str    # 必须非空
+    annual_rate:        float  # 实际使用的年利率（%）
+    loan_term_years:    int    # 实际使用的贷款年限（年）
+    rate_source:        str    # 利率来源描述，注入免责声明
+    disclaimer:         str    # 必须非空，注入 AI 回复
 ```
+
+#### M4Budget 及 Extraction Schema 变更
+
+`M4Budget` 新增一个可选字段（同步添加至 S-A extraction schema，供 LLM 从对话中提取用户偏好）：
+
+```python
+loan_term_years: Optional[int] = None  # 用户期望的贷款年限（年）
+```
+
+#### 环境变量
+
+以下变量补充至 §8 / §24：
+
+| 变量 | 默认值 | 说明 |
+|------|--------|------|
+| `STANDARD_VARIABLE_RATE` | `6.30` | Fallback 年利率（%），RBA F5 不可用时使用 |
+| `DEFAULT_LOAN_TERM` | `30` | 默认贷款年限（年） |
+
+原有变量 `BORROWING_CAPACITY_DTI`（默认值 `0.28`）保持不变。
 
 ### Acceptance Criteria
 
 | ID | Criterion |
 |----|-----------|
-| SG-1 | 单人税前 $100,000 → `estimated_capacity` 在 $400,000–$500,000 区间 |
+| SG-1 | 单人税前 $100,000 → `estimated_capacity` 在 **$230,000–$270,000** 区间（基于 F5 约 6.30%、30 年期、28% DTI） |
 | SG-2 | 双人合计税前 $200,000 → `estimated_capacity` 约为单人的 2 倍 |
 | SG-3 | `pre_tax_salary` 为 None 时，函数返回 None，不抛出异常 |
-| SG-4 | 返回结果中 `disclaimer` 字段必须非空字符串 |
+| SG-4 | `disclaimer` 为非空字符串，且包含实际使用的利率数值和贷款年限 |
 | SG-5 | `estimated_capacity` 四舍五入至最近 $10,000 |
+| SG-6 | RBA F5 fetch 失败时，`rate_source` 包含"暂时不可用"字样，函数仍返回有效结果 |
+| SG-7 | 传入 `loan_term_years=25` 时，`estimated_capacity` 低于同薪资 `loan_term_years=30` 的结果 |
 
 ### Unit Tests
 
@@ -918,8 +999,10 @@ tests/test_borrowing_capacity.py
 test_single_income_calculation
 test_joint_income_calculation
 test_returns_none_when_salary_is_none
-test_disclaimer_is_nonempty
+test_disclaimer_contains_rate_and_term
 test_capacity_rounded_to_nearest_ten_thousand
+test_rba_fetch_failure_returns_fallback_result
+test_shorter_loan_term_produces_lower_capacity
 ```
 
 ---
