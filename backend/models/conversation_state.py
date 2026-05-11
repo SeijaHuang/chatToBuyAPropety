@@ -6,7 +6,7 @@ from typing import Literal, cast
 from pydantic import BaseModel, Field, computed_field
 
 from models.base import PropertyAIBaseModel
-from models.financial import BorrowingCapacityResult
+from models.financial import BorrowingCapacityResult, BudgetGapResult
 
 
 class EModule(StrEnum):
@@ -167,3 +167,4 @@ class ConversationStateDTO(PropertyAIBaseModel):
     conversation_history: list[dict[str, object]] = Field(default_factory=list)
     final_needs: CollectedData | None = None
     borrowing_capacity: BorrowingCapacityResult | None = None
+    budget_gap: BudgetGapResult | None = None

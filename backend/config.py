@@ -23,6 +23,8 @@ class Settings(BaseSettings):
     standard_variable_rate: float = 6.30
     default_loan_term: int = 30
     borrowing_capacity_dti: float = 0.28
+    domain_api_key: str = ""
+    budget_gap_threshold: float = 0.15
 
     @field_validator("llm_base_url", mode="before")
     @classmethod

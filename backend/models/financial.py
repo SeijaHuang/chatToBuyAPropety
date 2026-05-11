@@ -2,6 +2,10 @@
 
 from dataclasses import dataclass
 
+EXPLORE_NEARBY_SUBURBS = "explore_nearby_suburbs"
+ADJUST_PROPERTY_TYPE = "adjust_property_type"
+REVISIT_BUDGET = "revisit_budget"
+
 
 @dataclass(frozen=True)
 class BorrowingCapacityResult:
@@ -26,3 +30,26 @@ class BorrowingCapacityResult:
     loan_term_years: int
     rate_source: str
     disclaimer: str
+
+
+@dataclass(frozen=True)
+class BudgetGapResult:
+    """Immutable result of a budget gap analysis against market median price.
+
+    Attributes:
+        has_gap: True when the gap percentage exceeds the configured threshold.
+        budget_max: User's stated maximum budget in AUD.
+        market_median: Market median price for the reference suburb in AUD.
+        gap_amount: Difference (market_median - budget_max); positive means underfunded.
+        gap_percentage: gap_amount / market_median * 100.
+        reference_suburb: The suburb used for the Domain API price query.
+        suggested_actions: Recommended actions for the user (at least 2 when has_gap is True).
+    """
+
+    has_gap: bool
+    budget_max: int
+    market_median: int
+    gap_amount: int
+    gap_percentage: float
+    reference_suburb: str
+    suggested_actions: tuple[str, ...]

@@ -6,7 +6,7 @@ only for composing those sections into the correct order for each prompt type.
 
 from models.conversation_state import CollectedData, ConversationStateDTO, ESubmodel, ESubmodelLabel
 from prompts.sections.context import INVESTMENT_CONTEXT, OWNER_OCCUPIER_CONTEXT
-from prompts.sections.financial import build_borrowing_capacity_section
+from prompts.sections.financial import build_borrowing_capacity_section, build_budget_gap_section
 from prompts.sections.guardrails import GUARDRAIL_RULES
 from prompts.sections.instructions import EXTRACTION_INSTRUCTION, QUESTION_TASK_INSTRUCTION
 from prompts.sections.role import ROLE_DEFINITION
@@ -61,6 +61,10 @@ def build_question_prompt(state: ConversationStateDTO) -> str:
     capacity_section = build_borrowing_capacity_section(state.borrowing_capacity)
     if capacity_section:
         sections.append(capacity_section)
+
+    gap_section = build_budget_gap_section(state.budget_gap)
+    if gap_section:
+        sections.append(gap_section)
 
     sections.append(GUARDRAIL_RULES)
     sections.append(QUESTION_TASK_INSTRUCTION)
