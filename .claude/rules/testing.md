@@ -11,7 +11,7 @@
 | `conversation/intent_router.py` | 100% |
 | `prompts/system_prompt_builder.py` | 100% |
 | `routers/chat.py` | ≥ 80% |
-| `services/llm_client.py` | ≥ 80% |
+| `domain/llm_client.py` | ≥ 80% |
 
 ## Rules
 

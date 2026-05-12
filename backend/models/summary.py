@@ -1,9 +1,12 @@
 """Request/response DTOs for the requirements summary endpoint."""
 
+from typing import Literal
+
 from pydantic import ConfigDict
 
 from models.base import PropertyAIBaseModel
 from models.conversation_state import CollectedData
+from models.user_needs import UserNeeds
 
 
 class SummaryRequest(PropertyAIBaseModel):
@@ -23,16 +26,22 @@ class SummaryRequest(PropertyAIBaseModel):
                     "m2": {"householdSize": 2, "hasChildren": False},
                     "m3": {"commuteDestination": "Melbourne CBD", "commuteMaxMins": 40},
                     "m4": {"budgetMax": 850000},
-                }
+                },
+                "sessionId": "abc123",
+                "initialIntent": "open_ended_query",
             }
         }
     )
 
     collected_data: CollectedData
+    session_id: str
+    initial_intent: Literal[
+        "recommend_suburbs", "list_properties", "property_detail", "open_ended_query"
+    ] = "open_ended_query"
 
 
 class SummaryResponse(PropertyAIBaseModel):
     """Outbound payload from the summary endpoint."""
 
     summary_text: str
-    structured: CollectedData
+    structured: UserNeeds

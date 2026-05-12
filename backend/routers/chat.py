@@ -7,6 +7,10 @@ from fastapi import APIRouter, Depends
 
 from conversation.intent_router import classify_intent
 from conversation.state_machine import merge_extracted_fields
+from domain.borrowing_capacity import estimate_borrowing_capacity_async
+from domain.budget_gap_detector import detect_budget_gap_async
+from domain.llm_client import ILLMClient, OpenRouterClient
+from domain.user_needs_builder import build_user_needs
 from exceptions import SummaryValidationError
 from models.chat import ChatRequest, ChatResponse
 from models.conversation_state import ESubmodel
@@ -16,9 +20,6 @@ from prompts.system_prompt_builder import (
     build_question_prompt,
     build_summary_prompt,
 )
-from services.borrowing_capacity import estimate_borrowing_capacity_async
-from services.budget_gap_detector import detect_budget_gap_async
-from services.llm_client import ILLMClient, OpenRouterClient
 from tools.extraction_schema import EXTRACT_REQUIREMENTS_TOOL
 
 router = APIRouter()
@@ -149,4 +150,5 @@ async def chat_summary_async(
         system_prompt, "Please generate the requirements summary."
     )
     logger.info("summary_generated", summary_length=len(reply))
-    return SummaryResponse(summary_text=reply, structured=data)
+    user_needs = build_user_needs(data, request.session_id, request.initial_intent)
+    return SummaryResponse(summary_text=reply, structured=user_needs)

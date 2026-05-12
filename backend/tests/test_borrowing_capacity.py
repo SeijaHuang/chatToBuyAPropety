@@ -1,13 +1,13 @@
-"""Tests for services/borrowing_capacity.py — Story S-G."""
+"""Tests for domain/borrowing_capacity.py — Story S-G."""
 
 from unittest.mock import AsyncMock, patch
 
 from config import settings
+from domain.borrowing_capacity import estimate_borrowing_capacity_async
 from models.conversation_state import M4Budget
-from services.borrowing_capacity import estimate_borrowing_capacity_async
 
 _MOCK_RATE: tuple[float, str] = (6.30, "RBA F5 rate 6.30% p.a.")
-_PATCH_TARGET = "services.borrowing_capacity.get_reference_rate_async"
+_PATCH_TARGET = "domain.borrowing_capacity.get_reference_rate_async"
 
 
 async def test_single_income_calculation() -> None:
