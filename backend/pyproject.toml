@@ -25,7 +25,7 @@ build-backend = "setuptools.build_meta"
 py-modules = ["scripts"]
 
 [tool.setuptools.packages.find]
-include = ["conversation*", "models*", "prompts*", "routers*", "services*", "tools*"]
+include = ["conversation*", "domain*", "models*", "prompts*", "routers*", "tools*"]
 
 [tool.uv]
 package = true
@@ -65,7 +65,7 @@ select = ["E", "F", "I", "N", "W", "UP"]
 ignore = ["E501"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["models", "tools", "conversation", "prompts", "services", "routers"]
+known-first-party = ["models", "tools", "conversation", "domain", "prompts", "routers"]
 
 [tool.ruff.format]
 quote-style = "double"

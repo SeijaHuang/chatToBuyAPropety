@@ -37,3 +37,21 @@ class SummaryValidationError(PropertyAIException):
 
     def __init__(self, message: str, details: dict[str, object] | None = None) -> None:
         super().__init__(message, status_code=422, details=details)
+
+
+class BadRequestError(PropertyAIException):
+    """Raised for malformed requests that fail business-level validation (not Pydantic validation)."""
+
+    def __init__(self, message: str, details: dict[str, object] | None = None) -> None:
+        super().__init__(message, status_code=400, details=details or {})
+
+
+class RateLimitError(PropertyAIException):
+    """Raised when the upstream LLM provider returns a rate-limit response."""
+
+    def __init__(self, retry_after: int = 2) -> None:
+        super().__init__(
+            "LLM rate limit reached. Please retry shortly.",
+            status_code=429,
+            details={"retry_after": retry_after},
+        )

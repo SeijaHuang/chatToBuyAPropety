@@ -1,9 +1,10 @@
-"""Unit tests for services/budget_gap_detector.py (S-H)."""
+"""Unit tests for domain/budget_gap_detector.py (S-H)."""
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from domain.budget_gap_detector import detect_budget_gap_async
 from models.conversation_state import ConversationStateDTO
 from models.financial import (
     ADJUST_PROPERTY_TYPE,
@@ -11,7 +12,6 @@ from models.financial import (
     BudgetGapResult,
 )
 from prompts.system_prompt_builder import build_question_prompt
-from services.budget_gap_detector import detect_budget_gap_async
 
 
 def _mock_domain_response(median: int) -> MagicMock:
@@ -29,8 +29,8 @@ async def test_gap_detected_when_over_15_percent() -> None:
     mock_get = AsyncMock(return_value=mock_resp)
 
     with (
-        patch("services.budget_gap_detector.settings") as mock_settings,
-        patch("services.budget_gap_detector.httpx.AsyncClient") as mock_client_cls,
+        patch("domain.budget_gap_detector.settings") as mock_settings,
+        patch("domain.budget_gap_detector.httpx.AsyncClient") as mock_client_cls,
     ):
         mock_settings.domain_api_key = "test-key"
         mock_settings.budget_gap_threshold = 0.15
@@ -60,8 +60,8 @@ async def test_no_gap_within_threshold() -> None:
     mock_get = AsyncMock(return_value=mock_resp)
 
     with (
-        patch("services.budget_gap_detector.settings") as mock_settings,
-        patch("services.budget_gap_detector.httpx.AsyncClient") as mock_client_cls,
+        patch("domain.budget_gap_detector.settings") as mock_settings,
+        patch("domain.budget_gap_detector.httpx.AsyncClient") as mock_client_cls,
     ):
         mock_settings.domain_api_key = "test-key"
         mock_settings.budget_gap_threshold = 0.15
@@ -88,8 +88,8 @@ async def test_returns_none_when_api_fails() -> None:
     import httpx
 
     with (
-        patch("services.budget_gap_detector.settings") as mock_settings,
-        patch("services.budget_gap_detector.httpx.AsyncClient") as mock_client_cls,
+        patch("domain.budget_gap_detector.settings") as mock_settings,
+        patch("domain.budget_gap_detector.httpx.AsyncClient") as mock_client_cls,
     ):
         mock_settings.domain_api_key = "test-key"
         mock_settings.budget_gap_threshold = 0.15
@@ -116,8 +116,8 @@ async def test_suggested_actions_minimum_count() -> None:
     mock_get = AsyncMock(return_value=mock_resp)
 
     with (
-        patch("services.budget_gap_detector.settings") as mock_settings,
-        patch("services.budget_gap_detector.httpx.AsyncClient") as mock_client_cls,
+        patch("domain.budget_gap_detector.settings") as mock_settings,
+        patch("domain.budget_gap_detector.httpx.AsyncClient") as mock_client_cls,
     ):
         mock_settings.domain_api_key = "test-key"
         mock_settings.budget_gap_threshold = 0.15

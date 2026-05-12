@@ -1,12 +1,18 @@
 """Chat router — exposes /chat and /chat/summary endpoints for the conversation flow."""
 
+import json
 from typing import Annotated
 
 import structlog
 from fastapi import APIRouter, Depends
+from pydantic import ValidationError
 
 from conversation.intent_router import classify_intent
 from conversation.state_machine import merge_extracted_fields
+from domain.borrowing_capacity import estimate_borrowing_capacity_async
+from domain.budget_gap_detector import detect_budget_gap_async
+from domain.llm_client import ILLMClient, OpenRouterClient
+from domain.user_needs_builder import build_user_needs
 from exceptions import SummaryValidationError
 from models.chat import ChatRequest, ChatResponse
 from models.conversation_state import ESubmodel
@@ -16,9 +22,6 @@ from prompts.system_prompt_builder import (
     build_question_prompt,
     build_summary_prompt,
 )
-from services.borrowing_capacity import estimate_borrowing_capacity_async
-from services.budget_gap_detector import detect_budget_gap_async
-from services.llm_client import ILLMClient, OpenRouterClient
 from tools.extraction_schema import EXTRACT_REQUIREMENTS_TOOL
 
 router = APIRouter()
@@ -60,18 +63,23 @@ async def chat_async(
     state.conversation_history.append({"role": "user", "content": request.message})
 
     extraction_prompt = build_extraction_prompt(state)
-    extracted = await llm_client.chat_with_tools_async(
-        extraction_prompt,
-        state.conversation_history,
-        [EXTRACT_REQUIREMENTS_TOOL],
-    )
+    try:
+        extracted = await llm_client.chat_with_tools_async(
+            extraction_prompt,
+            state.conversation_history,
+            [EXTRACT_REQUIREMENTS_TOOL],
+        )
+        merge_extracted_fields(state, extracted)
+    except (json.JSONDecodeError, ValidationError) as exc:
+        log.warning("tool_call_parse_failed", error=str(exc))
+        extracted = {}
+        # state unchanged — conversation flow continues without error
+
     log.info(
         "extraction_complete",
         extracted_field_count=len(extracted),
         extracted_fields=list(extracted.keys()),
     )
-
-    merge_extracted_fields(state, extracted)
     log.info(
         "state_advanced",
         new_module=state.current_module,
@@ -149,4 +157,5 @@ async def chat_summary_async(
         system_prompt, "Please generate the requirements summary."
     )
     logger.info("summary_generated", summary_length=len(reply))
-    return SummaryResponse(summary_text=reply, structured=data)
+    user_needs = build_user_needs(data, request.session_id, request.initial_intent)
+    return SummaryResponse(summary_text=reply, structured=user_needs)

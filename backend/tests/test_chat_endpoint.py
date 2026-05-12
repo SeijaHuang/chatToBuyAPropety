@@ -1,5 +1,6 @@
 """Integration tests for POST /chat — Story S-D."""
 
+import json
 from collections.abc import Generator
 from contextlib import contextmanager
 from unittest.mock import AsyncMock, patch
@@ -7,7 +8,7 @@ from unittest.mock import AsyncMock, patch
 from httpx import AsyncClient
 
 import routers.chat as chat_module
-from exceptions import LLMServiceError
+from exceptions import LLMServiceError, RateLimitError
 from models.conversation_state import ConversationStateDTO
 
 
@@ -124,6 +125,32 @@ async def test_llm_failure_returns_503(
         response = await client_async.post("/api/v1/chat", json=_build_body("Hi", sample_state))
     assert response.status_code == 503
     assert response.json()["error"]["code"] == "LLMServiceError"
+
+
+async def test_rate_limit_returns_429(
+    client_async: AsyncClient, sample_state: ConversationStateDTO
+) -> None:
+    """A RateLimitError raised by Round 1 returns HTTP 429 with retry_after in details."""
+    tools_mock = AsyncMock(side_effect=RateLimitError())
+    with patch.object(chat_module._default_llm_client, "chat_with_tools_async", tools_mock):
+        response = await client_async.post("/api/v1/chat", json=_build_body("Hi", sample_state))
+    assert response.status_code == 429
+    assert response.json()["error"]["details"]["retry_after"] == 2
+
+
+async def test_tool_call_parse_failure_returns_empty_extracted(
+    client_async: AsyncClient, sample_state: ConversationStateDTO
+) -> None:
+    """A JSONDecodeError from Round 1 is swallowed; response is 200 with empty extracted."""
+    tools_mock = AsyncMock(side_effect=json.JSONDecodeError("bad json", "", 0))
+    complete_mock = AsyncMock(return_value="What are your needs?")
+    with (
+        patch.object(chat_module._default_llm_client, "chat_with_tools_async", tools_mock),
+        patch.object(chat_module._default_llm_client, "complete_async", complete_mock),
+    ):
+        response = await client_async.post("/api/v1/chat", json=_build_body("Hi", sample_state))
+    assert response.status_code == 200
+    assert response.json()["extracted"] == {}
 
 
 async def test_history_accumulates_across_turns(

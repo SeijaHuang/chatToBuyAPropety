@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\Shijia Huang\\\\Desktop\\\\AI Engineer\\\\CTB\\\\PRD\\\\\" -Force)"
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\Shijia Huang\\\\Desktop\\\\AI Engineer\\\\CTB\\\\PRD\\\\\" -Force)",
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\Shijia Huang\\\\Desktop\\\\AI Engineer\\\\CTB\\\\backend\\\\\" -Recurse -Force | Select-Object FullName | head -50)"
     ]
   },
   "enabledPlugins": {

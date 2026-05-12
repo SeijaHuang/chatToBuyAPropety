@@ -117,13 +117,15 @@ backend/
 │   └── system_prompt_builder.py   SOLE source of all LLM prompt strings — no prompt literals
 │                                  anywhere else in the codebase
 │
-├── services/
+├── domain/
 │   ├── llm_client.py              OpenRouter async wrapper — implements ILLMClient Protocol,
 │   │                              chat_with_tools_async (tool-calling) and complete_async (plain)
 │   ├── borrowing_capacity.py      S-G: estimates borrowing capacity from salary data (28% DTI,
 │   │                              ~25yr loan); returns BorrowingCapacityResult with disclaimer
-│   └── budget_gap_detector.py     S-H: compares budget_max against Domain API median price;
-│                                  returns BudgetGapResult and injects warning into system prompt
+│   ├── budget_gap_detector.py     S-H: compares budget_max against Domain API median price;
+│   │                              returns BudgetGapResult and injects warning into system prompt
+│   └── user_needs_builder.py      PRD §12: derives InferredNeeds from CollectedData and assembles
+│                                  UserNeeds snapshot for Part 1 → Part 2 handoff
 │
 ├── tools/
 │   └── extraction_schema.py       OpenAI-format tool definition that instructs the LLM to
@@ -160,11 +162,11 @@ POST /api/v1/chat
     │       1. Append user message to conversationHistory
     │       ── Round 1: Extraction ──────────────────────────────────────
     │       2. build_extraction_prompt(state)  →  prompts/system_prompt_builder.py
-    │       3. chat_with_tools_async()         →  services/llm_client.py  → extracted dict
+    │       3. chat_with_tools_async()         →  domain/llm_client.py  → extracted dict
     │       4. Merge extracted fields, advance module  →  conversation/state_machine.py
     │       ── Round 2: Question Generation ──────────────────────────────
     │       5. build_question_prompt(updated_state)  →  prompts/system_prompt_builder.py
-    │       6. complete_async()               →  services/llm_client.py  → reply str
+    │       6. complete_async()               →  domain/llm_client.py  → reply str
     │       7. Append reply to conversationHistory
     │       8. Classify intent  →  conversation/intent_router.py
     │       9. Return ChatResponse (reply + extracted + updated_state + routing)

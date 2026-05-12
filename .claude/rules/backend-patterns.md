@@ -125,7 +125,7 @@ from models.schemas import CollectedData  # ModuleNotFoundError
 
 ## Prompt Management
 
-All LLM prompt content lives exclusively inside the `prompts/` package. No prompt string literals are permitted in routers, services, or any other file outside `prompts/`.
+All LLM prompt content lives exclusively inside the `prompts/` package. No prompt string literals are permitted in routers, domain, or any other file outside `prompts/`.
 
 ### Package layout
 

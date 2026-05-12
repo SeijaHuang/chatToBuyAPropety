@@ -3,7 +3,6 @@
 import json
 from typing import Any, Protocol
 
-import openai
 import structlog
 from openai import AsyncOpenAI
 
@@ -93,7 +92,7 @@ class OpenRouterClient(ILLMClient):
                 tool_choice="auto",
                 messages=full_messages,
             )
-        except openai.APIError as exc:
+        except Exception as exc:
             log.error(
                 "llm_call_failed",
                 error=str(exc),
@@ -154,7 +153,7 @@ class OpenRouterClient(ILLMClient):
                 max_tokens=1000,
                 messages=full_messages,
             )
-        except openai.APIError as exc:
+        except Exception as exc:
             log.error(
                 "llm_call_failed",
                 error=str(exc),
