@@ -1,9 +1,11 @@
 """Chat router — exposes /chat and /chat/summary endpoints for the conversation flow."""
 
+import json
 from typing import Annotated
 
 import structlog
 from fastapi import APIRouter, Depends
+from pydantic import ValidationError
 
 from conversation.intent_router import classify_intent
 from conversation.state_machine import merge_extracted_fields
@@ -61,18 +63,23 @@ async def chat_async(
     state.conversation_history.append({"role": "user", "content": request.message})
 
     extraction_prompt = build_extraction_prompt(state)
-    extracted = await llm_client.chat_with_tools_async(
-        extraction_prompt,
-        state.conversation_history,
-        [EXTRACT_REQUIREMENTS_TOOL],
-    )
+    try:
+        extracted = await llm_client.chat_with_tools_async(
+            extraction_prompt,
+            state.conversation_history,
+            [EXTRACT_REQUIREMENTS_TOOL],
+        )
+        merge_extracted_fields(state, extracted)
+    except (json.JSONDecodeError, ValidationError) as exc:
+        log.warning("tool_call_parse_failed", error=str(exc))
+        extracted = {}
+        # state unchanged — conversation flow continues without error
+
     log.info(
         "extraction_complete",
         extracted_field_count=len(extracted),
         extracted_fields=list(extracted.keys()),
     )
-
-    merge_extracted_fields(state, extracted)
     log.info(
         "state_advanced",
         new_module=state.current_module,
