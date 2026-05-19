@@ -1,7 +1,7 @@
 """Enums, sub-models, and session-state DTOs for the conversation domain."""
 
 from enum import StrEnum
-from typing import Literal, cast
+from typing import cast
 
 from pydantic import BaseModel, Field, computed_field
 
@@ -44,10 +44,67 @@ class ESubmodelLabel(StrEnum):
     M4 = "Budget"
 
 
+class EPropertyType(StrEnum):
+    """Property type options collected in M1."""
+
+    HOUSE = "house"
+    TOWNHOUSE = "townhouse"
+    UNIT = "unit"
+    APARTMENT = "apartment"
+    VILLA = "villa"
+    ANY = "any"
+
+
+class EIntendedUse(StrEnum):
+    """Intended use of the property collected in M1."""
+
+    OWNER_OCCUPIER = "owner_occupier"
+    INVESTMENT = "investment"
+    BOTH = "both"
+
+
+class ETargetTenant(StrEnum):
+    """Target tenant type for investment properties collected in M2."""
+
+    FAMILY = "family"
+    PROFESSIONAL = "professional"
+    STUDENT = "student"
+    ANY = "any"
+
+
+class ECommuteMode(StrEnum):
+    """Preferred commute transport mode collected in M3."""
+
+    TRAIN = "train"
+    CAR = "car"
+    TRAM = "tram"
+    BUS = "bus"
+    ANY = "any"
+
+
+class ELifestyleVibe(StrEnum):
+    """Preferred lifestyle vibe collected in M3."""
+
+    INNER_CITY = "inner_city"
+    SUBURBAN = "suburban"
+    LEAFY = "leafy"
+    COASTAL = "coastal"
+    ANY = "any"
+
+
+class EUserIntent(StrEnum):
+    """Classified routing intent for a conversation turn (PRD §16)."""
+
+    RECOMMEND_SUBURBS = "recommend_suburbs"
+    LIST_PROPERTIES = "list_properties"
+    PROPERTY_DETAIL = "property_detail"
+    OPEN_ENDED_QUERY = "open_ended_query"
+
+
 class M1PropertyNeeds(PropertyAIBaseModel):
     """Collected fields for module 1: property type and physical requirements."""
 
-    property_type: Literal["house", "townhouse", "unit", "apartment", "villa", "any"] | None = None
+    property_type: EPropertyType | None = None
     min_bedrooms: int | None = None
     max_bedrooms: int | None = None
     min_bathrooms: int | None = None
@@ -57,7 +114,7 @@ class M1PropertyNeeds(PropertyAIBaseModel):
     wants_pool: bool | None = None
     wants_outdoor: bool | None = None
     wants_study: bool | None = None
-    intended_use: Literal["owner_occupier", "investment", "both"] | None = None
+    intended_use: EIntendedUse | None = None
 
 
 class M2Lifestyle(PropertyAIBaseModel):
@@ -68,7 +125,7 @@ class M2Lifestyle(PropertyAIBaseModel):
     needs_school_zone: bool | None = None
     has_pets: bool | None = None
     work_from_home: bool | None = None
-    target_tenant: Literal["family", "professional", "student", "any"] | None = None
+    target_tenant: ETargetTenant | None = None
 
 
 class M3SuburbPreference(PropertyAIBaseModel):
@@ -76,10 +133,10 @@ class M3SuburbPreference(PropertyAIBaseModel):
 
     commute_destination: str | None = None
     commute_max_mins: int | None = None
-    commute_mode: Literal["train", "car", "tram", "bus", "any"] | None = None
+    commute_mode: ECommuteMode | None = None
     preferred_suburbs: list[str] | None = None
     excluded_suburbs: list[str] | None = None
-    lifestyle_vibe: Literal["inner_city", "suburban", "leafy", "coastal", "any"] | None = None
+    lifestyle_vibe: ELifestyleVibe | None = None
 
 
 class M4Budget(PropertyAIBaseModel):

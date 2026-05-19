@@ -2,6 +2,7 @@
 
 import csv
 import io
+from collections.abc import Iterator
 from datetime import datetime
 
 import httpx
@@ -37,8 +38,8 @@ def _parse_f5_latest(csv_text: str, series_id: str) -> float:
     Raises:
         ValueError: If the series ID is not found or no valid numeric data exists.
     """
-    reader = csv.reader(io.StringIO(csv_text))
-    rows = list(reader)
+    reader: Iterator[list[str]] = csv.reader(io.StringIO(csv_text))
+    rows: list[list[str]] = list(reader)
 
     col_idx: int | None = None
     series_row_idx: int | None = None
@@ -55,7 +56,7 @@ def _parse_f5_latest(csv_text: str, series_id: str) -> float:
     for row in reversed(rows[series_row_idx + 1 :]):
         if col_idx >= len(row):
             continue
-        cell = row[col_idx].strip()
+        cell: str = row[col_idx].strip()
         if not cell:
             continue
         try:
@@ -78,7 +79,7 @@ async def get_reference_rate_async() -> tuple[float, str]:
     """
     global _rate_cache, _cache_fetched_at
 
-    now = datetime.now()
+    now: datetime = datetime.now()
     if (
         _rate_cache is not None
         and _cache_fetched_at is not None
@@ -86,6 +87,8 @@ async def get_reference_rate_async() -> tuple[float, str]:
     ):
         return _rate_cache
 
+    rate: float
+    rate_source: str
     try:
         async with httpx.AsyncClient() as client:
             response = await client.get(F5_CSV_URL, timeout=5.0)
@@ -113,8 +116,8 @@ def _annuity_factor(annual_rate_pct: float, years: int) -> float:
     Returns:
         Present value of $1/month payments over the given term at the given rate.
     """
-    r = annual_rate_pct / 100 / 12
-    n = years * 12
+    r: float = annual_rate_pct / 100 / 12
+    n: int = years * 12
     return (1 - (1 + r) ** -n) / r
 
 
@@ -136,21 +139,25 @@ async def estimate_borrowing_capacity_async(
     if m4.pre_tax_salary is None:
         return None
 
+    annual_rate: float
+    rate_source: str
     annual_rate, rate_source = await get_reference_rate_async()
-    loan_term = m4.loan_term_years if m4.loan_term_years is not None else settings.default_loan_term
+    loan_term: int = (
+        m4.loan_term_years if m4.loan_term_years is not None else settings.default_loan_term
+    )
 
     net_monthly: float = m4.pre_tax_salary * 0.67 / 12
     if m4.is_joint is True and m4.partner_salary is not None:
         net_monthly += m4.partner_salary * 0.67 / 12
 
-    max_monthly_repayment = net_monthly * settings.borrowing_capacity_dti
-    raw_capacity = max_monthly_repayment * _annuity_factor(annual_rate, loan_term)
-    estimated_capacity = round(raw_capacity / 10_000) * 10_000
+    max_monthly_repayment: float = net_monthly * settings.borrowing_capacity_dti
+    raw_capacity: float = max_monthly_repayment * _annuity_factor(annual_rate, loan_term)
+    estimated_capacity: int = round(raw_capacity / 10_000) * 10_000
 
-    based_on_salary = m4.pre_tax_salary + (m4.partner_salary or 0)
-    is_joint = bool(m4.is_joint and m4.partner_salary is not None)
+    based_on_salary: int = m4.pre_tax_salary + (m4.partner_salary or 0)
+    is_joint: bool = bool(m4.is_joint and m4.partner_salary is not None)
 
-    disclaimer = (
+    disclaimer: str = (
         f"This borrowing capacity estimate is based on a {annual_rate:.2f}% p.a. "
         f"variable rate, {loan_term}-year loan term, and a "
         f"{settings.borrowing_capacity_dti:.0%} monthly income repayment limit. "

@@ -36,7 +36,7 @@ def build_budget_gap_section(result: BudgetGapResult | None) -> str:
     """
     if result is None or not result.has_gap:
         return ""
-    actions = ", ".join(result.suggested_actions)
+    actions: str = ", ".join(result.suggested_actions)
     return (
         f"⚠ Budget Gap Detected:\n"
         f"  User budget: ${result.budget_max:,}\n"

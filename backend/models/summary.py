@@ -1,11 +1,9 @@
 """Request/response DTOs for the requirements summary endpoint."""
 
-from typing import Literal
-
 from pydantic import ConfigDict
 
 from models.base import PropertyAIBaseModel
-from models.conversation_state import CollectedData
+from models.conversation_state import CollectedData, EUserIntent
 from models.user_needs import UserNeeds
 
 
@@ -35,9 +33,7 @@ class SummaryRequest(PropertyAIBaseModel):
 
     collected_data: CollectedData
     session_id: str
-    initial_intent: Literal[
-        "recommend_suburbs", "list_properties", "property_detail", "open_ended_query"
-    ] = "open_ended_query"
+    initial_intent: EUserIntent = EUserIntent.OPEN_ENDED_QUERY
 
 
 class SummaryResponse(PropertyAIBaseModel):

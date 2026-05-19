@@ -2,9 +2,11 @@
 
 import re
 from collections.abc import Callable
+from datetime import UTC, datetime
 
-from models.chat import RoutingPayload
-from models.conversation_state import ConversationStateDTO
+from models.chat import EExecutionMode, ETriggerSource, RoutingPayload
+from models.conversation_state import ConversationStateDTO, EUserIntent
+from models.user_needs import UserNeeds
 
 _SUBURB_KEYWORDS: frozenset[str] = frozenset({"suburb", "area", "recommend", "推荐", "区域"})
 _PROPERTY_KEYWORDS: frozenset[str] = frozenset({"property", "listing", "find", "找房", "房源"})
@@ -17,19 +19,38 @@ _PROPERTY_ID_RE: re.Pattern[str] = re.compile(
     re.IGNORECASE,
 )
 
-# Each entry is (predicate(lower, original) -> bool, intent_string).
-# Checked in order; first match wins. "open_ended_query" is the fallback.
-_INTENT_RULES: list[tuple[Callable[[str, str], bool], str]] = [
-    (lambda lower, _: any(kw in lower for kw in _SUBURB_KEYWORDS), "recommend_suburbs"),
+# Each entry is (predicate(lower, original) -> bool, intent). First match wins.
+_INTENT_RULES: list[tuple[Callable[[str, str], bool], EUserIntent]] = [
+    (lambda lower, _: any(kw in lower for kw in _SUBURB_KEYWORDS), EUserIntent.RECOMMEND_SUBURBS),
     (
         lambda _, original: bool(_ADDRESS_RE.search(original) or _PROPERTY_ID_RE.search(original)),
-        "property_detail",
+        EUserIntent.PROPERTY_DETAIL,
     ),
-    (lambda lower, _: any(kw in lower for kw in _PROPERTY_KEYWORDS), "list_properties"),
+    (lambda lower, _: any(kw in lower for kw in _PROPERTY_KEYWORDS), EUserIntent.LIST_PROPERTIES),
 ]
 
+# PRD §16.4 — execution mode and agent hints per intent
+_ROUTING_CONFIG: dict[EUserIntent, tuple[EExecutionMode, list[str]]] = {
+    EUserIntent.RECOMMEND_SUBURBS: (EExecutionMode.CODE_DRIVEN, ["suburb_agent", "price_agent"]),
+    EUserIntent.LIST_PROPERTIES: (EExecutionMode.CODE_DRIVEN, ["suburb_agent", "price_agent"]),
+    EUserIntent.PROPERTY_DETAIL: (
+        EExecutionMode.CODE_DRIVEN,
+        [
+            "overlay_agent",
+            "school_agent",
+            "building_agent",
+            "price_agent",
+            "neighbourhood_agent",
+            "transport_agent",
+        ],
+    ),
+    EUserIntent.OPEN_ENDED_QUERY: (EExecutionMode.AGENTIC_LOOP, []),
+}
 
-def classify_intent(message: str, state: ConversationStateDTO) -> RoutingPayload | None:
+
+def classify_intent(
+    message: str, state: ConversationStateDTO, user_needs: UserNeeds
+) -> RoutingPayload | None:
     """Classify the user's message intent and return routing context when appropriate.
 
     Returns None when all modules are incomplete and no trigger keyword is present.
@@ -47,18 +68,33 @@ def classify_intent(message: str, state: ConversationStateDTO) -> RoutingPayload
     Args:
         message: The raw user message text.
         state: Current conversation state.
+        user_needs: Full UserNeeds snapshot built from the current state.
 
     Returns:
         RoutingPayload with classified intent and session context, or None.
     """
-    lower = message.lower()
-    matched = next((intent for pred, intent in _INTENT_RULES if pred(lower, message)), None)
+    lower: str = message.lower()
+    matched: EUserIntent | None = next(
+        (intent for pred, intent in _INTENT_RULES if pred(lower, message)), None
+    )
 
     if matched is None and not state.completion_status.all_complete:
         return None
 
+    intent: EUserIntent = matched if matched is not None else EUserIntent.OPEN_ENDED_QUERY
+    trigger_source: ETriggerSource = (
+        ETriggerSource.KEYWORD if matched is not None else ETriggerSource.AUTO_COMPLETE
+    )
+    execution_mode: EExecutionMode
+    agents_hint: list[str]
+    execution_mode, agents_hint = _ROUTING_CONFIG[intent]
+
     return RoutingPayload(
-        intent=matched if matched is not None else "open_ended_query",
-        collected_data=state.collected_data,
+        intent=intent,
         session_id=state.session_id,
+        user_needs=user_needs,
+        execution_mode=execution_mode,
+        agents_hint=agents_hint,
+        triggered_at=datetime.now(tz=UTC),
+        trigger_source=trigger_source,
     )

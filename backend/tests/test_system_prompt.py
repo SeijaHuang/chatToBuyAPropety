@@ -4,7 +4,9 @@ from models.conversation_state import (
     CollectedData,
     CompletionStatus,
     ConversationStateDTO,
+    EIntendedUse,
     EModule,
+    EPropertyType,
     EStatus,
     M1PropertyNeeds,
 )
@@ -48,7 +50,7 @@ def test_output_contains_current_module() -> None:
 
 def test_collected_summary_excludes_none_fields() -> None:
     """SC-3: collected_summary lists non-None fields and omits fields that are still None."""
-    data = CollectedData(m1=M1PropertyNeeds(property_type="house"))
+    data = CollectedData(m1=M1PropertyNeeds(property_type=EPropertyType.HOUSE))
     result = build_system_prompt(_make_state(collected_data=data))
     assert "m1.property_type: house" in result
     # None fields must not appear in the "Already collected" summary (prefixed form)
@@ -67,7 +69,9 @@ def test_section_3_absent_when_m1_incomplete() -> None:
 def test_section_3_contains_tenant_guidance_for_investment() -> None:
     """SC-5: When M1 complete and intended_use is 'investment', Section 3 focuses on tenant."""
     data = CollectedData(
-        m1=M1PropertyNeeds(property_type="unit", min_bedrooms=2, intended_use="investment")
+        m1=M1PropertyNeeds(
+            property_type=EPropertyType.UNIT, min_bedrooms=2, intended_use=EIntendedUse.INVESTMENT
+        )
     )
     state = _make_state(
         current_module=EModule.M2_LIFESTYLE,
@@ -81,7 +85,11 @@ def test_section_3_contains_tenant_guidance_for_investment() -> None:
 def test_section_3_contains_school_guidance_for_owner_occupier() -> None:
     """SC-6: When M1 complete and intended_use is 'owner_occupier', Section 3 mentions school zone."""
     data = CollectedData(
-        m1=M1PropertyNeeds(property_type="house", min_bedrooms=3, intended_use="owner_occupier")
+        m1=M1PropertyNeeds(
+            property_type=EPropertyType.HOUSE,
+            min_bedrooms=3,
+            intended_use=EIntendedUse.OWNER_OCCUPIER,
+        )
     )
     state = _make_state(
         current_module=EModule.M2_LIFESTYLE,

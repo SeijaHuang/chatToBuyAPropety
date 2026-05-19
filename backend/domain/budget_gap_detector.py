@@ -1,5 +1,7 @@
 """Budget gap detection service — compares user budget against Domain API market median."""
 
+from typing import Any
+
 import httpx
 import structlog
 
@@ -41,7 +43,7 @@ async def detect_budget_gap_async(
     if not settings.domain_api_key:
         return None
 
-    reference_suburb = suburbs[0]
+    reference_suburb: str = suburbs[0]
 
     params: dict[str, str] = {}
     if property_type is not None:
@@ -57,19 +59,21 @@ async def detect_budget_gap_async(
                 headers={"Authorization": f"Bearer {settings.domain_api_key}"},
             )
             response.raise_for_status()
-            data = response.json()
-            market_median = int(data[DOMAIN_MEDIAN_FIELD])
+            data: Any = response.json()
+            market_median: int = int(data[DOMAIN_MEDIAN_FIELD])
     except Exception as e:
         logger.warning("budget_gap_detection_failed", error=str(e))
         return None
 
-    gap_amount = market_median - budget_max
-    gap_percentage = gap_amount / market_median * 100
-    threshold_pct = settings.budget_gap_threshold * 100
+    gap_amount: int = market_median - budget_max
+    gap_percentage: float = gap_amount / market_median * 100
+    threshold_pct: float = settings.budget_gap_threshold * 100
 
+    has_gap: bool
+    actions: tuple[str, ...]
     if gap_percentage > threshold_pct:
         has_gap = True
-        actions: tuple[str, ...] = (EXPLORE_NEARBY_SUBURBS, ADJUST_PROPERTY_TYPE)
+        actions = (EXPLORE_NEARBY_SUBURBS, ADJUST_PROPERTY_TYPE)
         if gap_percentage > 30.0:
             actions = (EXPLORE_NEARBY_SUBURBS, ADJUST_PROPERTY_TYPE, REVISIT_BUDGET)
     else:

@@ -3,11 +3,11 @@
 
 | Field | Value |
 |-------|-------|
-| Version | v1.1 |
-| Status | Draft — for development |
+| Version | v1.2 |
+| Status | **Completed — P0 implemented and verified** |
 | Parent Document | PropertyAI PRD v1.1 |
 | Scope | Part 1 Conversation Layer — P0 + P1 |
-| Last Updated | 10 May 2026 |
+| Last Updated | 19 May 2026 |
 
 ### Changelog
 
@@ -15,6 +15,7 @@
 |---------|------|---------|
 | v1.0 | 3 May 2026 | 初始版本：S-A 至 S-F，P0 主链路 |
 | v1.1 | 10 May 2026 | 新增 P0 补充章节（10–15）；新增 P1 章节（20–26）；数据库设计独立成文 |
+| v1.2 | 19 May 2026 | P0 实现完成；新增 §17 Implementation Decisions，记录与原始规格的确认偏差 |
 
 ---
 
@@ -47,6 +48,7 @@
 14. [Error Handling Specification](#14-error-handling-specification)
 15. [Guardrail Rule Tests](#15-guardrail-rule-tests)
 16. [Part 2 Interface Contract](#16-part-2-interface-contract)
+17. [Implementation Decisions](#17-implementation-decisions)
 
 **P1 章节（v1.1 新增）**
 
@@ -1099,39 +1101,12 @@ class UserNeeds(BaseModel):
     generated_at:    datetime
     schema_version:  str = "1.1"
 
-    # 核心需求（来自 CollectedData）
+    # 核心需求（来自 CollectedData，直接透传给 Part 2）
     collected:       CollectedData
 
-    # 推断字段（由 Part 1 计算，供 Part 2 直接使用）
-    inferred:        InferredNeeds
-
     # 触发 Part 2 时用户的意图
-    initial_intent:  Literal[
-        "recommend_suburbs",
-        "list_properties",
-        "property_detail",
-        "open_ended_query"
-    ]
-
-class InferredNeeds(BaseModel):
-    buyer_type:         Literal["owner_occupier", "investor", "both"]
-    household_profile:  Literal["single", "couple", "family", "unknown"]
-    budget_tier:        Literal["entry", "mid", "premium", "luxury"]
-                        # entry: <700k / mid: 700k–1.2m / premium: 1.2m–2m / luxury: >2m
-    borrowing_capacity: Optional[int]     # AUD，来自 S-G
-    commute_polygon:    Optional[list]    # GeoJSON polygon，供 Suburb Agent 使用
-    priority_score:     dict[str, float]  # 各维度权重 0.0–1.0
+    initial_intent:  EUserIntent  # recommend_suburbs | list_properties | property_detail | open_ended_query
 ```
-
-### 12.2 priority_score 计算规则
-
-| 维度键 | 含义 | 高分触发条件 |
-|--------|------|-------------|
-| `budget_sensitivity` | 预算敏感度 | 有预算缺口 / 用户明确强调价格 |
-| `school_zone` | 学区重要性 | `needs_school_zone == True` |
-| `commute_convenience` | 通勤便利性 | `commute_max_mins` < 30 |
-| `lifestyle_match` | 生活方式匹配 | `lifestyle_vibe` 有明确偏好 |
-| `property_features` | 房产功能性 | `wants_pool` / `wants_study` 等多项为 True |
 
 ---
 
@@ -1253,10 +1228,10 @@ tests/test_guardrail_rules.py
 class RoutingPayload:
     intent:         str                        # 来自 S-E 意图分类
     session_id:     str
-    user_needs:     UserNeeds                  # 含 inferred fields（见 §12）
-    execution_mode: Literal["A", "B"]
-                    # A = Code-Driven（已知 intent）
-                    # B = LLM Agentic Loop（open_ended_query）
+    user_needs:     UserNeeds                  # 见 §12
+    execution_mode: EExecutionMode
+                    # code_driven  = 已知 intent，直接派发 agent
+                    # agentic_loop = open_ended_query，LLM 编排 agents
     agents_hint:    list[str]                  # Mode A 建议调用的 agent 列表
     triggered_at:   datetime
     trigger_source: Literal["auto_complete", "keyword", "manual"]
@@ -1266,11 +1241,116 @@ class RoutingPayload:
 
 | Intent | Mode | agents_hint |
 |--------|------|-------------|
-| `recommend_suburbs` | A | `["suburb_agent", "price_agent"]` |
-| `list_properties` | A | `["suburb_agent", "price_agent"]` |
-| `property_detail` | A | `["overlay_agent", "school_agent", "building_agent", "price_agent", "neighbourhood_agent", "transport_agent"]` |
-| `compare_properties` | A | `["price_agent", "overlay_agent", "school_agent", "building_agent", "neighbourhood_agent", "transport_agent"]` |
-| `open_ended_query` | B | `[]`（LLM 自主决定） |
+| `recommend_suburbs` | `code_driven` | `["suburb_agent", "price_agent"]` |
+| `list_properties` | `code_driven` | `["suburb_agent", "price_agent"]` |
+| `property_detail` | `code_driven` | `["overlay_agent", "school_agent", "building_agent", "price_agent", "neighbourhood_agent", "transport_agent"]` |
+| `compare_properties` | `code_driven` | `["price_agent", "overlay_agent", "school_agent", "building_agent", "neighbourhood_agent", "transport_agent"]` |
+| `open_ended_query` | `agentic_loop` | `[]`（LLM 自主决定） |
+
+---
+
+## 17. Implementation Decisions
+
+> 本章记录 P0 实现过程中，经过评审确认的与原始规格的偏差。所有条目均为**有意的设计决策**，不视为缺陷。
+
+---
+
+### 17.1 提取工具 Schema 不包含控制字段（原 SA-3）
+
+**原始规格：** SA-3 要求 `module_complete` 和 `user_intent` 作为 `required` 字段存在于 `extract_requirements` tool schema 中，`user_intent` 枚举值为 `["answering","asking_question","changing_topic","confused","done"]`。
+
+**实际实现：** 提取工具 schema 的 `required` 列表为空，`module_complete`、`user_intent`、`next_question` 三个控制字段均未定义在 schema 中。
+
+**原因：** 原始规格基于**单轮对话**模型设计——一次 LLM 调用同时完成字段提取和控制逻辑，因此需要 LLM 返回控制字段。实际实现采用**双轮对话**架构（见 17.5），两者分离：
+
+- 模块推进 → `conversation/state_machine.py` 的规则引擎（`recalculate_completion()`）
+- 路由意图 → `conversation/intent_router.py` 的关键词匹配
+
+控制字段在双轮架构中无意义，移除后可减少 token 消耗并提升稳定性（规则引擎结果确定，不依赖 LLM 判断）。
+
+---
+
+### 17.2 SummaryResponse.structured 返回 UserNeeds 而非 CollectedData（原 §13）
+
+**原始规格：** `SummaryResponse { summary_text: str, structured: CollectedData }`
+
+**实际实现：** `SummaryResponse { summary_text: str, structured: UserNeeds }`
+
+**原因：** `UserNeeds` 是 Part 1 → Part 2 的标准接口契约（§12），包含 `session_id`、`generated_at`、`schema_version`、`collected`、`initial_intent`。在 summary 端点直接返回 `UserNeeds` 使前端可以直接用于触发 Part 2，无需额外封装。`structured.collected` 等价于原来的 `CollectedData`，信息不丢失。
+
+---
+
+### 17.3 SummaryRequest 包含额外字段（原 §13）
+
+**原始规格：** `SummaryRequest { collected_data: CollectedData }`
+
+**实际实现：** `SummaryRequest { collected_data: CollectedData, session_id: str, initial_intent: EUserIntent }`
+
+**原因：** 构建 `UserNeeds`（见 17.2）需要 `session_id` 和 `initial_intent`。`initial_intent` 有默认值 `open_ended_query`，调用方可不传。
+
+---
+
+### 17.4 RoutingPayload 采用 §16.3 定义（原 §3 S-E）
+
+**原始规格（§3 S-E）：**
+```python
+@dataclass
+class RoutingPayload:
+    intent: str
+    collected_data: CollectedData
+    session_id: str
+```
+
+**实际实现（§16.3）：**
+```python
+class RoutingPayload:
+    intent: EUserIntent
+    session_id: str
+    user_needs: UserNeeds
+    execution_mode: EExecutionMode
+    agents_hint: list[str]
+    triggered_at: datetime
+    trigger_source: ETriggerSource
+```
+
+**原因：** §16.3 是 v1.1 的后期修订，为 Part 2 提供更完整的路由上下文。`user_needs.collected` 等价于原来的 `collected_data`。§3 S-E 的原始定义视为被 §16.3 supersede。
+
+---
+
+### 17.5 双轮 LLM 调用架构（原 §2 系统流程）
+
+**原始规格：** §2 流程图暗示一次 LLM 调用同时完成"对话回复 + 字段提取"。
+
+**实际实现：** 每个 `/chat` 请求发起两次 LLM 调用：
+
+- **Round 1（Extraction）：** 使用最小化 system prompt + `extract_requirements` tool，提取结构化字段
+- **Round 2（Question Generation）：** 使用完整 system prompt（含角色定义、状态、守卫规则），生成对话回复
+
+**原因：** 单轮调用中 tool_call 和文本回复共用同一 system prompt，难以同时优化提取准确性和回复质量。双轮分离后：Round 1 专注提取（minimal prompt 减少干扰），Round 2 专注对话（full prompt 保证质量）。代价是每次请求多一次 LLM 调用。
+
+---
+
+### 17.6 ConversationStateDTO 携带 S-G/S-H 计算结果（原 §4）
+
+**原始规格：** §4 的 `ConversationStateDTO` 不包含 `borrowing_capacity` 和 `budget_gap`。
+
+**实际实现：** 新增两个可选字段：
+```python
+borrowing_capacity: BorrowingCapacityResult | None = None
+budget_gap: BudgetGapResult | None = None
+```
+
+**原因：** P0 为前端持有状态架构，S-G/S-H 的计算结果需要随 state 一起返回给前端，再由前端在下一轮请求中回传，以便 `build_question_prompt()` 注入借款能力和预算缺口上下文。将这两个字段挂在 DTO 上是最自然的传递路径。
+
+---
+
+### 17.7 BudgetGapResult.suggested_actions 类型为 tuple 而非 list（原 §11）
+
+**原始规格：** `suggested_actions: list[str]`
+
+**实际实现：** `suggested_actions: tuple[str, ...]`
+
+**原因：** `BudgetGapResult` 是 `@dataclass(frozen=True)`，冻结语义要求字段不可变。`list` 可变，`tuple` 不可变，后者与 frozen dataclass 语义一致。JSON 序列化输出相同（均为数组），对调用方无影响。
 
 ---
 

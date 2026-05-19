@@ -4,7 +4,13 @@ All prompt string content lives in prompts/sections/. This module is responsible
 only for composing those sections into the correct order for each prompt type.
 """
 
-from models.conversation_state import CollectedData, ConversationStateDTO, ESubmodel, ESubmodelLabel
+from models.conversation_state import (
+    CollectedData,
+    ConversationStateDTO,
+    EIntendedUse,
+    ESubmodel,
+    ESubmodelLabel,
+)
 from prompts.sections.context import INVESTMENT_CONTEXT, OWNER_OCCUPIER_CONTEXT
 from prompts.sections.financial import build_borrowing_capacity_section, build_budget_gap_section
 from prompts.sections.guardrails import GUARDRAIL_RULES
@@ -53,7 +59,7 @@ def build_question_prompt(state: ConversationStateDTO) -> str:
     sections: list[str] = [ROLE_DEFINITION, build_state_section(state)]
 
     if state.completion_status.M1:
-        intended_use = state.collected_data.m1.intended_use
+        intended_use: EIntendedUse | None = state.collected_data.m1.intended_use
         sections.append(
             INVESTMENT_CONTEXT if intended_use == "investment" else OWNER_OCCUPIER_CONTEXT
         )
@@ -88,7 +94,7 @@ def build_system_prompt(state: ConversationStateDTO) -> str:
     sections: list[str] = [ROLE_DEFINITION, build_state_section(state)]
 
     if state.completion_status.M1:
-        intended_use = state.collected_data.m1.intended_use
+        intended_use: EIntendedUse | None = state.collected_data.m1.intended_use
         sections.append(
             INVESTMENT_CONTEXT if intended_use == "investment" else OWNER_OCCUPIER_CONTEXT
         )
@@ -117,7 +123,7 @@ def build_summary_prompt(collected_data: CollectedData) -> str:
             if value is not None:
                 field_lines.append(f"  {label} — {field}: {value}")
 
-    collected_context = "\n".join(field_lines) if field_lines else "  (no data collected)"
+    collected_context: str = "\n".join(field_lines) if field_lines else "  (no data collected)"
 
     return (
         "You are a professional property buying assistant writing a client brief.\n\n"

@@ -1,11 +1,12 @@
 """Dynamic state section builders for conversation progress and collected field summaries."""
 
-from conversation.state_machine import MODULE_COMPLETION_RULES
+from conversation.state_machine import MODULE_COMPLETION_RULES, ModuleRequirements
 from models.conversation_state import (
     CollectedData,
     CompletionStatus,
     ConversationStateDTO,
     EModule,
+    TSubmodel,
 )
 
 
@@ -18,7 +19,7 @@ def build_completed_list(completion: CompletionStatus) -> str:
     Returns:
         Comma-separated completed module names, or the string 'none'.
     """
-    completed = [
+    completed: list[str] = [
         module.value
         for module, rules in MODULE_COMPLETION_RULES.items()
         if completion[rules.submodel_attr]
@@ -37,7 +38,7 @@ def build_collected_summary(data: CollectedData) -> str:
     """
     pairs: list[str] = []
     for _module, rules in MODULE_COMPLETION_RULES.items():
-        sub = data[rules.submodel_attr]
+        sub: TSubmodel = data[rules.submodel_attr]
         for field, value in sub.model_dump().items():
             if value is not None:
                 pairs.append(f"{rules.submodel_attr}.{field}: {value}")
@@ -54,13 +55,13 @@ def build_missing_fields(module: EModule, data: CollectedData) -> str:
     Returns:
         Comma-separated missing required field names, or the string 'none'.
     """
-    rules = MODULE_COMPLETION_RULES.get(module)
+    rules: ModuleRequirements | None = MODULE_COMPLETION_RULES.get(module)
     if rules is None:
         return "none"
-    sub = data[rules.submodel_attr]
-    dumped = sub.model_dump()
-    required = rules.required_fields | rules.extra_required(data)
-    missing = [f for f in required if dumped.get(f) is None]
+    sub: TSubmodel = data[rules.submodel_attr]
+    dumped: dict[str, object] = sub.model_dump()
+    required: frozenset[str] = rules.required_fields | rules.extra_required(data)
+    missing: list[str] = [f for f in required if dumped.get(f) is None]
     return ", ".join(missing) if missing else "none"
 
 

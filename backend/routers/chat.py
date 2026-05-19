@@ -14,9 +14,16 @@ from domain.budget_gap_detector import detect_budget_gap_async
 from domain.llm_client import ILLMClient, OpenRouterClient
 from domain.user_needs_builder import build_user_needs
 from exceptions import SummaryValidationError
-from models.chat import ChatRequest, ChatResponse
-from models.conversation_state import ESubmodel
+from models.chat import ChatRequest, ChatResponse, RoutingPayload
+from models.conversation_state import (
+    CollectedData,
+    ConversationStateDTO,
+    ESubmodel,
+    M3SuburbPreference,
+    M4Budget,
+)
 from models.summary import SummaryRequest, SummaryResponse
+from models.user_needs import UserNeeds
 from prompts.system_prompt_builder import (
     build_extraction_prompt,
     build_question_prompt,
@@ -53,8 +60,8 @@ async def chat_async(
     Returns:
         ChatResponse with reply, extracted fields, updated state, and optional routing.
     """
-    state = request.state
-    log = logger.bind(
+    state: ConversationStateDTO = request.state
+    log: structlog.BoundLogger = logger.bind(
         session_id=state.session_id,
         current_module=state.current_module,
     )
@@ -62,7 +69,8 @@ async def chat_async(
 
     state.conversation_history.append({"role": "user", "content": request.message})
 
-    extraction_prompt = build_extraction_prompt(state)
+    extraction_prompt: str = build_extraction_prompt(state)
+    extracted: dict[str, object]
     try:
         extracted = await llm_client.chat_with_tools_async(
             extraction_prompt,
@@ -89,11 +97,13 @@ async def chat_async(
     if state.collected_data.m4.pre_tax_salary is not None:
         state.borrowing_capacity = await estimate_borrowing_capacity_async(state.collected_data.m4)
 
-    m3 = state.collected_data.m3
-    m4 = state.collected_data.m4
+    m3: M3SuburbPreference = state.collected_data.m3
+    m4: M4Budget = state.collected_data.m4
     gap_suburbs: list[str] = list(m3.preferred_suburbs or [])
+
     if not gap_suburbs and m3.commute_destination is not None:
         gap_suburbs = [m3.commute_destination]
+
     if m4.budget_max is not None and gap_suburbs:
         state.budget_gap = await detect_budget_gap_async(
             budget_max=m4.budget_max,
@@ -102,12 +112,13 @@ async def chat_async(
             suburbs=gap_suburbs,
         )
 
-    question_prompt = build_question_prompt(state)
-    reply = await llm_client.complete_async(question_prompt, request.message)
+    question_prompt: str = build_question_prompt(state)
+    reply: str = await llm_client.complete_async(question_prompt, request.message)
 
     state.conversation_history.append({"role": "assistant", "content": reply})
 
-    routing = classify_intent(request.message, state)
+    user_needs: UserNeeds = build_user_needs(state.collected_data, state.session_id)
+    routing: RoutingPayload | None = classify_intent(request.message, state, user_needs)
     log.info("chat_response_ready", has_routing=routing is not None)
 
     return ChatResponse(
@@ -141,8 +152,8 @@ async def chat_summary_async(
     Raises:
         SummaryValidationError: When all fields across all sub-models are None.
     """
-    data = request.collected_data
-    all_none = all(
+    data: CollectedData = request.collected_data
+    all_none: bool = all(
         value is None
         for submodel in ESubmodel
         for value in getattr(data, submodel).model_dump().values()
@@ -152,10 +163,10 @@ async def chat_summary_async(
         raise SummaryValidationError("No data collected — cannot generate summary.")
 
     logger.info("summary_request_received")
-    system_prompt = build_summary_prompt(data)
-    reply = await llm_client.complete_async(
+    system_prompt: str = build_summary_prompt(data)
+    reply: str = await llm_client.complete_async(
         system_prompt, "Please generate the requirements summary."
     )
     logger.info("summary_generated", summary_length=len(reply))
-    user_needs = build_user_needs(data, request.session_id, request.initial_intent)
+    user_needs: UserNeeds = build_user_needs(data, request.session_id, request.initial_intent)
     return SummaryResponse(summary_text=reply, structured=user_needs)

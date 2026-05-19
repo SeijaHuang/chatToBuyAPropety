@@ -1,6 +1,7 @@
 """Exception handler registration and structlog configuration for the FastAPI app."""
 
 import logging
+from typing import Any
 
 import structlog
 from fastapi import FastAPI, Request
@@ -34,7 +35,7 @@ def register_exception_handlers(app: FastAPI) -> None:
         app: The FastAPI application instance.
     """
     configure_logging()
-    logger = structlog.get_logger()
+    logger: structlog.BoundLogger = structlog.get_logger()
 
     @app.exception_handler(PropertyAIException)
     async def property_ai_exception_handler_async(
@@ -51,7 +52,7 @@ def register_exception_handlers(app: FastAPI) -> None:
         Returns:
             JSONResponse with the standard error envelope.
         """
-        status_code = exc.status_code
+        status_code: int = exc.status_code
         logger.error(
             "business_exception",
             exc_type=type(exc).__name__,
@@ -85,7 +86,7 @@ def register_exception_handlers(app: FastAPI) -> None:
         Returns:
             JSONResponse with the standard error envelope and field-level error list.
         """
-        errors = exc.errors()
+        errors: list[dict[str, Any]] = exc.errors()  # type: ignore[assignment]
         logger.warning(
             "request_validation_failed",
             path=request.url.path,
