@@ -1099,39 +1099,12 @@ class UserNeeds(BaseModel):
     generated_at:    datetime
     schema_version:  str = "1.1"
 
-    # 核心需求（来自 CollectedData）
+    # 核心需求（来自 CollectedData，直接透传给 Part 2）
     collected:       CollectedData
 
-    # 推断字段（由 Part 1 计算，供 Part 2 直接使用）
-    inferred:        InferredNeeds
-
     # 触发 Part 2 时用户的意图
-    initial_intent:  Literal[
-        "recommend_suburbs",
-        "list_properties",
-        "property_detail",
-        "open_ended_query"
-    ]
-
-class InferredNeeds(BaseModel):
-    buyer_type:         Literal["owner_occupier", "investor", "both"]
-    household_profile:  Literal["single", "couple", "family", "unknown"]
-    budget_tier:        Literal["entry", "mid", "premium", "luxury"]
-                        # entry: <700k / mid: 700k–1.2m / premium: 1.2m–2m / luxury: >2m
-    borrowing_capacity: Optional[int]     # AUD，来自 S-G
-    commute_polygon:    Optional[list]    # GeoJSON polygon，供 Suburb Agent 使用
-    priority_score:     dict[str, float]  # 各维度权重 0.0–1.0
+    initial_intent:  EUserIntent  # recommend_suburbs | list_properties | property_detail | open_ended_query
 ```
-
-### 12.2 priority_score 计算规则
-
-| 维度键 | 含义 | 高分触发条件 |
-|--------|------|-------------|
-| `budget_sensitivity` | 预算敏感度 | 有预算缺口 / 用户明确强调价格 |
-| `school_zone` | 学区重要性 | `needs_school_zone == True` |
-| `commute_convenience` | 通勤便利性 | `commute_max_mins` < 30 |
-| `lifestyle_match` | 生活方式匹配 | `lifestyle_vibe` 有明确偏好 |
-| `property_features` | 房产功能性 | `wants_pool` / `wants_study` 等多项为 True |
 
 ---
 
@@ -1253,10 +1226,10 @@ tests/test_guardrail_rules.py
 class RoutingPayload:
     intent:         str                        # 来自 S-E 意图分类
     session_id:     str
-    user_needs:     UserNeeds                  # 含 inferred fields（见 §12）
-    execution_mode: Literal["A", "B"]
-                    # A = Code-Driven（已知 intent）
-                    # B = LLM Agentic Loop（open_ended_query）
+    user_needs:     UserNeeds                  # 见 §12
+    execution_mode: EExecutionMode
+                    # code_driven  = 已知 intent，直接派发 agent
+                    # agentic_loop = open_ended_query，LLM 编排 agents
     agents_hint:    list[str]                  # Mode A 建议调用的 agent 列表
     triggered_at:   datetime
     trigger_source: Literal["auto_complete", "keyword", "manual"]
@@ -1266,11 +1239,11 @@ class RoutingPayload:
 
 | Intent | Mode | agents_hint |
 |--------|------|-------------|
-| `recommend_suburbs` | A | `["suburb_agent", "price_agent"]` |
-| `list_properties` | A | `["suburb_agent", "price_agent"]` |
-| `property_detail` | A | `["overlay_agent", "school_agent", "building_agent", "price_agent", "neighbourhood_agent", "transport_agent"]` |
-| `compare_properties` | A | `["price_agent", "overlay_agent", "school_agent", "building_agent", "neighbourhood_agent", "transport_agent"]` |
-| `open_ended_query` | B | `[]`（LLM 自主决定） |
+| `recommend_suburbs` | `code_driven` | `["suburb_agent", "price_agent"]` |
+| `list_properties` | `code_driven` | `["suburb_agent", "price_agent"]` |
+| `property_detail` | `code_driven` | `["overlay_agent", "school_agent", "building_agent", "price_agent", "neighbourhood_agent", "transport_agent"]` |
+| `compare_properties` | `code_driven` | `["price_agent", "overlay_agent", "school_agent", "building_agent", "neighbourhood_agent", "transport_agent"]` |
+| `open_ended_query` | `agentic_loop` | `[]`（LLM 自主决定） |
 
 ---
 

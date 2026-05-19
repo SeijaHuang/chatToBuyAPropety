@@ -13,26 +13,32 @@ def test() -> None:
 
 def lint() -> None:
     """Run ruff check."""
-    result = subprocess.run([sys.executable, "-m", "ruff", "check", "."], check=False)
+    result: subprocess.CompletedProcess[bytes] = subprocess.run(
+        [sys.executable, "-m", "ruff", "check", "."], check=False
+    )
     sys.exit(result.returncode)
 
 
 def format_code() -> None:
     """Run ruff format."""
-    result = subprocess.run([sys.executable, "-m", "ruff", "format", "."], check=False)
+    result: subprocess.CompletedProcess[bytes] = subprocess.run(
+        [sys.executable, "-m", "ruff", "format", "."], check=False
+    )
     sys.exit(result.returncode)
 
 
 def typecheck() -> None:
     """Run mypy --strict."""
-    result = subprocess.run([sys.executable, "-m", "mypy", "--strict", "."], check=False)
+    result: subprocess.CompletedProcess[bytes] = subprocess.run(
+        [sys.executable, "-m", "mypy", "--strict", "."], check=False
+    )
     sys.exit(result.returncode)
 
 
 def dev() -> None:
     """Start the uvicorn dev server with hot-reload on port 8000."""
     try:
-        result = subprocess.run(
+        result: subprocess.CompletedProcess[bytes] = subprocess.run(
             [sys.executable, "-m", "uvicorn", "main:app", "--reload", "--port", "8000"],
             check=False,
         )

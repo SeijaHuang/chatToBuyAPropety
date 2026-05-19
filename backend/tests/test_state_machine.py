@@ -9,42 +9,44 @@ from models.conversation_state import (
     CollectedData,
     CompletionStatus,
     ConversationStateDTO,
+    EIntendedUse,
     EModule,
+    EPropertyType,
 )
 
 
 def test_m1_complete_when_all_required_fields_present() -> None:
     data = CollectedData()
-    data.m1.property_type = "house"
+    data.m1.property_type = EPropertyType.HOUSE
     data.m1.min_bedrooms = 3
-    data.m1.intended_use = "owner_occupier"
+    data.m1.intended_use = EIntendedUse.OWNER_OCCUPIER
     assert is_module_complete(EModule.M1_PROPERTY_NEEDS, data) is True
 
 
 def test_m1_incomplete_when_property_type_missing() -> None:
     data = CollectedData()
     data.m1.min_bedrooms = 3
-    data.m1.intended_use = "owner_occupier"
+    data.m1.intended_use = EIntendedUse.OWNER_OCCUPIER
     assert is_module_complete(EModule.M1_PROPERTY_NEEDS, data) is False
 
 
 def test_m1_incomplete_when_min_bedrooms_missing() -> None:
     data = CollectedData()
-    data.m1.property_type = "house"
-    data.m1.intended_use = "owner_occupier"
+    data.m1.property_type = EPropertyType.HOUSE
+    data.m1.intended_use = EIntendedUse.OWNER_OCCUPIER
     assert is_module_complete(EModule.M1_PROPERTY_NEEDS, data) is False
 
 
 def test_m1_incomplete_when_intended_use_missing() -> None:
     data = CollectedData()
-    data.m1.property_type = "house"
+    data.m1.property_type = EPropertyType.HOUSE
     data.m1.min_bedrooms = 3
     assert is_module_complete(EModule.M1_PROPERTY_NEEDS, data) is False
 
 
 def test_m2_requires_target_tenant_when_investment() -> None:
     data = CollectedData()
-    data.m1.intended_use = "investment"
+    data.m1.intended_use = EIntendedUse.INVESTMENT
     data.m2.household_size = 1
     data.m2.has_children = False
     assert is_module_complete(EModule.M2_LIFESTYLE, data) is False
@@ -52,7 +54,7 @@ def test_m2_requires_target_tenant_when_investment() -> None:
 
 def test_m2_does_not_require_target_tenant_when_owner_occupier() -> None:
     data = CollectedData()
-    data.m1.intended_use = "owner_occupier"
+    data.m1.intended_use = EIntendedUse.OWNER_OCCUPIER
     data.m2.household_size = 2
     data.m2.has_children = False
     assert is_module_complete(EModule.M2_LIFESTYLE, data) is True
@@ -104,6 +106,6 @@ def test_completion_status_recalculated_after_merge() -> None:
 
 def test_none_value_does_not_overwrite_existing_value() -> None:
     state = ConversationStateDTO(session_id="test-session-001")
-    state.collected_data.m1.property_type = "house"
+    state.collected_data.m1.property_type = EPropertyType.HOUSE
     merge_extracted_fields(state, {"property_type": None})
     assert state.collected_data.m1.property_type == "house"

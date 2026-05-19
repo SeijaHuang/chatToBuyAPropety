@@ -5,6 +5,8 @@ from typing import Any, Protocol
 
 import structlog
 from openai import AsyncOpenAI
+from openai.types import CompletionUsage
+from openai.types.chat import ChatCompletionMessageToolCall
 
 from config import settings
 from exceptions import LLMServiceError
@@ -81,7 +83,9 @@ class OpenRouterClient(ILLMClient):
             LLMServiceError: When the OpenRouter API call fails.
         """
         full_messages: list[Any] = [{"role": "system", "content": system_prompt}, *messages]
-        log = logger.bind(model=settings.model_strong, llm_method="chat_with_tools_async")
+        log: structlog.BoundLogger = logger.bind(
+            model=settings.model_strong, llm_method="chat_with_tools_async"
+        )
         log.info("llm_call_start", message_count=len(full_messages), tool_count=len(tools))
         try:
             response = await self._client.chat.completions.create(  # type: ignore[call-overload]
@@ -108,7 +112,7 @@ class OpenRouterClient(ILLMClient):
                 },
             ) from exc
 
-        usage = response.usage
+        usage: CompletionUsage | None = response.usage
         log.info(
             "llm_call_complete",
             has_tool_call=bool(response.choices[0].message.tool_calls),
@@ -116,7 +120,9 @@ class OpenRouterClient(ILLMClient):
             completion_tokens=usage.completion_tokens if usage else None,
         )
 
-        tool_calls = response.choices[0].message.tool_calls
+        tool_calls: list[ChatCompletionMessageToolCall] | None = response.choices[
+            0
+        ].message.tool_calls
         if not tool_calls:
             return {}
 
@@ -144,7 +150,9 @@ class OpenRouterClient(ILLMClient):
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_message},
         ]
-        log = logger.bind(model=settings.model_strong, llm_method="complete_async")
+        log: structlog.BoundLogger = logger.bind(
+            model=settings.model_strong, llm_method="complete_async"
+        )
         log.info("llm_call_start", message_count=len(full_messages))
         try:
             response = await self._client.chat.completions.create(
@@ -169,7 +177,7 @@ class OpenRouterClient(ILLMClient):
                 },
             ) from exc
 
-        usage = response.usage
+        usage: CompletionUsage | None = response.usage
         log.info(
             "llm_call_complete",
             prompt_tokens=usage.prompt_tokens if usage else None,

@@ -10,6 +10,7 @@ from models.conversation_state import (
     EModule,
     EStatus,
     ESubmodel,
+    TSubmodel,
 )
 
 _CONTROL_KEYS: frozenset[str] = frozenset({"module_complete", "next_question", "user_intent"})
@@ -124,11 +125,11 @@ def is_module_complete(module: EModule, data: CollectedData) -> bool:
         True if all required fields are non-None, False otherwise.
         Always returns False for EModule.COMPLETE.
     """
-    rules = MODULE_COMPLETION_RULES.get(module)
+    rules: ModuleRequirements | None = MODULE_COMPLETION_RULES.get(module)
     if rules is None:
         return False
-    sub = data[rules.submodel_attr]
-    all_required = rules.required_fields | rules.extra_required(data)
+    sub: TSubmodel = data[rules.submodel_attr]
+    all_required: frozenset[str] = rules.required_fields | rules.extra_required(data)
     return all(getattr(sub, f) is not None for f in all_required)
 
 

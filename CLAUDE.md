@@ -103,9 +103,8 @@ backend/
 │   │                              (v1.1: RoutingPayload now embeds UserNeeds, execution_mode,
 │   │                              agents_hint, trigger_source, triggered_at)
 │   ├── summary.py                 Summary API contract: SummaryRequest, SummaryResponse
-│   └── user_needs.py              Part 1 → Part 2 output contract: UserNeeds, InferredNeeds
-│                                  (buyer_type, household_profile, budget_tier, borrowing_capacity,
-│                                  commute_polygon, priority_score)
+│   └── user_needs.py              Part 1 → Part 2 output contract: UserNeeds
+│                                  (session_id, generated_at, schema_version, collected, initial_intent)
 │
 ├── conversation/
 │   ├── state_machine.py           Module progression — merges extracted fields, advances module,
@@ -124,8 +123,7 @@ backend/
 │   │                              ~25yr loan); returns BorrowingCapacityResult with disclaimer
 │   ├── budget_gap_detector.py     S-H: compares budget_max against Domain API median price;
 │   │                              returns BudgetGapResult and injects warning into system prompt
-│   └── user_needs_builder.py      PRD §12: derives InferredNeeds from CollectedData and assembles
-│                                  UserNeeds snapshot for Part 1 → Part 2 handoff
+│   └── user_needs_builder.py      PRD §12: assembles UserNeeds snapshot for Part 1 → Part 2 handoff
 │
 ├── tools/
 │   └── extraction_schema.py       OpenAI-format tool definition that instructs the LLM to
