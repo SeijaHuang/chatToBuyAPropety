@@ -2,10 +2,11 @@
 
 | Field | Value |
 |---|---|
-| PRD | PropertyAI Part 1 Technical PRD v1.1 |
+| PRD | PropertyAI Part 1 Technical PRD v1.2 |
 | Scope | P0 — Eight stories S-A through S-H, plus PRD §12, §13, §14 |
 | Status | **Complete** |
 | Completed | 12 May 2026 |
+| PRD Last Reviewed | 19 May 2026 |
 
 ---
 
@@ -37,7 +38,7 @@
 | E2E-5 | `ChatResponse.routing` is non-None after `all_complete` triggers | ✅ |
 | E2E-6 | All unit tests pass | ✅ |
 | E2E-7 | All integration tests pass | ✅ |
-| E2E-8 | `SummaryResponse.structured` is a `UserNeeds` with inferred `buyer_type`, `budget_tier`, `household_profile` | ✅ |
+| E2E-8 | `SummaryResponse.structured` is a `UserNeeds` containing `session_id`, `generated_at`, `schema_version`, `collected`, `initial_intent` | ✅ |
 | E2E-9 | `ConversationStateDTO.borrowing_capacity` is populated when `pre_tax_salary` is collected | ✅ |
 | E2E-10 | `ConversationStateDTO.budget_gap` is populated when `budget_max` + a suburb are collected and `DOMAIN_API_KEY` is set | ✅ |
 | E2E-11 | All 4xx/5xx responses use the `{"error": {"code": …, "message": …, "details": {}}}` envelope | ✅ |
@@ -48,6 +49,8 @@
 
 ### Intentional deviations from PRD
 
+All deviations confirmed and documented in PRD §17 (v1.2, 19 May 2026).
+
 | PRD | Implementation | Reason |
 |---|---|---|
 | `ModuleID` enum | `EModule` | Project naming convention: `E` + PascalCase |
@@ -57,8 +60,22 @@
 | `chat_with_tools()` | `chat_with_tools_async()` | Project rule: all `async def` functions carry `_async` suffix |
 | Intent priority in PRD table: `list_properties` before `property_detail` | Code: `property_detail` before `list_properties` | More specific pattern checked first; avoids misclassifying address-containing messages |
 | `services/` package | `domain/` package | Renamed for clarity; better reflects bounded-domain responsibility |
-| `SummaryResponse.structured_data: CollectedData` | `SummaryResponse.structured: UserNeeds` | §12 requires a full Part 1 → Part 2 handoff payload, not raw collected data |
-| `SummaryRequest` (collected_data only) | `SummaryRequest` + `session_id` + `initial_intent` | UserNeeds snapshot requires session identity and initial routing intent |
+| SA-3: `module_complete` + `user_intent` in `required` list | Not in schema; `required: []` | Two-round architecture separates extraction from control logic; module completion handled by `state_machine.py`, routing by `intent_router.py` — LLM control fields are unnecessary and add token cost |
+| §2 single LLM call (reply + extraction) | Two-round LLM calls per turn | Round 1 minimal prompt for extraction accuracy; Round 2 full prompt for reply quality; see "Two-round LLM architecture" below |
+| §3 S-E `RoutingPayload` with `collected_data` | §16.3 `RoutingPayload` with `user_needs`, `execution_mode`, `agents_hint`, `triggered_at`, `trigger_source` | §16.3 supersedes the §3 definition; provides complete routing context for Part 2 |
+| `SummaryResponse.structured: CollectedData` | `SummaryResponse.structured: UserNeeds` | §12 requires a full Part 1 → Part 2 handoff payload; `structured.collected` is equivalent to the original `CollectedData` |
+| `SummaryRequest` (collected_data only) | `SummaryRequest` + `session_id` + `initial_intent` | `UserNeeds` snapshot requires session identity and routing intent; `initial_intent` has a default so callers need not supply it |
+| `ConversationStateDTO` (PRD §4 fields only) | +`borrowing_capacity` + `budget_gap` | P0 frontend-held state — S-G/S-H results must round-trip via the DTO to reach `build_question_prompt()` in subsequent turns |
+| `BudgetGapResult.suggested_actions: list[str]` | `tuple[str, ...]` | `BudgetGapResult` is a frozen dataclass; `tuple` is immutable and consistent with frozen semantics; JSON output is identical |
+
+### Two-round LLM architecture
+
+Each `/chat` request issues two LLM calls:
+
+1. **Round 1 — Extraction**: minimal system prompt (`build_extraction_prompt`) + `extract_requirements` tool. Produces a structured `dict` of extracted fields. `state_machine.merge_extracted_fields()` merges them into state and advances the module.
+2. **Round 2 — Question generation**: full system prompt (`build_question_prompt`) including role definition, current state, optional M1→M2 context, borrowing capacity, budget gap warning, and guardrail rules. Produces the assistant reply text.
+
+This separation keeps Round 1 free from conversational noise (improving extraction precision) and Round 2 free from tool-calling constraints (improving reply quality). The cost is one extra LLM call per turn.
 
 ### P0 scope notes
 
@@ -75,9 +92,9 @@
 |---|---|
 | `domain/borrowing_capacity.py` | S-G: RBA rate fetch + 28% DTI estimation, returns `BorrowingCapacityResult` |
 | `domain/budget_gap_detector.py` | S-H: Domain API median price lookup, returns `BudgetGapResult` |
-| `domain/user_needs_builder.py` | §12: Derives `InferredNeeds` from `CollectedData`; assembles `UserNeeds` for Part 2 handoff |
+| `domain/user_needs_builder.py` | §12: Assembles `UserNeeds` snapshot from `CollectedData` for Part 2 handoff |
 | `models/financial.py` | Frozen dataclasses `BorrowingCapacityResult` and `BudgetGapResult`; action-string constants |
-| `models/user_needs.py` | `UserNeeds` and `InferredNeeds` Pydantic models (Part 1 output contract) |
+| `models/user_needs.py` | `UserNeeds` Pydantic model (Part 1 → Part 2 output contract) |
 | `error_handlers.py` | `register_exception_handlers()` + `configure_logging()` — centralises FastAPI error wiring |
 
 ### Exception hierarchy (as-built)
