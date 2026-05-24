@@ -5,8 +5,45 @@ on:
     branches: [main]
 
 jobs:
-  lint-and-test:
-    name: Lint, Type Check & Test
+  frontend:
+    name: Frontend — Lint, Type Check & Test
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: latest
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Type check
+        run: pnpm type-check
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Test
+        run: pnpm test:run
+
+      - name: Build
+        run: pnpm build
+
+  backend:
+    name: Backend — Lint, Type Check & Test
     runs-on: ubuntu-latest
 
     services:
