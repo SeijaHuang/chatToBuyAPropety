@@ -8,23 +8,64 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Detailed standards live in `.claude/rules/` — read the relevant file before touching that area:
 
-| File                                                     | When to read                                                                   |
-| -------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| [coding-standards.md](.claude/rules/coding-standards.md) | Any time you write or review code — naming, types, docstrings, SOLID/DRY/KISS  |
-| [backend-patterns.md](.claude/rules/backend-patterns.md) | Config, logging, exceptions, API error envelope, prompt placement, null-safety |
-| [testing.md](.claude/rules/testing.md)                   | Writing or modifying tests — coverage thresholds, mock rules, test naming      |
-| [git-workflow.md](.claude/rules/git-workflow.md)         | Commits, branches, PRs, pre-commit hooks                                       |
+**Backend (`backend/`)**
+
+| File                                                              | When to read                                                                   |
+| ----------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| [coding-standards.md](.claude/rules/backend/coding-standards.md) | Any time you write or review backend code — naming, types, docstrings, SOLID/DRY/KISS |
+| [backend-patterns.md](.claude/rules/backend/backend-patterns.md) | Config, logging, exceptions, API error envelope, prompt placement, null-safety |
+| [testing.md](.claude/rules/backend/testing.md)                   | Writing or modifying backend tests — coverage thresholds, mock rules, test naming |
+
+**Frontend (`frontend/`)**
+
+| File                                                               | When to read                                                                         |
+| ------------------------------------------------------------------ | ------------------------------------------------------------------------------------ |
+| [coding-standards.md](.claude/rules/frontend/coding-standards.md) | Any time you write or review frontend code — naming, types, components, hooks, state |
+| [testing.md](.claude/rules/frontend/testing.md)                   | Writing or modifying frontend tests — coverage thresholds, MSW setup, test naming   |
+
+**Shared**
+
+| File                                                 | When to read                                |
+| ---------------------------------------------------- | ------------------------------------------- |
+| [git-workflow.md](.claude/rules/git-workflow.md)     | Commits, branches, PRs, pre-commit hooks    |
+
+## Frontend Tech Stack
+
+| Layer              | Technology                                      |
+| ------------------ | ----------------------------------------------- |
+| Framework          | Next.js 14 (App Router)                         |
+| Language           | TypeScript 5 (strict mode)                      |
+| Styling            | Tailwind CSS 4 (CSS-first, `@theme` in globals) |
+| State              | Zustand 4 (client), TanStack Query 5 (P1+)      |
+| HTTP               | Axios 1 via `lib/request.ts` (never use directly) |
+| Testing            | Vitest 2 + Testing Library + MSW 2              |
+| Package manager    | pnpm                                            |
+| API base URL       | `http://localhost:8000/api/v1` (paths: `chat`, `chat/summary`, no leading `/`) |
+| Health endpoint    | `http://localhost:8000/health` (root, no `/api/v1` prefix) |
+
+**Frontend Dev Commands** (run from `frontend/`):
+
+```bash
+pnpm dev          # start dev server (localhost:3000)
+pnpm build        # production build + type check
+pnpm lint         # ESLint
+pnpm test         # vitest watch
+pnpm test:run     # vitest single run
+pnpm type-check   # tsc --noEmit
+```
+
+---
 
 ## Docs Index
 
 | File                                                               | Contents                                                                                          |
 | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------- |
 | [docs/part1-p0-implementation.md](docs/part1-p0-implementation.md) | Part 1 P0 story completion, E2E criteria, architectural decisions, test coverage                  |
-| [PRD/PropertyAI_Part1_Technical_PRD_v1_1.md](../PRD/PropertyAI_Part1_Technical_PRD_v1_1.md) | Authoritative PRD v1.1 — P0 stories S-A→S-H, P1 stories §20–26, data models, error handling spec |
+| [PRD/PropertyAI_PRD_v1_1.md](PRD/PropertyAI_PRD_v1_1.md) | Authoritative PRD v1.1 — P0 stories S-A→S-H, P1 stories §20–26, data models, error handling spec |
 
 ---
 
-## Tech Stack
+## Backend Tech Stack
 
 | Layer              | Technology                                    |
 | ------------------ | --------------------------------------------- |
@@ -42,7 +83,7 @@ Detailed standards live in `.claude/rules/` — read the relevant file before to
 
 ---
 
-## Development Commands
+## Backend Development Commands
 
 All commands run from the `backend/` directory. `requirements.txt` mirrors `pyproject.toml` — keep both in sync when adding or removing dependencies.
 
@@ -90,6 +131,10 @@ backend/
 ├── main.py                        FastAPI app factory — CORS middleware, router mount, /health
 ├── config.py                      pydantic-settings Settings class — single source of env vars
 ├── exceptions.py                  Typed exception hierarchy (PropertyAIException, LLMServiceError, …)
+├── error_handlers.py              structlog configuration + FastAPI exception handler registration
+│                                  (PropertyAIException → error envelope, RequestValidationError → 422)
+├── scripts.py                     [project.scripts] entry points — test, lint, format_code,
+│                                  typecheck, dev (thin wrappers around pytest/ruff/mypy/uvicorn)
 ├── pyproject.toml                 Canonical dependency + tool config (ruff, mypy, pytest)
 ├── requirements.txt               pip mirror of pyproject.toml — keep in sync manually
 │
@@ -103,6 +148,8 @@ backend/
 │   │                              (v1.1: RoutingPayload now embeds UserNeeds, execution_mode,
 │   │                              agents_hint, trigger_source, triggered_at)
 │   ├── summary.py                 Summary API contract: SummaryRequest, SummaryResponse
+│   ├── financial.py               Internal frozen dataclasses: BorrowingCapacityResult,
+│   │                              BudgetGapResult, and suggested-action string constants
 │   └── user_needs.py              Part 1 → Part 2 output contract: UserNeeds
 │                                  (session_id, generated_at, schema_version, collected, initial_intent)
 │
@@ -113,8 +160,16 @@ backend/
 │                                  (recommend_suburbs / list_properties / property_detail / open_ended_query)
 │
 ├── prompts/
-│   └── system_prompt_builder.py   SOLE source of all LLM prompt strings — no prompt literals
-│                                  anywhere else in the codebase
+│   ├── system_prompt_builder.py   SOLE public interface — four build_* functions that assemble
+│   │                              prompt strings; no prompt literals outside this package
+│   └── sections/                  Internal sub-package (do not import outside prompts/)
+│       ├── role.py                ROLE_DEFINITION — static assistant role block
+│       ├── guardrails.py          GUARDRAIL_RULES — six compliance guardrail rules
+│       ├── context.py             OWNER_OCCUPIER_CONTEXT, INVESTMENT_CONTEXT — M1 intent blocks
+│       ├── instructions.py        EXTRACTION_INSTRUCTION, QUESTION_TASK_INSTRUCTION
+│       ├── state.py               build_state_section, build_completed_list,
+│       │                          build_collected_summary, build_missing_fields
+│       └── financial.py           build_borrowing_capacity_section
 │
 ├── domain/
 │   ├── llm_client.py              OpenRouter async wrapper — implements ILLMClient Protocol,
@@ -141,8 +196,7 @@ backend/
     ├── test_intent_router.py       S-E unit tests
     ├── test_summary.py             S-F integration tests
     ├── test_borrowing_capacity.py  S-G unit tests
-    ├── test_budget_gap_detector.py S-H unit tests
-    └── test_guardrail_rules.py     6 guardrail rule injection tests (mock LLM, verify system prompt)
+    └── test_budget_gap_detector.py S-H unit tests
 ```
 
 ---
@@ -195,17 +249,33 @@ EStatus:  IN_PROGRESS ───────────────────�
 
 These are non-obvious constraints that must never be violated, regardless of context:
 
-1. **Null-safety** — a non-`None` value in `CollectedData` is never overwritten by `None`. Owned by `state_machine.py`. See `backend-patterns.md`.
+**Backend**
 
-2. **Prompt locality** — all LLM prompt strings live exclusively in `prompts/system_prompt_builder.py`. No prompt literals anywhere else. See `backend-patterns.md`.
+1. **Null-safety** — a non-`None` value in `CollectedData` is never overwritten by `None`. Owned by `state_machine.py`. See [backend-patterns.md](.claude/rules/backend/backend-patterns.md).
 
-3. **Error envelope** — all 4xx/5xx responses use `{"error": {"code": "...", "message": "...", "details": {}}}`. Raw FastAPI `{"detail": "..."}` is forbidden for business errors. See `backend-patterns.md`.
+2. **Prompt locality** — all LLM prompt strings live exclusively in `prompts/system_prompt_builder.py`. No prompt literals anywhere else. See [backend-patterns.md](.claude/rules/backend/backend-patterns.md).
 
-4. **Async naming** — every `async def` function carries the `_async` suffix. No exceptions, including FastAPI route handlers and pytest fixtures. See `coding-standards.md`.
+3. **Error envelope** — all 4xx/5xx responses use `{"error": {"code": "...", "message": "...", "details": {}}}`. Raw FastAPI `{"detail": "..."}` is forbidden for business errors. See [backend-patterns.md](.claude/rules/backend/backend-patterns.md).
 
-5. **No `os.getenv` in business logic** — all config is read from the `Settings` pydantic-settings class in `config.py`. See `backend-patterns.md`.
+4. **Async naming** — every `async def` function carries the `_async` suffix. No exceptions, including FastAPI route handlers and pytest fixtures. See [coding-standards.md](.claude/rules/backend/coding-standards.md).
 
-6. **LLM calls are always mocked in tests** — no live API calls in the test suite. See `testing.md`.
+5. **No `os.getenv` in business logic** — all config is read from the `Settings` pydantic-settings class in `config.py`. See [backend-patterns.md](.claude/rules/backend/backend-patterns.md).
+
+6. **LLM calls are always mocked in tests** — no live API calls in the test suite. See [testing.md](.claude/rules/backend/testing.md).
+
+**Frontend**
+
+7. **Complete state replacement** — `setUpdatedState` in `conversationStore` must do a full replacement, never `Object.assign` or spread merge. See [coding-standards.md](.claude/rules/frontend/coding-standards.md).
+
+8. **No magic domain strings** — any string used as a domain identifier in more than one file must be defined as an `as const` object entry. See [coding-standards.md](.claude/rules/frontend/coding-standards.md).
+
+9. **No direct axios/fetch in components** — all HTTP calls go through `lib/api.ts`. See [coding-standards.md](.claude/rules/frontend/coding-standards.md).
+
+10. **Theme tokens first** — colors, font sizes, and spacing must come from `globals.css` `@theme`; Tailwind built-in design values are forbidden. See [coding-standards.md](.claude/rules/frontend/coding-standards.md).
+
+11. **UI/Container separation** — UI components must not read from stores or call hooks directly. See [coding-standards.md](.claude/rules/frontend/coding-standards.md).
+
+12. **API calls mocked in tests** — no live network requests; use MSW handlers. See [testing.md](.claude/rules/frontend/testing.md).
 
 ---
 
@@ -220,4 +290,4 @@ These are non-obvious constraints that must never be violated, regardless of con
 | Private attribute    | `_` + snake_case   | `_session_id`, `_build_context` |
 | Constant             | SCREAMING_SNAKE    | `MAX_TOKENS`, `DEFAULT_MODEL`   |
 
-Full conventions: [coding-standards.md](.claude/rules/coding-standards.md)
+Full conventions: [coding-standards.md](.claude/rules/backend/coding-standards.md)
