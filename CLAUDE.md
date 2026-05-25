@@ -127,6 +127,33 @@ docker-compose up -d redis postgres
 Every source file and its single responsibility. Read this before adding code to an existing file or deciding where new code belongs.
 
 ```
+frontend/
+├── src/
+│   ├── app/
+│   │   └── layout.tsx             Root layout — loads Plus Jakarta Sans via next/font, injects
+│   │                              --font-plus-jakarta-sans CSS variable into <html>
+│   │
+│   ├── styles/
+│   │   └── globals.css            Tailwind CSS v4 design system — @theme tokens (colors,
+│   │                              typography, spacing, radius, shadows, blur), :root glass/glow
+│   │                              vars, @layer base (body, type scale, scrollbar, Material Symbols),
+│   │                              @layer utilities (glass-panel, glass-ai)
+│   │
+│   └── types/                     All type files end with .d.ts — mirrors backend models/ layout
+│       ├── conversation.d.ts      Domain enums (MODULE_ID, SESSION_STATUS, SUBMODEL_KEY, MESSAGE_ROLE),
+│       │                          M1–M4 sub-model interfaces, CollectedData, ConversationStateDTO, UIMessage
+│       ├── financial.d.ts         BorrowingCapacityResult, BudgetGapResult
+│       │                          (mirrors backend models/financial.py — fields in snake_case because
+│       │                          backend uses @dataclass, not PropertyAIBaseModel)
+│       ├── user_needs.d.ts        UserNeeds interface (mirrors backend models/user_needs.py)
+│       ├── routing.d.ts           USER_INTENT, EXECUTION_MODE, TRIGGER_SOURCE as const objects,
+│       │                          derived union types, RoutingPayload interface
+│       ├── api.d.ts               HTTP contract: ChatResponse (updatedState), SummaryResponse (summaryText)
+│       ├── global.d.ts            Ambient global type declarations
+│       └── index.d.ts             Barrel — re-exports public surface of all type files
+```
+
+```
 backend/
 ├── main.py                        FastAPI app factory — CORS middleware, router mount, /health
 ├── config.py                      pydantic-settings Settings class — single source of env vars
@@ -276,6 +303,12 @@ These are non-obvious constraints that must never be violated, regardless of con
 11. **UI/Container separation** — UI components must not read from stores or call hooks directly. See [coding-standards.md](.claude/rules/frontend/coding-standards.md).
 
 12. **API calls mocked in tests** — no live network requests; use MSW handlers. See [testing.md](.claude/rules/frontend/testing.md).
+
+13. **Type files end in `.d.ts`** — all files under `src/types/` use the `.d.ts` extension. Do not create `.ts` files there.
+
+14. **`CollectedData` keys driven by `SUBMODEL_KEY`** — use `SUBMODEL_KEY.M1` / `M2` / `M3` / `M4` as computed keys; do not write `'m1'` / `'m2'` literals outside `conversation.d.ts`.
+
+15. **Financial types stay snake_case** — `BorrowingCapacityResult` and `BudgetGapResult` use snake_case field names because the backend serialises them from `@dataclass` (not `PropertyAIBaseModel`), bypassing the camelCase `alias_generator`.
 
 ---
 
