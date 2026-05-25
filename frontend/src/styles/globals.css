@@ -1,0 +1,171 @@
+@import "tailwindcss";
+
+@theme {
+  /* ─── Typography ─────────────────────────────────────────────────── */
+  --font-sans: var(--font-plus-jakarta-sans), sans-serif;
+
+  --text-display-lg:  3rem;
+  --text-display-md:  2.25rem;
+  --text-headline-lg: 1.875rem;
+  --text-headline-md: 1.5rem;
+  --text-title-lg:    1.25rem;
+  --text-title-md:    1.125rem;
+  --text-body-lg:     1rem;
+  --text-body-md:     0.875rem;
+  --text-label-lg:    0.875rem;
+  --text-label-md:    0.75rem;
+  --text-caption:     0.75rem;
+  --text-sm:          0.8125rem;
+
+  /* ─── Spacing ────────────────────────────────────────────────────── */
+  --spacing-xs:     4px;
+  --spacing-base:   8px;
+  --spacing-sm:     12px;
+  --spacing-md:     24px;
+  --spacing-lg:     48px;
+  --spacing-xl:     80px;
+  --spacing-gutter: 24px;
+  --spacing-margin: 40px;
+
+  /* ─── Border Radius ──────────────────────────────────────────────── */
+  --radius-sm:      4px;
+  --radius-default: 8px;
+  --radius-md:      12px;
+  --radius-lg:      16px;
+  --radius-xl:      24px;
+  --radius-full:    9999px;
+
+  /* ─── Shadows ────────────────────────────────────────────────────── */
+  --shadow-ai-glow: 0 0 20px rgb(173 198 255 / 0.15);
+  --shadow-card:    0 8px 32px rgb(0 0 0 / 0.4);
+
+  /* ─── Backdrop Blur ──────────────────────────────────────────────── */
+  --backdrop-blur-glass: 12px;
+
+  /* ─── Colors: Surface ────────────────────────────────────────────── */
+  --color-surface:                   #10131a;
+  --color-surface-dim:               #121317;
+  --color-surface-bright:            #38393d;
+  --color-surface-container-lowest:  #0d0e11;
+  --color-surface-container-low:     #1a1b1f;
+  --color-surface-container:         #1d2027;
+  --color-surface-container-high:    #292a2d;
+  --color-surface-container-highest: #343538;
+  --color-surface-variant:           #32353c;
+
+  /* ─── Colors: On Surface ─────────────────────────────────────────── */
+  --color-on-surface:         #e3e2e7;
+  --color-on-surface-variant: #c2c6d6;
+  --color-inverse-surface:    #e3e2e7;
+  --color-inverse-on-surface: #2f3034;
+
+  /* ─── Colors: Outline ────────────────────────────────────────────── */
+  --color-outline:         #8e909a;
+  --color-outline-variant: #424754;
+
+  /* ─── Colors: Primary ────────────────────────────────────────────── */
+  --color-primary:                  #d8e2ff;
+  --color-primary-container:        #adc6ff;
+  --color-primary-fixed:            #d8e2ff;
+  --color-primary-fixed-dim:        #adc6ff;
+  --color-on-primary:               #122f5f;
+  --color-on-primary-container:     #385283;
+  --color-on-primary-fixed:         #001a42;
+  --color-on-primary-fixed-variant: #2c4677;
+  --color-inverse-primary:          #455e90;
+  --color-surface-tint:             #adc6ff;
+
+  /* ─── Colors: Secondary ──────────────────────────────────────────── */
+  --color-secondary:                  #b7c8e1;
+  --color-secondary-container:        #38485d;
+  --color-secondary-fixed:            #d3e4fe;
+  --color-secondary-fixed-dim:        #b7c8e1;
+  --color-on-secondary:               #213145;
+  --color-on-secondary-container:     #a6b6cf;
+  --color-on-secondary-fixed:         #0b1c2f;
+  --color-on-secondary-fixed-variant: #38485d;
+
+  /* ─── Colors: Tertiary ───────────────────────────────────────────── */
+  --color-tertiary:                  #ffdbc4;
+  --color-tertiary-container:        #feb685;
+  --color-tertiary-fixed:            #ffdcc6;
+  --color-tertiary-fixed-dim:        #ffb786;
+  --color-on-tertiary:               #502501;
+  --color-on-tertiary-container:     #79451e;
+  --color-on-tertiary-fixed:         #301400;
+  --color-on-tertiary-fixed-variant: #6b3a14;
+
+  /* ─── Colors: Error ──────────────────────────────────────────────── */
+  --color-error:              #ffb4ab;
+  --color-error-container:    #93000a;
+  --color-on-error:           #690005;
+  --color-on-error-container: #ffdad6;
+
+  /* ─── Colors: Background ─────────────────────────────────────────── */
+  --color-background:    #121317;
+  --color-on-background: #e3e2e7;
+
+  /* ─── Colors: Semantic ───────────────────────────────────────────── */
+  --color-success-match: #adc6ff;
+  --color-warning-cut:   #93000a;
+}
+
+:root {
+  --glass-bg:     rgb(30 41 59 / 0.4);
+  --glass-border: rgb(66 71 84 / 0.3);
+  --glass-blur:   12px;
+  --ai-glow:      0 0 20px rgb(173 198 255 / 0.15);
+}
+
+@layer base {
+  html {
+    color-scheme: dark;
+  }
+
+  body {
+    background-color: var(--color-surface);
+    color: var(--color-on-surface);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ─── Type Scale: line-height / letter-spacing / weight ─────────── */
+  .text-display-lg  { line-height: 56px;  letter-spacing: -0.02em; font-weight: 700; }
+  .text-display-md  { line-height: 44px;  letter-spacing: -0.02em; font-weight: 700; }
+  .text-headline-lg { line-height: 38px;  font-weight: 600; }
+  .text-headline-md { line-height: 32px;  font-weight: 600; }
+  .text-title-lg    { line-height: 28px;  font-weight: 600; }
+  .text-title-md    { line-height: 26px;  font-weight: 500; }
+  .text-body-lg     { line-height: 24px;  font-weight: 400; }
+  .text-body-md     { line-height: 20px;  font-weight: 400; }
+  .text-label-lg    { line-height: 20px;  letter-spacing: 0.01em; font-weight: 600; }
+  .text-label-md    { line-height: 16px;  letter-spacing: 0.01em; font-weight: 600; }
+  .text-caption     { line-height: 16px;  font-weight: 400; }
+
+  /* ─── Custom Scrollbar ───────────────────────────────────────────── */
+  ::-webkit-scrollbar       { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-thumb { background: #32353c; border-radius: 10px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+
+  /* ─── Material Symbols ───────────────────────────────────────────── */
+  .material-symbols-outlined {
+    font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+    vertical-align: middle;
+    user-select: none;
+  }
+}
+
+@layer utilities {
+  .glass-panel {
+    background: var(--glass-bg);
+    backdrop-filter: blur(var(--glass-blur));
+    border: 1px solid var(--glass-border);
+  }
+
+  .glass-ai {
+    background: var(--glass-bg);
+    backdrop-filter: blur(var(--glass-blur));
+    border: 1px solid rgb(173 198 255 / 0.2);
+    box-shadow: var(--ai-glow);
+  }
+}
