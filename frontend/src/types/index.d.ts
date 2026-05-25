@@ -27,4 +27,11 @@ export type {
 
 export { USER_INTENT, EXECUTION_MODE, TRIGGER_SOURCE } from './routing'
 
-export type { ChatResponse, SummaryResponse } from './api'
+export type {
+  ErrorDetail,
+  ErrorResponse,
+  SuccessResponse,
+  APIResponse,
+  ChatResponse,
+  SummaryResponse,
+} from './api'

@@ -51,10 +51,10 @@ async def test_response_conforms_to_chat_response_schema(
     """Response body contains reply, extracted, and updatedState keys."""
     with _mock_llm(reply="Hello!"):
         response = await client_async.post("/api/v1/chat", json=_build_body("Hi", sample_state))
-    body = response.json()
-    assert "reply" in body
-    assert "extracted" in body
-    assert "updatedState" in body
+    data = response.json()["data"]
+    assert "reply" in data
+    assert "extracted" in data
+    assert "updatedState" in data
 
 
 async def test_conversation_history_updated_after_turn(
@@ -65,7 +65,7 @@ async def test_conversation_history_updated_after_turn(
         response = await client_async.post(
             "/api/v1/chat", json=_build_body("User message", sample_state)
         )
-    history = response.json()["updatedState"]["conversationHistory"]
+    history = response.json()["data"]["updatedState"]["conversationHistory"]
     assert len(history) == 2
     assert history[0]["role"] == "user"
     assert history[0]["content"] == "User message"
@@ -82,7 +82,7 @@ async def test_extracted_fields_written_to_collected_data(
         response = await client_async.post(
             "/api/v1/chat", json=_build_body("I want a house", sample_state)
         )
-    m1 = response.json()["updatedState"]["collectedData"]["m1"]
+    m1 = response.json()["data"]["updatedState"]["collectedData"]["m1"]
     assert m1["propertyType"] == "house"
 
 
@@ -95,7 +95,7 @@ async def test_completion_status_updated_correctly(
         response = await client_async.post(
             "/api/v1/chat", json=_build_body("3 bed house owner-occupier", sample_state)
         )
-    assert response.json()["updatedState"]["completionStatus"]["M1"] is True
+    assert response.json()["data"]["updatedState"]["completionStatus"]["M1"] is True
 
 
 async def test_no_tool_call_returns_empty_extracted(
@@ -105,7 +105,7 @@ async def test_no_tool_call_returns_empty_extracted(
     with _mock_llm(extracted={}, reply="Just a reply"):
         response = await client_async.post("/api/v1/chat", json=_build_body("Hello", sample_state))
     assert response.status_code == 200
-    assert response.json()["extracted"] == {}
+    assert response.json()["data"]["extracted"] == {}
 
 
 async def test_empty_message_returns_422(
@@ -150,7 +150,7 @@ async def test_tool_call_parse_failure_returns_empty_extracted(
     ):
         response = await client_async.post("/api/v1/chat", json=_build_body("Hi", sample_state))
     assert response.status_code == 200
-    assert response.json()["extracted"] == {}
+    assert response.json()["data"]["extracted"] == {}
 
 
 async def test_history_accumulates_across_turns(
@@ -161,13 +161,13 @@ async def test_history_accumulates_across_turns(
         first = await client_async.post("/api/v1/chat", json=_build_body("Turn one", sample_state))
         assert first.status_code == 200
 
-        updated_state = first.json()["updatedState"]
+        updated_state = first.json()["data"]["updatedState"]
         second = await client_async.post(
             "/api/v1/chat", json={"message": "Turn two", "state": updated_state}
         )
         assert second.status_code == 200
 
-    history = second.json()["updatedState"]["conversationHistory"]
+    history = second.json()["data"]["updatedState"]["conversationHistory"]
     assert len(history) == 4
     assert history[0]["content"] == "Turn one"
     assert history[2]["content"] == "Turn two"

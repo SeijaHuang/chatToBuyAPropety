@@ -30,6 +30,7 @@ Same four principles as the backend — mandatory, enforced in code review.
 | Event handler | `handle` prefix | `handleSend`, `handleKeyDown` |
 | Domain constant object | SCREAMING_SNAKE | `MODULE_ID`, `SESSION_STATUS` |
 | Derived type from constant | PascalCase | `ModuleID`, `SessionStatus` |
+| Generic type parameter | `T` prefix + semantic name | `TData`, `TResponse`, `TItem` |
 | Environment variable | `NEXT_PUBLIC_` prefix (client) | `NEXT_PUBLIC_API_BASE_URL` |
 | CSS semantic class | lowercase-kebab | `.glass-panel`, `.ai-glow` |
 

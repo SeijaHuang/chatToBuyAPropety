@@ -10,6 +10,7 @@ from fastapi.responses import JSONResponse
 from structlog.processors import CallsiteParameter, CallsiteParameterAdder
 
 from exceptions import PropertyAIException
+from models.base import ErrorDetail, ErrorResponse
 
 
 def configure_logging() -> None:
@@ -64,13 +65,14 @@ def register_exception_handlers(app: FastAPI) -> None:
 
         return JSONResponse(
             status_code=status_code,
-            content={
-                "error": {
-                    "code": type(exc).__name__,
-                    "message": str(exc),
-                    "details": exc.details,
-                }
-            },
+            content=ErrorResponse(
+                ok=False,
+                error=ErrorDetail(
+                    code=type(exc).__name__,
+                    message=str(exc),
+                    details=exc.details,
+                ),
+            ).model_dump(mode="json", by_alias=True),
         )
 
     @app.exception_handler(RequestValidationError)
@@ -96,11 +98,12 @@ def register_exception_handlers(app: FastAPI) -> None:
         )
         return JSONResponse(
             status_code=422,
-            content={
-                "error": {
-                    "code": "RequestValidationError",
-                    "message": "Request body failed validation.",
-                    "details": {"errors": errors},
-                }
-            },
+            content=ErrorResponse(
+                ok=False,
+                error=ErrorDetail(
+                    code="RequestValidationError",
+                    message="Request body failed validation.",
+                    details={"errors": errors},
+                ),
+            ).model_dump(mode="json", by_alias=True),
         )
