@@ -37,7 +37,7 @@ Detailed standards live in `.claude/rules/` — read the relevant file before to
 | Language           | TypeScript 5 (strict mode)                      |
 | Styling            | Tailwind CSS 4 (CSS-first, `@theme` in globals) |
 | State              | Zustand 4 (client), TanStack Query 5 (P1+)      |
-| HTTP               | Axios 1 via `lib/request.ts` (never use directly) |
+| HTTP               | Axios 1 — `lib/request.ts` (transport), `services/` (domain calls) |
 | Testing            | Vitest 2 + Testing Library + MSW 2              |
 | Package manager    | pnpm                                            |
 | API base URL       | `http://localhost:8000/api/v1` (paths: `chat`, `chat/summary`, no leading `/`) |
@@ -139,6 +139,21 @@ frontend/
 │   │                              vars, @layer base (body, type scale, scrollbar, Material Symbols),
 │   │                              @layer utilities (glass-panel, glass-ai)
 │   │
+│   ├── constants/                 App-wide string constants; never use magic strings elsewhere
+│   │   ├── endpoints.ts           ENDPOINTS — API path constants (CHAT, CHAT_SUMMARY, HEALTH)
+│   │   └── errorCodes.ts          ERROR_CODE / ERROR_MESSAGE — normalised error identifiers
+│   │
+│   ├── lib/
+│   │   └── request.ts             Axios instance (baseURL, timeout, headers) + request interceptor
+│   │                              + normalizeError helper + exported request.post / request.get;
+│   │                              do not import this directly from components or hooks
+│   │
+│   ├── services/                  Domain-level API calls — one file per backend resource
+│   │   ├── index.ts               Barrel — re-exports public surface of all service files
+│   │   ├── chat.ts                postChat(message, state) → POST api/v1/chat
+│   │   └── summary.ts             postChatSummary(collectedData, sessionId, intent?)
+│   │                              → POST api/v1/chat/summary
+│   │
 │   └── types/                     All type files end with .d.ts — mirrors backend models/ layout
 │       ├── conversation.d.ts      Domain enums (MODULE_ID, SESSION_STATUS, SUBMODEL_KEY, MESSAGE_ROLE),
 │       │                          M1–M4 sub-model interfaces, CollectedData, ConversationStateDTO, UIMessage
@@ -148,7 +163,8 @@ frontend/
 │       ├── user_needs.d.ts        UserNeeds interface (mirrors backend models/user_needs.py)
 │       ├── routing.d.ts           USER_INTENT, EXECUTION_MODE, TRIGGER_SOURCE as const objects,
 │       │                          derived union types, RoutingPayload interface
-│       ├── api.d.ts               HTTP contract: ChatResponse (updatedState), SummaryResponse (summaryText)
+│       ├── api.d.ts               HTTP contract: APIResponse<TData>, ChatResponse, SummaryResponse,
+│       │                          ErrorDetail, ErrorResponse, SuccessResponse
 │       ├── global.d.ts            Ambient global type declarations
 │       └── index.d.ts             Barrel — re-exports public surface of all type files
 ```
@@ -296,7 +312,7 @@ These are non-obvious constraints that must never be violated, regardless of con
 
 8. **No magic domain strings** — any string used as a domain identifier in more than one file must be defined as an `as const` object entry. See [coding-standards.md](.claude/rules/frontend/coding-standards.md).
 
-9. **No direct axios/fetch in components** — all HTTP calls go through `lib/api.ts`. See [coding-standards.md](.claude/rules/frontend/coding-standards.md).
+9. **No direct axios/fetch in components or hooks** — all HTTP calls go through `services/`. `lib/request.ts` is internal to the service layer; do not import it outside `services/`. See [coding-standards.md](.claude/rules/frontend/coding-standards.md).
 
 10. **Theme tokens first** — colors, font sizes, and spacing must come from `globals.css` `@theme`; Tailwind built-in design values are forbidden. See [coding-standards.md](.claude/rules/frontend/coding-standards.md).
 

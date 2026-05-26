@@ -6,13 +6,20 @@ An AI-powered property-buying assistant that guides users through a structured c
 
 ## Prerequisites
 
-- Python 3.11+
+**Backend**
+- Python 3.12+
 - [uv](https://github.com/astral-sh/uv) (`pip install uv`)
 - Docker + Docker Compose (for Postgres and Redis)
+
+**Frontend**
+- Node.js 20+
+- [pnpm](https://pnpm.io) (`npm install -g pnpm`)
 
 ---
 
 ## Quick Start
+
+### Backend
 
 ```bash
 # 1. Start infrastructure
@@ -31,9 +38,28 @@ uv run uvicorn main:app --reload --port 8000
 
 API is available at `http://localhost:8000`. Interactive docs at `http://localhost:8000/docs`.
 
+### Frontend
+
+```bash
+cd frontend
+
+# 1. Install dependencies
+pnpm install
+
+# 2. Copy and populate environment variables
+cp .env.example .env.local   # set NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
+
+# 3. Run the dev server
+pnpm dev
+```
+
+App is available at `http://localhost:3000`.
+
 ---
 
 ## Environment Variables
+
+### Backend
 
 | Variable | Required | Description |
 |---|---|---|
@@ -42,6 +68,12 @@ API is available at `http://localhost:8000`. Interactive docs at `http://localho
 | `MODEL_FAST` | No | Model for intent classification (default: `anthropic/claude-haiku-4-5`) |
 | `REDIS_URL` | No | Redis connection string (default: `redis://localhost:6379`) |
 | `DATABASE_URL` | No | Postgres connection string (default: `postgresql://user:password@localhost:5432/propertyai`) |
+
+### Frontend
+
+| Variable | Required | Description |
+|---|---|---|
+| `NEXT_PUBLIC_API_BASE_URL` | Yes | Backend base URL (e.g. `http://localhost:8000`) |
 
 ---
 
@@ -57,6 +89,8 @@ API is available at `http://localhost:8000`. Interactive docs at `http://localho
 
 ## Running Tests
 
+### Backend
+
 ```bash
 cd backend
 
@@ -70,9 +104,20 @@ uv run pytest tests/test_state_machine.py
 uv run pytest tests/test_state_machine.py::test_advance_on_required_fields_collected
 ```
 
+### Frontend
+
+```bash
+cd frontend
+
+pnpm test        # vitest watch mode
+pnpm test:run    # single run
+```
+
 ---
 
 ## Linting & Type Checking
+
+### Backend
 
 ```bash
 cd backend
@@ -83,6 +128,15 @@ uv run ruff format .         # auto-fix formatting
 uv run mypy --strict .       # type check
 ```
 
+### Frontend
+
+```bash
+cd frontend
+
+pnpm lint        # ESLint
+pnpm type-check  # tsc --noEmit
+```
+
 ---
 
 ## Project Structure
@@ -91,15 +145,24 @@ uv run mypy --strict .       # type check
 backend/
 ├── main.py                          # FastAPI app + middleware setup
 ├── config.py                        # pydantic-settings config (reads .env)
-├── models/schemas.py                # All Pydantic models (single source of truth)
-├── tools/extraction_schema.py       # LLM tool definition for structured extraction
-├── conversation/
-│   ├── state_machine.py             # Module progression and state merging
-│   └── intent_router.py             # User intent classification
+├── models/                          # Pydantic DTOs and domain enums
+├── conversation/                    # State machine + intent router
+│   ├── state_machine.py
+│   └── intent_router.py
 ├── prompts/system_prompt_builder.py # All LLM system prompts
-├── services/llm_client.py           # OpenRouter async wrapper
+├── domain/                          # LLM client, borrowing capacity, budget gap
 ├── routers/chat.py                  # /chat and /chat/summary endpoints
 └── tests/
+
+frontend/
+├── src/
+│   ├── app/                         # Next.js App Router pages and layouts
+│   ├── constants/                   # Shared string constants (endpoints, error codes)
+│   ├── lib/                         # Transport layer (axios instance + request wrapper)
+│   ├── services/                    # Domain API calls (chat, summary)
+│   ├── styles/                      # Tailwind CSS v4 design tokens
+│   └── types/                       # TypeScript type declarations (.d.ts)
+└── src/__tests__/                   # Vitest tests mirroring src/ structure
 ```
 
-See `CLAUDE.md` for full coding standards and architecture details.
+See `CLAUDE.md` for full coding standards, architecture details, and invariants.

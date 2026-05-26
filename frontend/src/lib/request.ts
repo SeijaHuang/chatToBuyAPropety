@@ -1,36 +1,6 @@
-import axios, {
-  type AxiosInstance,
-  type AxiosResponse,
-  type InternalAxiosRequestConfig,
-  isAxiosError,
-} from 'axios'
-import type { ErrorResponse } from '@/types'
-
-const NETWORK_ERROR: ErrorResponse = {
-  ok: false,
-  error: { code: 'network_error', message: 'Connection failed', details: {} },
-}
-
-export class APIError extends Error {
-  readonly status: number
-  readonly response: ErrorResponse
-
-  constructor(status: number, response: ErrorResponse) {
-    super(response.error.message)
-    this.name = 'APIError'
-    this.status = status
-    this.response = response
-  }
-}
-
-function isErrorResponse(v: unknown): v is ErrorResponse {
-  if (typeof v !== 'object' || v === null) return false
-  const obj: Record<string, unknown> = v as Record<string, unknown>
-  if (obj.ok !== false) return false
-  if (typeof obj.error !== 'object' || obj.error === null) return false
-  const inner: Record<string, unknown> = obj.error as Record<string, unknown>
-  return typeof inner.code === 'string' && typeof inner.message === 'string'
-}
+import axios, { isAxiosError, type AxiosInstance, type AxiosResponse, type InternalAxiosRequestConfig } from 'axios'
+import { ERROR_CODE, ERROR_MESSAGE } from '@/constants/errorCodes'
+import type { APIResponse, ErrorDetail } from '@/types'
 
 const axiosClient: AxiosInstance = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_BASE_URL,
@@ -42,23 +12,72 @@ const axiosClient: AxiosInstance = axios.create({
 })
 
 axiosClient.interceptors.request.use(
-  (config: InternalAxiosRequestConfig): InternalAxiosRequestConfig => config,
+  (config: InternalAxiosRequestConfig): InternalAxiosRequestConfig => {
+    // @todo P1: inject auth token — config.headers.Authorization = `Bearer ${token}`
+    return config
+  }
 )
 
-axiosClient.interceptors.response.use(
-  (response: AxiosResponse): AxiosResponse => response,
-  (error: unknown): never => {
-    if (!isAxiosError(error) || !error.response) {
-      throw new APIError(0, NETWORK_ERROR)
+function normalizeError(err: unknown): ErrorDetail {
+  // Non-axios error (e.g. a thrown string, programming error)
+  if (!isAxiosError(err)) {
+    return { code: ERROR_CODE.UNKNOWN, message: ERROR_MESSAGE.UNEXPECTED, details: {} }
+  }
+
+  // No response — request never reached the server (network down, DNS, CORS preflight)
+  if (!err.response) {
+    return { code: ERROR_CODE.NETWORK, message: ERROR_MESSAGE.NETWORK, details: {} }
+  }
+
+  // Server responded but body is not our error envelope shape
+  const data: unknown = err.response.data
+  if (
+    typeof data !== 'object' ||
+    data === null ||
+    !('error' in data) ||
+    typeof (data as Record<string, unknown>).error !== 'object' ||
+    (data as Record<string, unknown>).error === null
+  ) {
+    return { code: ERROR_CODE.UNKNOWN, message: ERROR_MESSAGE.UNEXPECTED, details: {} }
+  }
+
+  // Envelope present but missing required fields (code / message / details)
+  const envelope = (data as Record<string, unknown>).error as Record<string, unknown>
+  if (
+    typeof envelope.code !== 'string' ||
+    typeof envelope.message !== 'string' ||
+    typeof envelope.details !== 'object' ||
+    envelope.details === null
+  ) {
+    return { code: ERROR_CODE.UNKNOWN, message: ERROR_MESSAGE.UNEXPECTED, details: {} }
+  }
+
+  // Well-formed backend error envelope — { error: { code, message, details } }
+  return {
+    code: envelope.code,
+    message: envelope.message,
+    details: envelope.details as Record<string, unknown>,
+  }
+}
+
+export { axiosClient }
+
+export const request = {
+  async post<TData>(url: string, data?: unknown): Promise<APIResponse<TData>> {
+    try {
+      const response: AxiosResponse<TData> = await axiosClient.post<TData>(url, data)
+      return { ok: true, data: response.data }
+    } catch (err) {
+      return { ok: false, error: normalizeError(err) }
     }
-
-    const { status, data } = error.response
-    const body: ErrorResponse = isErrorResponse(data)
-      ? data
-      : { ok: false, error: { code: 'unknown_error', message: 'An unexpected error occurred', details: {} } }
-
-    throw new APIError(status, body)
   },
-)
 
-export default axiosClient
+  async get<TData>(url: string, params?: unknown): Promise<APIResponse<TData>> {
+    try {
+      const response: AxiosResponse<TData> = await axiosClient.get<TData>(url, { params })
+      return { ok: true, data: response.data }
+    } catch (err) {
+      return { ok: false, error: normalizeError(err) }
+    }
+  },
+}
