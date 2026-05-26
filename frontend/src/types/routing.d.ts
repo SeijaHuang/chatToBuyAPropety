@@ -1,13 +1,14 @@
 import type { UserNeeds } from './user_needs'
 
 // ─── User Intent ──────────────────────────────────────────────────────────────
-// 与后端 EUserIntent (intent_router.py) 严格对齐，共 4 个值
+// 与后端 EUserIntent (intent_router.py) 严格对齐，共 5 个值
 
 export const USER_INTENT = {
-  RECOMMEND_SUBURBS: 'recommend_suburbs',
-  LIST_PROPERTIES:   'list_properties',
-  PROPERTY_DETAIL:   'property_detail',
-  OPEN_ENDED_QUERY:  'open_ended_query',
+  RECOMMEND_SUBURBS:  'recommend_suburbs',
+  LIST_PROPERTIES:    'list_properties',
+  PROPERTY_DETAIL:    'property_detail',
+  OPEN_ENDED_QUERY:   'open_ended_query',
+  COMPARE_PROPERTIES: 'compare_properties',
 } as const
 
 export type EUserIntent = typeof USER_INTENT[keyof typeof USER_INTENT]

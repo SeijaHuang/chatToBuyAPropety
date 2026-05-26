@@ -14,6 +14,7 @@ from domain.budget_gap_detector import detect_budget_gap_async
 from domain.llm_client import ILLMClient, OpenRouterClient
 from domain.user_needs_builder import build_user_needs
 from exceptions import SummaryValidationError
+from models.base import SuccessResponse
 from models.chat import ChatRequest, ChatResponse, RoutingPayload
 from models.conversation_state import (
     CollectedData,
@@ -41,7 +42,7 @@ _default_llm_client: ILLMClient = OpenRouterClient()
 async def chat_async(
     request: ChatRequest,
     llm_client: Annotated[ILLMClient, Depends(lambda: _default_llm_client)],
-) -> ChatResponse:
+) -> SuccessResponse[ChatResponse]:
     """Handle a single conversation turn and return the assistant reply.
 
     Processing order:
@@ -121,11 +122,13 @@ async def chat_async(
     routing: RoutingPayload | None = classify_intent(request.message, state, user_needs)
     log.info("chat_response_ready", has_routing=routing is not None)
 
-    return ChatResponse(
-        reply=reply,
-        extracted=extracted,
-        updated_state=state,
-        routing=routing,
+    return SuccessResponse[ChatResponse](
+        data=ChatResponse(
+            reply=reply,
+            extracted=extracted,
+            updated_state=state,
+            routing=routing,
+        )
     )
 
 
@@ -133,7 +136,7 @@ async def chat_async(
 async def chat_summary_async(
     request: SummaryRequest,
     llm_client: Annotated[ILLMClient, Depends(lambda: _default_llm_client)],
-) -> SummaryResponse:
+) -> SuccessResponse[SummaryResponse]:
     """Return a natural-language summary of all collected property requirements.
 
     Processing order:
@@ -169,4 +172,6 @@ async def chat_summary_async(
     )
     logger.info("summary_generated", summary_length=len(reply))
     user_needs: UserNeeds = build_user_needs(data, request.session_id, request.initial_intent)
-    return SummaryResponse(summary_text=reply, structured=user_needs)
+    return SuccessResponse[SummaryResponse](
+        data=SummaryResponse(summary_text=reply, structured=user_needs)
+    )

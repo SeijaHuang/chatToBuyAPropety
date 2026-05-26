@@ -99,6 +99,7 @@ class EUserIntent(StrEnum):
     LIST_PROPERTIES = "list_properties"
     PROPERTY_DETAIL = "property_detail"
     OPEN_ENDED_QUERY = "open_ended_query"
+    COMPARE_PROPERTIES = "compare_properties"
 
 
 class M1PropertyNeeds(PropertyAIBaseModel):
