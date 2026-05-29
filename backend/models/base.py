@@ -1,6 +1,6 @@
 """Shared base model for all PropertyAI API DTOs."""
 
-from typing import Generic, Literal, TypeVar
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 from pydantic.alias_generators import to_camel
@@ -20,9 +20,6 @@ class PropertyAIBaseModel(BaseModel):
     )
 
 
-TData = TypeVar("TData")
-
-
 class ErrorDetail(PropertyAIBaseModel):
     """Structured error payload carried inside ErrorResponse."""
 
@@ -38,7 +35,7 @@ class ErrorResponse(PropertyAIBaseModel):
     error: ErrorDetail
 
 
-class SuccessResponse(PropertyAIBaseModel, Generic[TData]):
+class SuccessResponse[TData](PropertyAIBaseModel):
     """Standard success envelope returned on all 2xx responses."""
 
     ok: Literal[True] = True
