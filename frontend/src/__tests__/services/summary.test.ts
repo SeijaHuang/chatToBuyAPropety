@@ -3,7 +3,7 @@ import { http, HttpResponse } from 'msw'
 import { server } from '@/__tests__/msw/server'
 import { ENDPOINTS } from '@/constants/endpoints'
 import { postChatSummary } from '@/services/summary'
-import { SUBMODEL_KEY, USER_INTENT } from '@/types'
+import { SUBMODEL_KEY, USER_INTENT } from '@/constants'
 import type { CollectedData } from '@/types'
 
 const BASE_URL = 'http://localhost:8000'
