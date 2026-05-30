@@ -10,7 +10,7 @@ import type {
   BudgetGapResult,
   MessageRole,
 } from '@/types'
-import { MESSAGE_ROLE } from '@/types'
+import { MESSAGE_ROLE } from '@/constants'
 import { createInitialState } from '@/lib/utils'
 import { STORAGE_KEY } from '@/constants/storageKeys'
 

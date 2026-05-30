@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { useConversationStore } from '@/stores/conversationStore'
-import { SESSION_STATUS, MODULE_ID } from '@/types'
+import { SESSION_STATUS, MODULE_ID } from '@/constants'
 import type { ConversationStateDTO, RoutingPayload, BorrowingCapacityResult, BudgetGapResult } from '@/types'
 import { createInitialState } from '@/lib/utils'
 import { STORAGE_KEY } from '@/constants/storageKeys'

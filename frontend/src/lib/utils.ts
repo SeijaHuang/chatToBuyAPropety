@@ -1,5 +1,12 @@
+import { clsx, type ClassValue } from 'clsx'
+import { twMerge } from 'tailwind-merge'
 import type { ConversationStateDTO, M1PropertyNeeds, M2Lifestyle, M3SuburbPreference, M4Budget, CollectedData } from '@/types'
-import { SESSION_STATUS, MODULE_ID, SUBMODEL_KEY } from '@/types'
+import { SESSION_STATUS, MODULE_ID, SUBMODEL_KEY } from '@/constants'
+
+/** Merges Tailwind classes with conflict resolution. Last class wins on conflict. */
+export function cn(...inputs: ClassValue[]): string {
+  return twMerge(clsx(inputs))
+}
 
 /** Formats an AUD integer for display. formatAUD(1200000) → '$1,200,000' */
 export function formatAUD(amount: number): string {

@@ -12,8 +12,6 @@ export type {
   UIMessage,
 } from './conversation'
 
-export { MESSAGE_ROLE, MODULE_ID, SESSION_STATUS, SUBMODEL_KEY } from './conversation'
-
 export type { BorrowingCapacityResult, BudgetGapResult } from './financial'
 
 export type { UserNeeds } from './user_needs'
@@ -25,8 +23,6 @@ export type {
   RoutingPayload,
 } from './routing'
 
-export { USER_INTENT, EXECUTION_MODE, TRIGGER_SOURCE } from './routing'
-
 export type {
   ErrorDetail,
   ErrorResponse,
@@ -35,3 +31,5 @@ export type {
   ChatResponse,
   SummaryResponse,
 } from './api'
+
+export type { ComponentSize, ComponentVariant, ComponentColor } from './ui'

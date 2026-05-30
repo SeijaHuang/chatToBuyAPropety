@@ -1,6 +1,6 @@
 import { request } from '@/lib/request'
 import { ENDPOINTS } from '@/constants/endpoints'
-import { USER_INTENT } from '@/types'
+import { USER_INTENT } from '@/constants'
 import type { APIResponse, CollectedData, EUserIntent, SummaryResponse } from '@/types'
 
 // @todo P1: getSession(sessionId: string)

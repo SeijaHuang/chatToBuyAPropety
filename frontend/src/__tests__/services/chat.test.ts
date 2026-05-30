@@ -4,7 +4,7 @@ import { server } from '@/__tests__/msw/server'
 import { ENDPOINTS } from '@/constants/endpoints'
 import { ERROR_CODE } from '@/constants/errorCodes'
 import { postChat } from '@/services/chat'
-import { MODULE_ID, SESSION_STATUS, SUBMODEL_KEY } from '@/types'
+import { MODULE_ID, SESSION_STATUS, SUBMODEL_KEY } from '@/constants'
 import type { CollectedData, ConversationStateDTO } from '@/types'
 
 const BASE_URL = 'http://localhost:8000'
