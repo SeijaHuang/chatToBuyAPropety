@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { formatAUD, createInitialState } from '@/lib/utils'
-import { SESSION_STATUS, MODULE_ID } from '@/types'
+import { SESSION_STATUS, MODULE_ID } from '@/constants'
 
 describe('utils', () => {
   describe('formatAUD', () => {

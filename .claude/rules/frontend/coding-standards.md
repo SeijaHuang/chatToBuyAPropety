@@ -38,24 +38,57 @@ Same four principles as the backend — mandatory, enforced in code review.
 
 ## TypeScript Rules
 
+### Constants vs Types — Strict Separation
+
+`src/constants/` and `src/types/` have non-overlapping responsibilities. Never mix them.
+
+| Directory | What belongs here | What does NOT belong here |
+|---|---|---|
+| `src/constants/` | `as const` runtime value objects | `type`, `interface`, derived union types |
+| `src/types/` | `type` aliases, `interface` declarations | `as const` objects, runtime values |
+
+`types/*.d.ts` files derive their types from the corresponding constants file by importing the value and using `typeof`:
+
+```ts
+// ✓ constants/conversation.ts — values only
+export const MODULE_ID = {
+  M1: 'M1_PROPERTY_NEEDS',
+  M2: 'M2_LIFESTYLE',
+} as const
+
+// ✓ types/conversation.d.ts — types only, derived from constants
+import { MODULE_ID } from '../constants/conversation'
+export type ModuleID = typeof MODULE_ID[keyof typeof MODULE_ID]
+
+// ✗ Forbidden — as const value inside a types/ file
+// types/conversation.d.ts
+export const MODULE_ID = { ... } as const   // ← wrong file
+
+// ✗ Forbidden — type alias inside a constants/ file
+// constants/conversation.ts
+export type ModuleID = ...                  // ← wrong file
+```
+
+**Import rules that follow from this:**
+- Runtime values (`MODULE_ID`, `SESSION_STATUS`, `USER_INTENT`, …) → import from `@/constants`
+- Types and interfaces (`ModuleID`, `SessionStatus`, `EUserIntent`, …) → import from `@/types`
+
+```ts
+// ✓ Correct split
+import { MODULE_ID, SESSION_STATUS } from '@/constants'
+import type { ModuleID, ConversationStateDTO } from '@/types'
+
+// ✗ Incorrect — runtime value imported from @/types
+import { MODULE_ID } from '@/types'
+```
+
 ### Domain Values — `as const` Objects (not `enum`, not bare `type` unions)
 
-Any categorical domain value reused in more than one place must be defined as an `as const` object. Raw string literals for these cases are forbidden outside the definition file.
+Any categorical domain value reused in more than one place must be defined as an `as const` object in `src/constants/`. Raw string literals for these cases are forbidden outside the definition file.
 
 This mirrors the backend's `StrEnum` approach: a single canonical source, refactor-safe, iterable.
 
 ```ts
-// ✓ Correct — single source in types/conversation.ts
-export const MODULE_ID = {
-  M1: 'M1_PROPERTY_NEEDS',
-  M2: 'M2_LIFESTYLE',
-  M3: 'M3_SUBURB_PREFERENCE',
-  M4: 'M4_BUDGET',
-  COMPLETE: 'COMPLETE',
-} as const
-
-export type ModuleID = typeof MODULE_ID[keyof typeof MODULE_ID]
-
 // Usage
 if (state.currentModule === MODULE_ID.M1) { ... }   // ✓ refactor-safe
 if (state.currentModule === 'M1_PROPERTY_NEEDS') { ... }  // ✗ magic string
@@ -65,8 +98,6 @@ export type ModuleID = 'M1_PROPERTY_NEEDS' | 'M2_LIFESTYLE' | ...
 ```
 
 TypeScript `enum` is forbidden — it has tree-shaking issues, numeric/string mixing footguns, and requires extra conversion when exchanging JSON with the backend.
-
-`as const` objects live in the type file that owns their domain (`types/conversation.ts`, `types/routing.ts`). If a value is used only within a single component or hook, it may be defined at the top of that file.
 
 ### interface vs type
 
@@ -396,6 +427,85 @@ All colors, font sizes, spacing, shadows, and any other design tokens must come 
 
 The exception for Tailwind built-ins: **layout and structural utilities** that carry no design opinion (`flex`, `grid`, `items-center`, `gap-*`, `w-full`, `overflow-hidden`, etc.) may use Tailwind defaults since they are not design tokens.
 
+### Component Variants — `tv()` from `tailwind-variants`
+
+All component variants must be defined with `tv()` from `tailwind-variants`. Variant class maps defined as plain `Record` objects inside a component function are forbidden.
+
+**Slot = any DOM node that needs its own variant classes.** `tv()` handles both single-slot and multi-slot components with one unified API.
+
+```ts
+import { tv, type VariantProps } from 'tailwind-variants'
+
+// ✓ Single-slot component — variants apply to one root node
+const button = tv({
+  base: 'inline-flex items-center justify-center font-medium transition-colors',
+  variants: {
+    size: {
+      sm: 'h-8 px-xs text-label-md',
+      md: 'h-10 px-sm text-label-lg',
+    },
+    variant: {
+      primary: 'bg-[--color-primary] text-[--color-on-primary]',
+      ghost:   'bg-transparent text-[--color-primary]',
+    },
+  },
+  defaultVariants: { size: 'md', variant: 'primary' },
+})
+
+type ButtonProps = VariantProps<typeof button> & React.ButtonHTMLAttributes<HTMLButtonElement>
+
+export function Button({ size, variant, className, ...rest }: ButtonProps) {
+  return <button className={button({ size, variant, className })} {...rest} />
+}
+```
+
+```ts
+// ✓ Multi-slot component — each slot gets its own class key
+const aiBadge = tv({
+  slots: {
+    container: 'glass-ai inline-flex items-center gap-xs rounded-full',
+    icon: 'text-[--color-tertiary-container]',
+    label: '',
+  },
+  variants: {
+    size: {
+      sm: { container: 'px-xs py-[2px]', icon: 'text-label-lg', label: 'text-label-md' },
+      md: { container: 'px-sm py-xs',    icon: 'text-body-lg',  label: 'text-label-lg' },
+    },
+  },
+  defaultVariants: { size: 'sm' },
+})
+
+type AIBadgeSize = 'sm' | 'md'
+interface AIBadgeProps { label?: string; size?: AIBadgeSize }
+
+export function AIBadge({ label = 'AI', size = 'sm' }: AIBadgeProps) {
+  const { container, icon, label: labelSlot } = aiBadge({ size })
+  return (
+    <span className={container()}>
+      <MaterialSymbol className={icon()} />
+      <span className={labelSlot()}>{label}</span>
+    </span>
+  )
+}
+```
+
+```ts
+// ✗ Forbidden — Record variant maps inside the function body
+export function AIBadge({ size = 'sm' }: AIBadgeProps) {
+  const sizeClass = { sm: 'px-xs py-[2px]', md: 'px-sm py-xs' }  // ← not allowed
+  const iconClass = { sm: 'text-label-lg',  md: 'text-body-lg'  }  // ← not allowed
+  ...
+}
+```
+
+**Placement rules:**
+- `tv()` calls are always at **module level**, never inside a component function.
+- Export the `tv()` result only when another component needs to extend it via `extend`; otherwise keep it unexported.
+- `VariantProps<typeof x>` is the canonical way to derive the Props type for variant props.
+
+---
+
 ### Class Organisation — `cn()` + Category Lines
 
 All `className` values with more than one category of utility must use the `cn()` helper from `src/lib/utils.ts` and split classes across lines by category. Never write a flat string of unrelated classes.
@@ -680,6 +790,41 @@ export function BorrowingCapacityCard({ data }: BorrowingCapacityCardProps) {
  * @param data - The borrowing capacity result.
  */
 export function BorrowingCapacityCard(...) { ... }
+```
+
+---
+
+## Ladle Stories
+
+Every new shared UI component under `src/components/` **must** ship with a co-located `.stories.tsx` file. A PR that adds a component without a story file is incomplete.
+
+**What counts as a shared UI component:** any file exported from `src/components/` (UI or container). One-off page-level fragments that are never reused are exempt.
+
+**Story file requirements:**
+- Named `<ComponentName>.stories.tsx`, co-located next to the source file.
+- Covers every meaningful variant and state: all `tv()` variant combinations, loading/disabled/error states, and any slot that changes based on props.
+- Stories use plain named exports — no default export, no args object unless interactivity is genuinely useful.
+
+```tsx
+// src/components/ui/Button.stories.tsx
+import type { Story } from '@ladle/react'
+import { Button } from './Button'
+
+export const Variants: Story = () => (
+  <div className="flex flex-wrap gap-sm">
+    <Button variant="primary">Primary</Button>
+    <Button variant="secondary">Secondary</Button>
+    <Button variant="ghost">Ghost</Button>
+    <Button variant="danger">Danger</Button>
+  </div>
+)
+
+export const Loading: Story = () => <Button loading>Saving…</Button>
+```
+
+**Running Ladle:**
+```bash
+pnpm ladle   # http://localhost:61000
 ```
 
 ---

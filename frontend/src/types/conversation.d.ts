@@ -1,42 +1,9 @@
-// ─── Message Role ─────────────────────────────────────────────────────────────
-
-export const MESSAGE_ROLE = {
-  USER:      'user',
-  ASSISTANT: 'assistant',
-} as const
+import { MESSAGE_ROLE, MODULE_ID, SESSION_STATUS, SUBMODEL_KEY } from '../constants/conversation'
+import type { BorrowingCapacityResult, BudgetGapResult } from './financial'
 
 export type MessageRole = typeof MESSAGE_ROLE[keyof typeof MESSAGE_ROLE]
-
-// ─── Module ID ────────────────────────────────────────────────────────────────
-
-export const MODULE_ID = {
-  M1: 'M1_PROPERTY_NEEDS',
-  M2: 'M2_LIFESTYLE',
-  M3: 'M3_SUBURB_PREFERENCE',
-  M4: 'M4_BUDGET',
-  COMPLETE: 'COMPLETE',
-} as const
-
-export type ModuleID = typeof MODULE_ID[keyof typeof MODULE_ID]
-
-// ─── Session Status ───────────────────────────────────────────────────────────
-
-export const SESSION_STATUS = {
-  IN_PROGRESS:           'IN_PROGRESS',
-  REQUIREMENTS_COMPLETE: 'REQUIREMENTS_COMPLETE',
-} as const
-
+export type ModuleID    = typeof MODULE_ID[keyof typeof MODULE_ID]
 export type SessionStatus = typeof SESSION_STATUS[keyof typeof SESSION_STATUS]
-
-// ─── Submodel Keys ───────────────────────────────────────────────────────────
-
-export const SUBMODEL_KEY = {
-  M1: 'm1',
-  M2: 'm2',
-  M3: 'm3',
-  M4: 'm4',
-} as const
-
 export type SubmodelKey = typeof SUBMODEL_KEY[keyof typeof SUBMODEL_KEY]
 
 // ─── Sub-model Interfaces ─────────────────────────────────────────────────────
@@ -85,13 +52,11 @@ export interface M4Budget {
 }
 
 export interface CollectedData {
-  [SUBMODEL_KEY.M1]: M1PropertyNeeds
-  [SUBMODEL_KEY.M2]: M2Lifestyle
-  [SUBMODEL_KEY.M3]: M3SuburbPreference
-  [SUBMODEL_KEY.M4]: M4Budget
+  m1: M1PropertyNeeds
+  m2: M2Lifestyle
+  m3: M3SuburbPreference
+  m4: M4Budget
 }
-
-import type { BorrowingCapacityResult, BudgetGapResult } from './financial'
 
 export type { BorrowingCapacityResult, BudgetGapResult }
 
@@ -104,9 +69,9 @@ export interface ConversationStateDTO {
   completionStatus:    { M1: boolean; M2: boolean; M3: boolean; M4: boolean }
   collectedData:       CollectedData
   conversationHistory: Array<{ role: MessageRole; content: string }>
-  finalNeeds:         CollectedData | null
-  borrowingCapacity:  BorrowingCapacityResult | null
-  budgetGap:          BudgetGapResult | null
+  finalNeeds:          CollectedData | null
+  borrowingCapacity:   BorrowingCapacityResult | null
+  budgetGap:           BudgetGapResult | null
 }
 
 // ─── UI Message (frontend-only, not sent to backend) ─────────────────────────

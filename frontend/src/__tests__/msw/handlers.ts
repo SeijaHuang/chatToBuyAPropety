@@ -1,6 +1,6 @@
 import { http, HttpResponse } from 'msw'
 import { ENDPOINTS } from '@/constants/endpoints'
-import { MODULE_ID, SESSION_STATUS, SUBMODEL_KEY, USER_INTENT } from '@/types'
+import { MODULE_ID, SESSION_STATUS, SUBMODEL_KEY, USER_INTENT } from '@/constants'
 import type { ChatResponse, SummaryResponse } from '@/types'
 
 const BASE_URL = 'http://localhost:8000'
