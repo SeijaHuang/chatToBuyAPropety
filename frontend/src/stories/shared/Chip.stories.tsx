@@ -1,5 +1,5 @@
 import type { Story } from '@ladle/react'
-import { Chip } from '../components/ui/Chip'
+import { Chip } from '@/components/shared'
 
 export const Colors: Story = () => (
   <div className="flex flex-wrap gap-sm">

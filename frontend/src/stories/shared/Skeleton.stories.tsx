@@ -1,5 +1,5 @@
 import type { Story } from '@ladle/react'
-import { SkeletonText, SkeletonMessage } from '../components/ui/Skeleton'
+import { SkeletonText, SkeletonMessage } from '@/components/shared'
 
 export const Text: Story = () => (
   <div className="flex flex-col gap-sm w-80">

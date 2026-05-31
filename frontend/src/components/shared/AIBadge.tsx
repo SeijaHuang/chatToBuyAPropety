@@ -1,5 +1,5 @@
 import { tv } from '@/lib/tv'
-import { MaterialSymbol } from '@/components/icons'
+import { MaterialSymbol } from './MaterialSymbol'
 import type { ComponentSize } from '@/types'
 
 const aiBadge = tv({

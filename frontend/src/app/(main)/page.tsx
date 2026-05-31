@@ -1,4 +1,4 @@
-import { AIBadge } from '@/components/ui'
+import { AIBadge } from '@/components/shared'
 
 export default function HomePage() {
   return <AIBadge />

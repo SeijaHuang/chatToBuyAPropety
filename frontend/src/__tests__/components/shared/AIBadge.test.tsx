@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import { describe, it, expect } from 'vitest'
-import { AIBadge } from '@/components/ui/AIBadge'
+import { AIBadge } from '@/components/shared/AIBadge'
 
 describe('AIBadge', () => {
   it('renders the auto_awesome icon text', () => {

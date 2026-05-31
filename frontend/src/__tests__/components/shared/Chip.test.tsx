@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi } from 'vitest'
-import { Chip } from '@/components/ui/Chip'
+import { Chip } from '@/components/shared/Chip'
 
 describe('Chip', () => {
   it('renders the label text', () => {

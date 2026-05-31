@@ -120,6 +120,14 @@
   /* ─── Colors: Semantic ───────────────────────────────────────────── */
   --color-success-match: #adc6ff;
   --color-warning-cut:   #93000a;
+
+  /* ─── Animations ─────────────────────────────────────────────────── */
+  --animate-typing-dot: typing-dot 1.4s ease-in-out infinite;
+}
+
+@keyframes typing-dot {
+  0%, 100% { opacity: 0.3; }
+  50%       { opacity: 1; }
 }
 
 :root {
