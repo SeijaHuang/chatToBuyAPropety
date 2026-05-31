@@ -1,6 +1,6 @@
 import { render } from '@testing-library/react'
 import { describe, it, expect } from 'vitest'
-import { SkeletonText, SkeletonMessage } from '@/components/ui/Skeleton'
+import { SkeletonText, SkeletonMessage } from '@/components/shared/Skeleton'
 
 describe('SkeletonText', () => {
   it('has animate-pulse class', () => {

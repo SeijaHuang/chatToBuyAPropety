@@ -36,9 +36,11 @@ test(intent-router): cover Chinese-language trigger keywords
 
 The following hooks run on every `git commit` in order. All must pass.
 
-1. **ruff** — format check and lint
-2. **mypy --strict** — type check
-3. **pytest** — full test suite
+1. **ruff** — format check and lint (backend only)
+2. **mypy --strict** — type check (backend only)
+3. **pytest** — full test suite (backend only)
+4. **tsc --noEmit** — type check (frontend only, runs when `frontend/` files change)
+5. **vitest run** — unit test suite (frontend only, runs when `frontend/` files change)
 
 Install: `uv run pre-commit install`
 

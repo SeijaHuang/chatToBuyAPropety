@@ -23,3 +23,17 @@ repos:
         language: system
         pass_filenames: false
         always_run: true
+
+      - id: frontend-typecheck
+        name: frontend type-check
+        entry: pnpm --dir frontend type-check
+        language: system
+        files: ^frontend/
+        pass_filenames: false
+
+      - id: frontend-test
+        name: frontend unit tests
+        entry: pnpm --dir frontend test:run
+        language: system
+        files: ^frontend/
+        pass_filenames: false

@@ -1,5 +1,5 @@
 import type { Story } from '@ladle/react'
-import { AIBadge } from '../components/ui/AIBadge'
+import { AIBadge } from '@/components/shared'
 
 export const Small: Story = () => <AIBadge size="sm" />
 Small.storyName = 'Small (default)'

@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi } from 'vitest'
-import { Button } from '@/components/ui/Button'
+import { Button } from '@/components/shared/Button'
 
 describe('Button', () => {
   it('renders with primary variant classes', () => {

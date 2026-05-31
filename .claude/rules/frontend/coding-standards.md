@@ -12,6 +12,7 @@ Same four principles as the backend — mandatory, enforced in code review.
 - **Open/Closed** — extend behaviour by composing new components or hooks, not by modifying existing ones.
 - **DRY** — if the same logic appears more than once, extract it to a shared hook or utility before merging.
 - **KISS** — prefer the simplest correct implementation. Three similar JSX lines are better than a premature abstraction.
+- **Shared UI First** — before writing any new UI element (button, input, badge, chip, skeleton…), check `src/components/shared/` first. Use the existing component; do not re-implement it inline. Only create a new component when no existing one can satisfy the requirement, even with props or a `className` override.
 
 ---
 
@@ -216,7 +217,7 @@ Every component must be either a **UI component** or a **Container component** �
 | Responsibility | Render only — layout, styling, ARIA | Fetch data, call hooks, own business logic |
 | Props | Receives all data and callbacks as props | May call hooks directly; passes data down to UI |
 | Side effects | None | Allowed (`useEffect`, store reads, API calls) |
-| Location | `src/components/ui/` | `src/components/` (or co-located with the page) |
+| Location | `src/components/shared/` | `src/components/` (or co-located with the page) |
 | Testability | Render with props alone | Tested via hook + MSW, or integration test |
 
 ```ts
@@ -796,19 +797,23 @@ export function BorrowingCapacityCard(...) { ... }
 
 ## Ladle Stories
 
-Every new shared UI component under `src/components/` **must** ship with a co-located `.stories.tsx` file. A PR that adds a component without a story file is incomplete.
+Every new shared UI component under `src/components/` **must** ship with a `.stories.tsx` file. A PR that adds a component without a story file is incomplete.
 
 **What counts as a shared UI component:** any file exported from `src/components/` (UI or container). One-off page-level fragments that are never reused are exempt.
 
+**Story file location:** centralised under `src/stories/`, in a subdirectory that mirrors the component's location:
+- `src/components/shared/` → `src/stories/shared/<ComponentName>.stories.tsx`
+- `src/components/<Domain>/` → `src/stories/<ComponentName>.stories.tsx` (flat, no subdirectory)
+
 **Story file requirements:**
-- Named `<ComponentName>.stories.tsx`, co-located next to the source file.
+- Named `<ComponentName>.stories.tsx`, placed in the matching `src/stories/` subdirectory (see above).
 - Covers every meaningful variant and state: all `tv()` variant combinations, loading/disabled/error states, and any slot that changes based on props.
 - Stories use plain named exports — no default export, no args object unless interactivity is genuinely useful.
 
 ```tsx
-// src/components/ui/Button.stories.tsx
+// src/stories/shared/Button.stories.tsx
 import type { Story } from '@ladle/react'
-import { Button } from './Button'
+import { Button } from '@/components/shared'
 
 export const Variants: Story = () => (
   <div className="flex flex-wrap gap-sm">

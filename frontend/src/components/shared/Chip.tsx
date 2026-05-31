@@ -1,7 +1,7 @@
 'use client'
 
 import { tv } from '@/lib/tv'
-import { MaterialSymbol } from '@/components/icons'
+import { MaterialSymbol } from './MaterialSymbol'
 import type { ComponentColor } from '@/types'
 
 const chip = tv({

@@ -1,5 +1,5 @@
 import type { Story } from '@ladle/react'
-import { Button } from '../components/ui/Button'
+import { Button } from '@/components/shared'
 
 export const Variants: Story = () => (
   <div className="flex flex-wrap gap-sm">

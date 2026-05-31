@@ -148,6 +148,30 @@ frontend/
 │   │                              + normalizeError helper + exported request.post / request.get;
 │   │                              do not import this directly from components or hooks
 │   │
+│   ├── components/                UI and feature components
+│   │   ├── index.ts               Barrel — re-exports domain components (ChatInput, ChatMessage, …)
+│   │   ├── shared/                Generic UI atoms — no store reads, no hooks, no side effects
+│   │   │   ├── index.ts           Barrel — Button, Chip, AIBadge, Skeleton*, MaterialSymbol, TypingIndicator
+│   │   │   ├── Button.tsx         Multi-variant button with optional icon and loading spinner
+│   │   │   ├── Chip.tsx           Label chip with optional icon and remove button
+│   │   │   ├── AIBadge.tsx        Glass badge with AI icon; sizes sm | md
+│   │   │   ├── Skeleton.tsx       SkeletonText and SkeletonMessage loading placeholders
+│   │   │   ├── MaterialSymbol.tsx Thin wrapper for Material Symbols icon font
+│   │   │   └── TypingIndicator.tsx Three-dot animated typing indicator
+│   │   ├── ChatInput/             Textarea + send button; fires onSend(trimmedMessage)
+│   │   ├── ChatMessage/           Renders user / assistant message bubble; embeds result cards
+│   │   ├── ModuleProgress/        Sticky step-progress bar (M1→M4); ModuleStep is internal
+│   │   ├── BorrowingCapacityCard/ Displays BorrowingCapacityResult; disclaimer always rendered
+│   │   └── BudgetGapCard/         Displays BudgetGapResult; returns null when has_gap is false
+│   │
+│   ├── stories/                   Ladle stories — mirrors component structure
+│   │   ├── shared/                Stories for src/components/shared/* (one file per component)
+│   │   ├── BorrowingCapacityCard.stories.tsx
+│   │   ├── BudgetGapCard.stories.tsx
+│   │   ├── ChatInput.stories.tsx
+│   │   ├── ChatMessage.stories.tsx
+│   │   └── ModuleProgress.stories.tsx
+│   │
 │   ├── services/                  Domain-level API calls — one file per backend resource
 │   │   ├── index.ts               Barrel — re-exports public surface of all service files
 │   │   ├── chat.ts                postChat(message, state) → POST api/v1/chat
