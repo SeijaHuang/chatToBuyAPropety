@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import { describe, it, expect } from 'vitest'
-import { BorrowingCapacityCard } from '@/components/chat/BorrowingCapacityCard'
+import { BorrowingCapacityCard } from '@/components/BorrowingCapacityCard'
 import type { BorrowingCapacityResult } from '@/types'
 
 const SAMPLE_BORROWING: BorrowingCapacityResult = {
