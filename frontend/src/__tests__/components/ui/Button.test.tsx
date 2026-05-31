@@ -57,18 +57,18 @@ describe('Button', () => {
   it('renders sm size classes', () => {
     render(<Button size="sm">Click</Button>)
     const btn = screen.getByRole('button')
-    expect(btn.className).toContain('h-8')
+    expect(btn.className).toContain('h-sm')
   })
 
   it('renders md size classes', () => {
     render(<Button size="md">Click</Button>)
     const btn = screen.getByRole('button')
-    expect(btn.className).toContain('h-10')
+    expect(btn.className).toContain('h-md')
   })
 
   it('renders lg size classes', () => {
     render(<Button size="lg">Click</Button>)
     const btn = screen.getByRole('button')
-    expect(btn.className).toContain('h-12')
+    expect(btn.className).toContain('h-lg')
   })
 })
