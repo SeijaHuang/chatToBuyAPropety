@@ -6,7 +6,7 @@
 | ------------ | -------------------------- |
 | Version      | v0.1                       |
 | Status       | Living Document — 持续更新 |
-| Scope        | Part 1                     |
+| Scope        | Part 1 — P1-A（匿名会话） |
 | Last Updated | 11 Jun 2026                |
 
 > **说明**：本文档记录 PropertyAI 所有缓存相关的技术决策与取舍理由。涵盖 Session 状态缓存、数据库渐进快照、Agent 结果缓存、LLM Prompt Cache 等。是 `PropertyAI_Technical_Thinking.md` 中 §2–4 的专项展开。
@@ -20,7 +20,7 @@
 3. [PostgreSQL 渐进快照](#3-postgresql-渐进快照)
 4. [Budget Gap Price Cache（唯一外部 API 缓存）](#4-budget-gap-price-cache唯一外部-api-缓存)
 5. [Anthropic Prompt Cache](#5-anthropic-prompt-cache)
-6. [P0 / P1 实施路线](#6-p0--p1-实施路线)
+6. [P0 / P1-A 实施路线](#6-p0--p1-a-实施路线)
 
 ---
 
@@ -105,6 +105,19 @@ Session 状态缓存解决两个问题：
 两条路径都不需要 `POST /session`：新对话由前端 `uuid()` 生成 sessionId，旧对话的 sessionId 已存在于 localStorage。
 
 ### 2.3 前端恢复优先级
+
+**P1 没有用户账户，"用户"等价于"持有这个 `session_id` 的浏览器"。**
+
+`session_id` 由前端 `uuid()` 生成，保存在浏览器 `localStorage`，URL 路径 `/chat/[sessionId]` 决定展示哪个对话，后端凭 `session:{sessionId}` 从 Redis 取状态。Redis 里的 `ConversationStateDTO` 不含 `userId` 字段，跨设备识别同一用户要等 P2 引入用户账户（届时通过独立的 `user_sessions` 关联表映射 `user_id → session_id`）。
+
+**不同场景下的恢复能力：**
+
+| 场景 | 结果 |
+| ---- | ---- |
+| 同一浏览器、同一标签页刷新 | 从 sessionStorage 恢复 ✅ |
+| 换标签页 / 关闭重开 | 从 Redis 恢复 ✅ |
+| 换设备 | 历史列表在 localStorage，换设备丢失 ❌（P2 才解决） |
+| Redis TTL 过期（7 天不活跃） | 提示"对话已过期"，无法恢复 |
 
 页面加载时按以下顺序尝试恢复（在 `ChatSessionPage` 的 `useEffect` 中）：
 
@@ -334,7 +347,7 @@ background_tasks.add_task(db_archive.upsert_session_snapshot_async, state)
 
 ```sql
 CREATE TABLE IF NOT EXISTS sessions (
-    session_id         TEXT        PRIMARY KEY,
+    session_id         UUID        PRIMARY KEY,
     status             TEXT        NOT NULL DEFAULT 'IN_PROGRESS',
     schema_version     TEXT        NOT NULL DEFAULT '1.1',
     initial_intent     TEXT,
@@ -400,7 +413,7 @@ P1 只有一张表：`sessions`。
 
 | 字段                 | 类型        | 可空 | 说明                                    |
 | -------------------- | ----------- | ---- | --------------------------------------- |
-| `session_id`         | TEXT        | ❌   | UUID，主键                              |
+| `session_id`         | UUID        | ❌   | UUID v4，主键                           |
 | `status`             | TEXT        | ❌   | `IN_PROGRESS` / `REQUIREMENTS_COMPLETE` |
 | `schema_version`     | TEXT        | ❌   | 当前固定 `'1.1'`                        |
 | `initial_intent`     | TEXT        | ✅   | M1 完成后首次写入                       |
@@ -543,7 +556,7 @@ llm_client = HttpxOpenRouterClient()
 
 ---
 
-## 6 P0 / P1 实施路线
+## 6 P0 / P1-A 实施路线
 
 ### P0 — 当前已实现
 
@@ -554,7 +567,7 @@ llm_client = HttpxOpenRouterClient()
 
 换标签页、换设备、刷新浏览器（清缓存）会丢失对话进度——这是 P1 要解决的问题。
 
-### P1 — 待实现（本文档覆盖范围）
+### P1-A — 待实现（本文档覆盖范围，匿名会话）
 
 | 功能                     | 详见 | 说明                                                                                     |
 | ------------------------ | ---- | ---------------------------------------------------------------------------------------- |
@@ -564,4 +577,12 @@ llm_client = HttpxOpenRouterClient()
 | Budget Gap Price Cache   | §4   | `price:{suburb}:{type}:{beds}`，24小时固定 TTL                                           |
 | Anthropic Prompt Cache   | §5   | 静态 prompt 段加 `cache_control`，通过 httpx 实现                                        |
 | 流式响应（SSE）          | —    | 文字实时流式，`updated_state` 作为末尾 event（见 `PropertyAI_Technical_Thinking.md` §1） |
-| Session 历史列表 API     | —    | 随用户账户模块一起实现                                                                   |
+
+### P1-B / P2 — 暂不实现（留存理由）
+
+| 功能 | P1-A 不做的理由 | 触发条件 |
+| ---- | --------------- | -------- |
+| **用户账户 / 认证（P1-B）** | P1-A 是匿名会话，"用户"等价于"持有 session_id 的浏览器"，无需身份体系；引入账户会增加注册/登录流程，超出当前 MVP 范围 | 需要跨设备同步对话历史、用户画像持久化、或用户主动管理历史会话时实现 |
+| **SESSION_SECRET_KEY（P1-B）** | P1-A 的 session_id 是 UUID v4（122 位随机熵），本身不可猜测，无需额外签名；无用户账户则无需防止 A 访问 B 的数据 | P1-B 引入 JWT 认证后，`SESSION_SECRET_KEY` 用于签发 token，保护会话端点 |
+| **Session 历史列表（P1-B）** | 需要用户 ID 作为 key（`user:{user_id}:sessions`），P1-A 无用户账户，无法关联 | P1-B 实现用户注册/登录后，同步建立 Redis ZSET 历史索引 |
+| **Request Signature（P2）** | P1-A 是匿名会话，没有用户身份可证明；`session_id` 本身是 122 位随机 UUID，充当 secret，猜中概率为 2⁻¹²²，暴力枚举不可行；session 里存的是房产偏好，敏感度低，signature 的保护收益远小于引入成本 | P2 引入用户账户后，需要防止用户 A 读取用户 B 的会话；届时在 HTTP 请求头加 `Authorization: Bearer <JWT>`，JWT 含 `user_id`，后端校验 `session.user_id == jwt.user_id`，而不是给 `session_id` 本身加 HMAC |
