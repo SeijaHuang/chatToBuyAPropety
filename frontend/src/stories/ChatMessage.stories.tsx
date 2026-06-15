@@ -44,7 +44,7 @@ export const AssistantLoading: Story = () => (
   </div>
 )
 
-export const WithBorrowingCapacity: Story = () => (
+export const WithBorrowingCapacityCard: Story = () => (
   <div className="p-md max-w-2xl">
     <ChatMessage
       role="assistant"
@@ -54,7 +54,7 @@ export const WithBorrowingCapacity: Story = () => (
   </div>
 )
 
-export const WithBudgetGap: Story = () => (
+export const WithBudgetGapCard: Story = () => (
   <div className="p-md max-w-2xl">
     <ChatMessage
       role="assistant"

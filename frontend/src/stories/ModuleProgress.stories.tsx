@@ -9,17 +9,17 @@ export const AllPending: Story = () => (
   />
 )
 
-export const M1Current: Story = () => (
-  <ModuleProgress
-    completionStatus={{ M1: false, M2: false, M3: false, M4: false }}
-    currentModule={MODULE_ID.M1}
-  />
-)
-
-export const M1Complete_M2Current: Story = () => (
+export const FirstComplete: Story = () => (
   <ModuleProgress
     completionStatus={{ M1: true, M2: false, M3: false, M4: false }}
     currentModule={MODULE_ID.M2}
+  />
+)
+
+export const HalfComplete: Story = () => (
+  <ModuleProgress
+    completionStatus={{ M1: true, M2: true, M3: false, M4: false }}
+    currentModule={MODULE_ID.M3}
   />
 )
 

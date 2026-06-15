@@ -1,5 +1,6 @@
 'use client'
 
+import React from 'react'
 import { cn, formatAUD } from '@/lib/utils'
 import { MaterialSymbol } from '@/components/shared'
 import type { BorrowingCapacityResult } from '@/types'
@@ -31,6 +32,10 @@ export function BorrowingCapacityCard({ data }: BorrowingCapacityCardProps): Rea
         <span>{data.annual_rate.toFixed(2)}% p.a.</span>
         <span>{data.loan_term_years} years</span>
       </div>
+
+      <p className="text-caption text-on-surface-variant">
+        Source: {data.rate_source}
+      </p>
 
       <p className="text-caption text-on-surface-variant">
         {data.disclaimer}

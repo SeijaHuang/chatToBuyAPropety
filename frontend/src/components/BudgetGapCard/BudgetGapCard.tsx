@@ -1,5 +1,6 @@
 'use client'
 
+import React from 'react'
 import { cn, formatAUD } from '@/lib/utils'
 import { MaterialSymbol, Chip } from '@/components/shared'
 import type { BudgetGapResult } from '@/types'

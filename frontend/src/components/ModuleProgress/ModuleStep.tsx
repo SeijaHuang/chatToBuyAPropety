@@ -32,13 +32,13 @@ const moduleStep = tv({
 
 export type StepStatus = 'completed' | 'active' | 'pending'
 
-export interface StepProps {
+export interface ModuleStepProps {
   label: string
   step: number
   status: StepStatus
 }
 
-export function ModuleStep({ label, step, status }: StepProps): React.ReactElement {
+export function ModuleStep({ label, step, status }: ModuleStepProps): React.ReactElement {
   const { root, circle, icon: iconSlot, label: labelSlot } = moduleStep({ status })
 
   return (
