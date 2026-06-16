@@ -1470,6 +1470,22 @@ POST /chat  {session_id, message}
        └─ 8. Return ChatResponse
 ```
 
+### 21.3.1 新 Session 自动创建
+
+`/chat` 的第 1 步 Redis GET 返回 `None`（key 不存在或 TTL 已过期）时，**自动使用请求中的 `session_id` 创建新的 `ConversationStateDTO`**，不返回 404，不需要额外的 `POST /session` 初始化端点。
+
+**原因：** 与 P0 行为一致（前端 P0 自己初始化 state）；前端只需生成 UUID v4 直接发送第一条消息；`session_id` 由前端生成，唯一性已有保证。
+
+```python
+# routers/chat.py（伪代码）
+state: ConversationStateDTO | None = await redis_client.load_session_async(request.session_id)
+if state is None:
+    state = ConversationStateDTO(session_id=request.session_id)
+    # 首次写入 Redis，设置完整 TTL
+```
+
+---
+
 ### 21.4 P1 接口变更
 
 ```python
@@ -1847,13 +1863,15 @@ backend/
 │   └── intent_router.py
 ├── prompts/
 │   └── system_prompt_builder.py
-├── services/
+├── domain/
 │   ├── llm_client.py
 │   ├── borrowing_capacity.py       # S-G（P0新增）
 │   ├── budget_gap_detector.py      # S-H（P0新增）
-│   └── redis_client.py             # P1新增：Redis 连接管理
-├── session/
-│   └── _redis_store.py             # P1新增：ISessionStore Redis 实现（§21）
+│   ├── user_needs_builder.py       # P0新增
+│   └── redis/                      # P1新增：Redis 子包
+│       ├── client.py               # 连接管理（connect/close/ping + raw get/setex）
+│       ├── session_store.py        # ISessionStore Protocol + RedisSessionStore
+│       └── price_cache.py          # RedisPriceCache（Domain API 中位价，24h TTL）
 ├── routers/
 │   ├── chat.py
 │   └── session.py                  # P1新增：GET /session/{session_id}（§21.5）

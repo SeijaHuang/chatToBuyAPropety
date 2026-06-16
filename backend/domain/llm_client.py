@@ -58,7 +58,7 @@ class OpenRouterClient(ILLMClient):
     def __init__(self) -> None:
         self._client = AsyncOpenAI(
             api_key=settings.openrouter_api_key,
-            # base_url=settings.llm_base_url,
+            base_url=settings.llm_base_url,
         )
 
     async def chat_with_tools_async(
