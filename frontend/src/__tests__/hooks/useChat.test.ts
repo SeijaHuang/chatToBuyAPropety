@@ -61,10 +61,13 @@ describe('useChat', () => {
     expect(storeState?.sessionId).toBe('test-session')
   })
 
-  it('appends error assistant message when API returns a non-ok response', async () => {
+  it('sets errorMessage and does not add error text to messages on non-ok response', async () => {
     server.use(
       http.post(`${BASE_URL}/${ENDPOINTS.CHAT}`, () =>
-        HttpResponse.json({ error: { code: 'INTERNAL', message: 'fail' } }, { status: 500 })
+        HttpResponse.json(
+          { error: { code: 'INTERNAL', message: 'fail', details: {} } },
+          { status: 500 }
+        )
       )
     )
 
@@ -74,9 +77,11 @@ describe('useChat', () => {
       await result.current.sendMessage('hello')
     })
 
+    expect(result.current.errorMessage).toBe('Something went wrong. Please try again.')
     const messages = useConversationStore.getState().messages
-    const errorMsg = messages.find((m) => m.role === 'assistant')
-    expect(errorMsg?.content).toBe('Sorry, something went wrong. Please try again.')
+    expect(
+      messages.every((m) => m.content !== 'Sorry, something went wrong. Please try again.')
+    ).toBe(true)
   })
 
   it('sets isLoading true during request, false after', async () => {
@@ -117,5 +122,112 @@ describe('useChat', () => {
     })
 
     expect(useConversationStore.getState().messages).toHaveLength(0)
+  })
+
+  it('does nothing when content is empty string', async () => {
+    const { result } = renderHook(() => useChat())
+
+    await act(async () => {
+      await result.current.sendMessage('')
+    })
+
+    expect(useConversationStore.getState().messages).toHaveLength(0)
+  })
+
+  it('does nothing when content is only whitespace', async () => {
+    const { result } = renderHook(() => useChat())
+
+    await act(async () => {
+      await result.current.sendMessage('   ')
+    })
+
+    expect(useConversationStore.getState().messages).toHaveLength(0)
+  })
+
+  it('shows assistant loading bubble before response arrives', async () => {
+    const { result } = renderHook(() => useChat())
+    const loadingStates: boolean[] = []
+
+    act(() => {
+      void result.current.sendMessage('hello')
+      loadingStates.push(useConversationStore.getState().messages.some((m) => m.isLoading))
+    })
+
+    await act(async () => {})
+
+    expect(loadingStates.some(Boolean)).toBe(true)
+  })
+
+  it('sets errorMessage on 503 response', async () => {
+    server.use(
+      http.post(`${BASE_URL}/${ENDPOINTS.CHAT}`, () =>
+        HttpResponse.json(
+          { error: { code: 'LLM_SERVICE_UNAVAILABLE', message: 'fail', details: {} } },
+          { status: 503 }
+        )
+      )
+    )
+
+    const { result } = renderHook(() => useChat())
+
+    await act(async () => {
+      await result.current.sendMessage('hello')
+    })
+
+    expect(result.current.errorMessage).toMatch(/unavailable/i)
+  })
+
+  it('sets errorMessage on network error', async () => {
+    server.use(
+      http.post(`${BASE_URL}/${ENDPOINTS.CHAT}`, () => HttpResponse.error())
+    )
+
+    const { result } = renderHook(() => useChat())
+
+    await act(async () => {
+      await result.current.sendMessage('hello')
+    })
+
+    expect(result.current.errorMessage).toBeTruthy()
+  })
+
+  it('sets routing when response contains routing', async () => {
+    server.use(
+      http.post(`${BASE_URL}/${ENDPOINTS.CHAT}`, () =>
+        HttpResponse.json({
+          reply: 'done',
+          extracted: {},
+          updatedState: createInitialState('test-session'),
+          routing: { intent: 'list_properties', session_id: 'test-session' },
+        })
+      )
+    )
+
+    const { result } = renderHook(() => useChat())
+
+    await act(async () => {
+      await result.current.sendMessage('hello')
+    })
+
+    expect(useConversationStore.getState().routing?.intent).toBe('list_properties')
+  })
+
+  it('clears loading state in finally even on error', async () => {
+    server.use(
+      http.post(`${BASE_URL}/${ENDPOINTS.CHAT}`, () =>
+        HttpResponse.json(
+          { error: { code: 'INTERNAL', message: 'fail', details: {} } },
+          { status: 500 }
+        )
+      )
+    )
+
+    const { result } = renderHook(() => useChat())
+
+    await act(async () => {
+      await result.current.sendMessage('hello')
+    })
+
+    expect(useConversationStore.getState().isLoading).toBe(false)
   })
 })
