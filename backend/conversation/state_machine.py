@@ -194,30 +194,3 @@ def merge_extracted_fields(
         state.status = EStatus.REQUIREMENTS_COMPLETE
 
     return state
-
-
-async def load_state_async(session_id: str) -> ConversationStateDTO:
-    """Load conversation state from Redis. Not implemented in P0.
-
-    Args:
-        session_id: The unique session identifier.
-
-    Returns:
-        The deserialised ConversationStateDTO for the session.
-
-    Raises:
-        NotImplementedError: Always — Redis persistence is a P1 feature.
-    """
-    raise NotImplementedError("Redis persistence is a P1 feature.")
-
-
-async def save_state_async(state: ConversationStateDTO) -> None:
-    """Persist conversation state to Redis. Not implemented in P0.
-
-    Args:
-        state: The conversation state to serialise and store.
-
-    Raises:
-        NotImplementedError: Always — Redis persistence is a P1 feature.
-    """
-    raise NotImplementedError("Redis persistence is a P1 feature.")

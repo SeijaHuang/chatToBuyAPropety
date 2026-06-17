@@ -1,21 +1,22 @@
 # PropertyAI — Part 1 Conversation Layer
+
 ## Technical PRD v1.1
 
-| Field | Value |
-|-------|-------|
-| Version | v1.2 |
-| Status | **Completed — P0 implemented and verified** |
-| Parent Document | PropertyAI PRD v1.1 |
-| Scope | Part 1 Conversation Layer — P0 + P1 |
-| Last Updated | 19 May 2026 |
+| Field           | Value                                       |
+| --------------- | ------------------------------------------- |
+| Version         | v1.2                                        |
+| Status          | **Completed — P0 implemented and verified** |
+| Parent Document | PropertyAI PRD v1.1                         |
+| Scope           | Part 1 Conversation Layer — P0 + P1         |
+| Last Updated    | 19 May 2026                                 |
 
 ### Changelog
 
-| Version | Date | Changes |
-|---------|------|---------|
-| v1.0 | 3 May 2026 | 初始版本：S-A 至 S-F，P0 主链路 |
-| v1.1 | 10 May 2026 | 新增 P0 补充章节（10–15）；新增 P1 章节（20–26）；数据库设计独立成文 |
-| v1.2 | 19 May 2026 | P0 实现完成；新增 §17 Implementation Decisions，记录与原始规格的确认偏差 |
+| Version | Date        | Changes                                                                  |
+| ------- | ----------- | ------------------------------------------------------------------------ |
+| v1.0    | 3 May 2026  | 初始版本：S-A 至 S-F，P0 主链路                                          |
+| v1.1    | 10 May 2026 | 新增 P0 补充章节（10–15）；新增 P1 章节（20–26）；数据库设计独立成文     |
+| v1.2    | 19 May 2026 | P0 实现完成；新增 §17 Implementation Decisions，记录与原始规格的确认偏差 |
 
 ---
 
@@ -50,15 +51,17 @@
 16. [Part 2 Interface Contract](#16-part-2-interface-contract)
 17. [Implementation Decisions](#17-implementation-decisions)
 
-**P1 章节（v1.1 新增）**
+**P1-A 章节（匿名会话，v1.1 新增）**
 
-20. [P1 Scope](#20-p1-scope)
+20. [P1-A / P1-B Scope](#20-p1-a--p1-b-scope)
 21. [Redis Session Persistence](#21-redis-session-persistence)
 22. [SSE Streaming Response](#22-sse-streaming-response)
-23. [User Authentication](#23-user-authentication)
-24. [P1 Environment Variables](#24-p1-environment-variables)
-25. [P1 Non-Functional Requirements](#25-p1-non-functional-requirements)
-26. [P1 Deployment Notes](#26-p1-deployment-notes)
+23. [P1-B Scope — User Accounts](#23-p1-b-scope--user-accounts)
+24. [PostgreSQL Progressive Snapshot](#24-postgresql-progressive-snapshot)
+25. [Budget Gap Price Cache](#25-budget-gap-price-cache)
+26. [P1-A Environment Variables](#26-p1-a-environment-variables)
+27. [P1-A Non-Functional Requirements](#27-p1-a-non-functional-requirements)
+28. [P1-A Deployment Notes](#28-p1-a-deployment-notes)
 
 ---
 
@@ -157,16 +160,16 @@ Control: module_complete (required), next_question, user_intent (required)
 
 #### Acceptance Criteria
 
-| ID | Criterion |
-|----|-----------|
-| SA-1 | Schema can be serialised by `json.dumps()` without error |
-| SA-2 | `name` field value is strictly equal to `"extract_requirements"` |
-| SA-3 | `module_complete` and `user_intent` are present in the `required` list |
-| SA-4 | All M1–M4 fields are absent from the `required` list |
-| SA-5 | `property_type` enum values match PRD exactly: `["house","townhouse","unit","apartment","villa","any"]` |
+| ID   | Criterion                                                                                                         |
+| ---- | ----------------------------------------------------------------------------------------------------------------- |
+| SA-1 | Schema can be serialised by `json.dumps()` without error                                                          |
+| SA-2 | `name` field value is strictly equal to `"extract_requirements"`                                                  |
+| SA-3 | `module_complete` and `user_intent` are present in the `required` list                                            |
+| SA-4 | All M1–M4 fields are absent from the `required` list                                                              |
+| SA-5 | `property_type` enum values match PRD exactly: `["house","townhouse","unit","apartment","villa","any"]`           |
 | SA-6 | `user_intent` enum values match PRD exactly: `["answering","asking_question","changing_topic","confused","done"]` |
-| SA-7 | `commute_mode` enum values match PRD exactly: `["train","car","tram","bus","any"]` |
-| SA-8 | `preferred_suburbs` and `excluded_suburbs` have type `array` with items of type `string` |
+| SA-7 | `commute_mode` enum values match PRD exactly: `["train","car","tram","bus","any"]`                                |
+| SA-8 | `preferred_suburbs` and `excluded_suburbs` have type `array` with items of type `string`                          |
 
 #### Unit Tests
 
@@ -201,12 +204,12 @@ backend/conversation/state_machine.py
 
 **Module completion rules (minimum required fields):**
 
-| Module | Required Fields | Special Rule |
-|--------|----------------|--------------|
-| M1 | `property_type` + `min_bedrooms` + `intended_use` | All three must be non-None |
-| M2 | `household_size` + `has_children` | If `intended_use == "investment"`, also requires `target_tenant` |
-| M3 | `commute_destination` + `commute_max_mins` | Both must be non-None |
-| M4 | `budget_max` | Must be non-None |
+| Module | Required Fields                                   | Special Rule                                                     |
+| ------ | ------------------------------------------------- | ---------------------------------------------------------------- |
+| M1     | `property_type` + `min_bedrooms` + `intended_use` | All three must be non-None                                       |
+| M2     | `household_size` + `has_children`                 | If `intended_use == "investment"`, also requires `target_tenant` |
+| M3     | `commute_destination` + `commute_max_mins`        | Both must be non-None                                            |
+| M4     | `budget_max`                                      | Must be non-None                                                 |
 
 **`current_module` progression rule:**
 
@@ -222,18 +225,18 @@ Existing non-None field values must not be overwritten by incoming None values. 
 
 #### Acceptance Criteria
 
-| ID | Criterion |
-|----|-----------|
-| SB-1 | When all M1 required fields are populated, `is_module_complete(M1, data)` returns `True` |
-| SB-2 | When any M1 required field is None, returns `False` |
-| SB-3 | When `intended_use == "investment"` and `target_tenant` is None, M2 returns `False` |
-| SB-4 | When `intended_use == "owner_occupier"`, M2 does not require `target_tenant` |
-| SB-5 | When M1 is incomplete, `get_current_module()` returns `M1_PROPERTY_NEEDS` |
-| SB-6 | When M1 is complete and M2 is incomplete, returns `M2_LIFESTYLE` |
-| SB-7 | When all four modules are complete, returns `COMPLETE` |
-| SB-8 | When user provides M3 fields during M1 stage, `merge_extracted_fields()` correctly writes to `collectedData.m3` without error |
-| SB-9 | After merge, `completionStatus` is immediately recalculated and correctly reflects each module's state |
-| SB-10 | Existing non-None field values are not overwritten by incoming None values |
+| ID    | Criterion                                                                                                                     |
+| ----- | ----------------------------------------------------------------------------------------------------------------------------- |
+| SB-1  | When all M1 required fields are populated, `is_module_complete(M1, data)` returns `True`                                      |
+| SB-2  | When any M1 required field is None, returns `False`                                                                           |
+| SB-3  | When `intended_use == "investment"` and `target_tenant` is None, M2 returns `False`                                           |
+| SB-4  | When `intended_use == "owner_occupier"`, M2 does not require `target_tenant`                                                  |
+| SB-5  | When M1 is incomplete, `get_current_module()` returns `M1_PROPERTY_NEEDS`                                                     |
+| SB-6  | When M1 is complete and M2 is incomplete, returns `M2_LIFESTYLE`                                                              |
+| SB-7  | When all four modules are complete, returns `COMPLETE`                                                                        |
+| SB-8  | When user provides M3 fields during M1 stage, `merge_extracted_fields()` correctly writes to `collectedData.m3` without error |
+| SB-9  | After merge, `completionStatus` is immediately recalculated and correctly reflects each module's state                        |
+| SB-10 | Existing non-None field values are not overwritten by incoming None values                                                    |
 
 #### Unit Tests
 
@@ -313,16 +316,16 @@ Rule 6 — Role identity: transparent explanation of AI assistant boundaries
 
 #### Acceptance Criteria
 
-| ID | Criterion |
-|----|-----------|
-| SC-1 | Output contains all four sections in correct order |
-| SC-2 | `current_module` correctly reflects the current incomplete module |
-| SC-3 | `collected_summary` contains fields that have values; fields not yet collected do not appear |
-| SC-4 | When M1 is incomplete, Section 3 is not present in the output |
-| SC-5 | When M1 is complete and `intended_use == "investment"`, Section 3 contains tenant-related guidance |
+| ID   | Criterion                                                                                                  |
+| ---- | ---------------------------------------------------------------------------------------------------------- |
+| SC-1 | Output contains all four sections in correct order                                                         |
+| SC-2 | `current_module` correctly reflects the current incomplete module                                          |
+| SC-3 | `collected_summary` contains fields that have values; fields not yet collected do not appear               |
+| SC-4 | When M1 is incomplete, Section 3 is not present in the output                                              |
+| SC-5 | When M1 is complete and `intended_use == "investment"`, Section 3 contains tenant-related guidance         |
 | SC-6 | When M1 is complete and `intended_use == "owner_occupier"`, Section 3 contains family/school zone guidance |
-| SC-7 | All six guardrail rules appear in the output |
-| SC-8 | Output is a non-empty string with no errors raised |
+| SC-7 | All six guardrail rules appear in the output                                                               |
+| SC-8 | Output is a non-empty string with no errors raised                                                         |
 
 #### Unit Tests
 
@@ -386,35 +389,35 @@ class ChatResponse(BaseModel):
 
 **LLM call configuration:**
 
-| Parameter | Value |
-|-----------|-------|
-| Model | `MODEL_STRONG` (`anthropic/claude-sonnet-4-5`, overridable via env var) |
-| Temperature | 0.7 |
-| Max tokens | 1000 |
-| Tools | `[EXTRACT_REQUIREMENTS_TOOL]` |
-| Tool choice | `"auto"` |
+| Parameter   | Value                                                                   |
+| ----------- | ----------------------------------------------------------------------- |
+| Model       | `MODEL_STRONG` (`anthropic/claude-sonnet-4-5`, overridable via env var) |
+| Temperature | 0.7                                                                     |
+| Max tokens  | 1000                                                                    |
+| Tools       | `[EXTRACT_REQUIREMENTS_TOOL]`                                           |
+| Tool choice | `"auto"`                                                                |
 
 **Error handling:**
 
-| Scenario | Response |
-|----------|----------|
-| `message` is empty string | HTTP 422 |
-| OpenRouter call fails | HTTP 503 with clear error message |
-| LLM returns no tool_call | `extracted: {}`, flow continues without error |
+| Scenario                  | Response                                      |
+| ------------------------- | --------------------------------------------- |
+| `message` is empty string | HTTP 422                                      |
+| OpenRouter call fails     | HTTP 503 with clear error message             |
+| LLM returns no tool_call  | `extracted: {}`, flow continues without error |
 
 #### Acceptance Criteria
 
-| ID | Criterion |
-|----|-----------|
-| SD-1 | Valid request returns HTTP 200 with response conforming to `ChatResponse` schema |
+| ID   | Criterion                                                                                             |
+| ---- | ----------------------------------------------------------------------------------------------------- |
+| SD-1 | Valid request returns HTTP 200 with response conforming to `ChatResponse` schema                      |
 | SD-2 | `updated_state.conversationHistory` contains both the user message and assistant reply from this turn |
-| SD-3 | `extracted` contains fields extracted by the LLM; is `{}` when nothing is extracted |
-| SD-4 | `updated_state.collectedData` contains fields extracted in this turn |
-| SD-5 | `updated_state.completionStatus` correctly reflects the latest completion state |
-| SD-6 | When LLM returns no tool_call, `extracted` is `{}` and the flow does not raise an error |
-| SD-7 | When `message` is an empty string, returns HTTP 422 |
-| SD-8 | When OpenRouter call fails, returns HTTP 503 with a clear error message |
-| SD-9 | Across multiple turns, `conversationHistory` accumulates correctly and is not reset |
+| SD-3 | `extracted` contains fields extracted by the LLM; is `{}` when nothing is extracted                   |
+| SD-4 | `updated_state.collectedData` contains fields extracted in this turn                                  |
+| SD-5 | `updated_state.completionStatus` correctly reflects the latest completion state                       |
+| SD-6 | When LLM returns no tool_call, `extracted` is `{}` and the flow does not raise an error               |
+| SD-7 | When `message` is an empty string, returns HTTP 422                                                   |
+| SD-8 | When OpenRouter call fails, returns HTTP 503 with a clear error message                               |
+| SD-9 | Across multiple turns, `conversationHistory` accumulates correctly and is not reset                   |
 
 #### Integration Tests
 
@@ -455,12 +458,12 @@ backend/conversation/intent_router.py
 
 **Intent classification rules:**
 
-| Intent | Trigger Condition |
-|--------|------------------|
+| Intent              | Trigger Condition                                      |
+| ------------------- | ------------------------------------------------------ |
 | `recommend_suburbs` | Contains "suburb", "area", "recommend", "推荐", "区域" |
-| `list_properties` | Contains "property", "listing", "find", "找房", "房源" |
-| `property_detail` | Message contains a specific address or property_id |
-| `open_ended_query` | All other cases where `all_complete` is True |
+| `list_properties`   | Contains "property", "listing", "find", "找房", "房源" |
+| `property_detail`   | Message contains a specific address or property_id     |
+| `open_ended_query`  | All other cases where `all_complete` is True           |
 
 **`RoutingPayload` definition:**
 
@@ -474,15 +477,15 @@ class RoutingPayload:
 
 #### Acceptance Criteria
 
-| ID | Criterion |
-|----|-----------|
-| SE-1 | When `all_complete == False` and message contains no trigger keywords, returns `None` |
-| SE-2 | When `all_complete == True`, returns a non-None `RoutingPayload` |
-| SE-3 | When message contains "recommend", `intent == "recommend_suburbs"` |
-| SE-4 | When message contains a specific address, `intent == "property_detail"` |
+| ID   | Criterion                                                                                      |
+| ---- | ---------------------------------------------------------------------------------------------- |
+| SE-1 | When `all_complete == False` and message contains no trigger keywords, returns `None`          |
+| SE-2 | When `all_complete == True`, returns a non-None `RoutingPayload`                               |
+| SE-3 | When message contains "recommend", `intent == "recommend_suburbs"`                             |
+| SE-4 | When message contains a specific address, `intent == "property_detail"`                        |
 | SE-5 | When `all_complete == True` and no explicit intent is detected, `intent == "open_ended_query"` |
-| SE-6 | `RoutingPayload.collected_data` equals the current `collectedData` |
-| SE-7 | `RoutingPayload.session_id` equals the current `sessionId` |
+| SE-6 | `RoutingPayload.collected_data` equals the current `collectedData`                             |
+| SE-7 | `RoutingPayload.session_id` equals the current `sessionId`                                     |
 
 #### Unit Tests
 
@@ -537,14 +540,14 @@ Response:
 
 #### Acceptance Criteria
 
-| ID | Criterion |
-|----|-----------|
-| SF-1 | Valid request returns HTTP 200 with `summary_text` as a non-empty string |
-| SF-2 | `summary_text` contains the value of `budget_max` (if non-None) |
-| SF-3 | `summary_text` contains the value of `property_type` (if non-None) |
-| SF-4 | `summary_text` contains the value of `commute_destination` (if non-None) |
+| ID   | Criterion                                                                 |
+| ---- | ------------------------------------------------------------------------- |
+| SF-1 | Valid request returns HTTP 200 with `summary_text` as a non-empty string  |
+| SF-2 | `summary_text` contains the value of `budget_max` (if non-None)           |
+| SF-3 | `summary_text` contains the value of `property_type` (if non-None)        |
+| SF-4 | `summary_text` contains the value of `commute_destination` (if non-None)  |
 | SF-5 | `structured` field equals the input `collected_data` without modification |
-| SF-6 | When all fields are None, returns HTTP 422 |
+| SF-6 | When all fields are None, returns HTTP 422                                |
 
 #### Integration Tests
 
@@ -690,30 +693,44 @@ class RoutingPayload:
 
 ## 5. Database Schema
 
+> P1 maintains a single `sessions` table. The `users` table and `user_id` foreign key are P2 features; they will be added as additive column additions at that point without modifying this schema.
+>
+> `session_id` uses PostgreSQL's native `UUID` type. The frontend generates the value as a UUID v4 string; PostgreSQL accepts and stores it as a 16-byte native UUID (more efficient than `TEXT` at 36 bytes, with built-in format validation).
+
 ```sql
-CREATE TABLE users (
-    user_id     UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
-    email       VARCHAR(255) UNIQUE,
-    browser_fp  VARCHAR(255),
-    created_at  TIMESTAMPTZ  NOT NULL DEFAULT now()
+CREATE TABLE IF NOT EXISTS sessions (
+    session_id         UUID        PRIMARY KEY,
+    status             TEXT        NOT NULL DEFAULT 'IN_PROGRESS',
+    schema_version     TEXT        NOT NULL DEFAULT '1.1',
+    initial_intent     TEXT,
+    collected_data     JSONB       NOT NULL,
+    final_needs        JSONB,
+    borrowing_capacity JSONB,
+    created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    completed_at       TIMESTAMPTZ
 );
 
-CREATE TABLE sessions (
-    session_id           UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id              UUID         REFERENCES users(user_id),
-    status               VARCHAR(50)  NOT NULL DEFAULT 'IN_PROGRESS',
-    current_module       VARCHAR(50)  NOT NULL DEFAULT 'M1_PROPERTY_NEEDS',
-    completion_status    JSONB        NOT NULL DEFAULT '{}',
-    collected_data       JSONB        NOT NULL DEFAULT '{}',
-    conversation_history JSONB        NOT NULL DEFAULT '[]',
-    final_needs          JSONB,
-    created_at           TIMESTAMPTZ  NOT NULL DEFAULT now(),
-    last_active_at       TIMESTAMPTZ  NOT NULL DEFAULT now(),
-    completed_at         TIMESTAMPTZ
-);
-
-CREATE INDEX idx_sessions_user_id ON sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_sessions_status
+    ON sessions (status);
+CREATE INDEX IF NOT EXISTS idx_sessions_updated_at
+    ON sessions (updated_at DESC);
 ```
+
+| Column               | Type        | Nullable | Description                                                                                  |
+| -------------------- | ----------- | -------- | -------------------------------------------------------------------------------------------- |
+| `session_id`         | UUID        | No       | UUID v4 generated by the frontend; primary key                                               |
+| `status`             | TEXT        | No       | `IN_PROGRESS` / `REQUIREMENTS_COMPLETE`                                                      |
+| `schema_version`     | TEXT        | No       | Fixed at `'1.1'` for current schema                                                          |
+| `initial_intent`     | TEXT        | Yes      | Written on first M1 completion                                                               |
+| `collected_data`     | JSONB       | No       | Cumulative snapshot of all collected fields across M1–M4                                     |
+| `final_needs`        | JSONB       | Yes      | Full `UserNeeds` written after M4 completion                                                 |
+| `borrowing_capacity` | JSONB       | Yes      | Borrowing capacity estimate written after M4 completion                                      |
+| `created_at`         | TIMESTAMPTZ | No       | Auto-set on first insert                                                                     |
+| `updated_at`         | TIMESTAMPTZ | No       | Updated on every upsert                                                                      |
+| `completed_at`       | TIMESTAMPTZ | Yes      | Set when `status` transitions to `REQUIREMENTS_COMPLETE`; used for completion-rate analytics |
+
+**Not persisted to the database:** `conversation_history` (large unbounded text, not structured business data) and `budget_gap` (derived value — its inputs are already in `collected_data` and can be recomputed on demand). Full write rules are specified in §27.
 
 ---
 
@@ -811,27 +828,27 @@ async def test_full_conversation_e2e():
 
 ### 7.4 Test Coverage Target
 
-| Layer | Target Coverage |
-|-------|----------------|
-| `models/schemas.py` | 100% |
-| `tools/extraction_schema.py` | 100% |
-| `conversation/state_machine.py` | 100% |
-| `conversation/intent_router.py` | 100% |
-| `prompts/system_prompt_builder.py` | 100% |
-| `routers/chat.py` | ≥ 80% |
-| `services/llm_client.py` | ≥ 80% |
+| Layer                              | Target Coverage |
+| ---------------------------------- | --------------- |
+| `models/schemas.py`                | 100%            |
+| `tools/extraction_schema.py`       | 100%            |
+| `conversation/state_machine.py`    | 100%            |
+| `conversation/intent_router.py`    | 100%            |
+| `prompts/system_prompt_builder.py` | 100%            |
+| `routers/chat.py`                  | ≥ 80%           |
+| `services/llm_client.py`           | ≥ 80%           |
 
 ---
 
 ## 8. Environment Variables
 
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `OPENROUTER_API_KEY` | Yes | — | OpenRouter API key |
-| `MODEL_STRONG` | No | `anthropic/claude-sonnet-4-5` | Model for conversation turns |
-| `MODEL_FAST` | No | `anthropic/claude-haiku-4-5` | Model for lightweight extraction |
-| `STANDARD_VARIABLE_RATE` | No | `6.30` | Fallback 年利率（%），RBA F5 不可用时使用（S-G） |
-| `DEFAULT_LOAN_TERM` | No | `30` | 默认贷款年限（年）（S-G） |
+| Variable                 | Required | Default                       | Description                                      |
+| ------------------------ | -------- | ----------------------------- | ------------------------------------------------ |
+| `OPENROUTER_API_KEY`     | Yes      | —                             | OpenRouter API key                               |
+| `MODEL_STRONG`           | No       | `anthropic/claude-sonnet-4-5` | Model for conversation turns                     |
+| `MODEL_FAST`             | No       | `anthropic/claude-haiku-4-5`  | Model for lightweight extraction                 |
+| `STANDARD_VARIABLE_RATE` | No       | `6.30`                        | Fallback 年利率（%），RBA F5 不可用时使用（S-G） |
+| `DEFAULT_LOAN_TERM`      | No       | `30`                          | 默认贷款年限（年）（S-G）                        |
 
 ---
 
@@ -839,15 +856,15 @@ async def test_full_conversation_e2e():
 
 The P0 implementation is considered complete when all of the following are satisfied:
 
-| ID | Criterion |
-|----|-----------|
-| E2E-1 | After completing the four-module conversation, `status == "REQUIREMENTS_COMPLETE"` |
-| E2E-2 | `collectedData` contains all required fields from all four modules with correct values |
+| ID    | Criterion                                                                                           |
+| ----- | --------------------------------------------------------------------------------------------------- |
+| E2E-1 | After completing the four-module conversation, `status == "REQUIREMENTS_COMPLETE"`                  |
+| E2E-2 | `collectedData` contains all required fields from all four modules with correct values              |
 | E2E-3 | Budget information volunteered by the user during M1 stage is correctly saved to `collectedData.m4` |
-| E2E-4 | `POST /chat/summary` returns a summary covering budget, property type, commute, and lifestyle |
-| E2E-5 | `ChatResponse.routing` is non-None after `all_complete` is triggered |
-| E2E-6 | All unit tests pass (0 failures) |
-| E2E-7 | All integration tests pass (0 failures) |
+| E2E-4 | `POST /chat/summary` returns a summary covering budget, property type, commute, and lifestyle       |
+| E2E-5 | `ChatResponse.routing` is non-None after `all_complete` is triggered                                |
+| E2E-6 | All unit tests pass (0 failures)                                                                    |
+| E2E-7 | All integration tests pass (0 failures)                                                             |
 
 ---
 
@@ -974,24 +991,24 @@ loan_term_years: Optional[int] = None  # 用户期望的贷款年限（年）
 
 以下变量补充至 §8 / §24：
 
-| 变量 | 默认值 | 说明 |
-|------|--------|------|
+| 变量                     | 默认值 | 说明                                      |
+| ------------------------ | ------ | ----------------------------------------- |
 | `STANDARD_VARIABLE_RATE` | `6.30` | Fallback 年利率（%），RBA F5 不可用时使用 |
-| `DEFAULT_LOAN_TERM` | `30` | 默认贷款年限（年） |
+| `DEFAULT_LOAN_TERM`      | `30`   | 默认贷款年限（年）                        |
 
 原有变量 `BORROWING_CAPACITY_DTI`（默认值 `0.28`）保持不变。
 
 ### Acceptance Criteria
 
-| ID | Criterion |
-|----|-----------|
+| ID   | Criterion                                                                                                    |
+| ---- | ------------------------------------------------------------------------------------------------------------ |
 | SG-1 | 单人税前 $100,000 → `estimated_capacity` 在 **$230,000–$270,000** 区间（基于 F5 约 6.30%、30 年期、28% DTI） |
-| SG-2 | 双人合计税前 $200,000 → `estimated_capacity` 约为单人的 2 倍 |
-| SG-3 | `pre_tax_salary` 为 None 时，函数返回 None，不抛出异常 |
-| SG-4 | `disclaimer` 为非空字符串，且包含实际使用的利率数值和贷款年限 |
-| SG-5 | `estimated_capacity` 四舍五入至最近 $10,000 |
-| SG-6 | RBA F5 fetch 失败时，`rate_source` 包含"暂时不可用"字样，函数仍返回有效结果 |
-| SG-7 | 传入 `loan_term_years=25` 时，`estimated_capacity` 低于同薪资 `loan_term_years=30` 的结果 |
+| SG-2 | 双人合计税前 $200,000 → `estimated_capacity` 约为单人的 2 倍                                                 |
+| SG-3 | `pre_tax_salary` 为 None 时，函数返回 None，不抛出异常                                                       |
+| SG-4 | `disclaimer` 为非空字符串，且包含实际使用的利率数值和贷款年限                                                |
+| SG-5 | `estimated_capacity` 四舍五入至最近 $10,000                                                                  |
+| SG-6 | RBA F5 fetch 失败时，`rate_source` 包含"暂时不可用"字样，函数仍返回有效结果                                  |
+| SG-7 | 传入 `loan_term_years=25` 时，`estimated_capacity` 低于同薪资 `loan_term_years=30` 的结果                    |
 
 ### Unit Tests
 
@@ -1024,6 +1041,7 @@ backend/services/budget_gap_detector.py
 ### Specification
 
 **触发条件（同时满足）：**
+
 1. `budget_max` 非 None
 2. `preferred_suburbs` 非空 OR `commute_destination` 已填写
 
@@ -1066,12 +1084,12 @@ class BudgetGapResult:
 
 ### Acceptance Criteria
 
-| ID | Criterion |
-|----|-----------|
-| SH-1 | 缺口 > 15% 时，`has_gap` 为 True |
-| SH-2 | 缺口 ≤ 15% 时，`has_gap` 为 False，不注入提示 |
-| SH-3 | Domain API 调用失败时，返回 None，不阻断主流程 |
-| SH-4 | `suggested_actions` 列表始终包含至少 2 个选项 |
+| ID   | Criterion                                                     |
+| ---- | ------------------------------------------------------------- |
+| SH-1 | 缺口 > 15% 时，`has_gap` 为 True                              |
+| SH-2 | 缺口 ≤ 15% 时，`has_gap` 为 False，不注入提示                 |
+| SH-3 | Domain API 调用失败时，返回 None，不阻断主流程                |
+| SH-4 | `suggested_actions` 列表始终包含至少 2 个选项                 |
 | SH-5 | 注入内容存在时，系统提示 Section 2 包含 "Budget Gap Detected" |
 
 ### Unit Tests
@@ -1116,11 +1134,11 @@ class UserNeeds(BaseModel):
 
 ### P0 Endpoints
 
-| Method | Path | Story | Description |
-|--------|------|-------|-------------|
-| `POST` | `/chat` | S-D | 发送消息，返回 AI 回复 + 状态更新 |
-| `POST` | `/chat/summary` | S-F | 生成自然语言需求摘要 |
-| `GET` | `/health` | — | 健康检查 |
+| Method | Path            | Story | Description                       |
+| ------ | --------------- | ----- | --------------------------------- |
+| `POST` | `/chat`         | S-D   | 发送消息，返回 AI 回复 + 状态更新 |
+| `POST` | `/chat/summary` | S-F   | 生成自然语言需求摘要              |
+| `GET`  | `/health`       | —     | 健康检查                          |
 
 ### P0 Request / Response（完整定义）
 
@@ -1155,12 +1173,12 @@ class SummaryResponse(BaseModel):
 
 ### 14.1 HTTP 错误码
 
-| HTTP Code | 场景 | 返回格式 |
-|-----------|------|---------|
-| `400` | 请求参数格式错误（非验证错误） | `{"error": "bad_request", "detail": "..."}` |
-| `422` | Pydantic 验证失败（空 message、空 collected_data） | FastAPI 默认格式 |
-| `429` | OpenRouter 速率限制 | `{"error": "rate_limited", "retry_after": 2}` |
-| `503` | OpenRouter 调用失败 / 超时 | `{"error": "llm_unavailable", "detail": "..."}` |
+| HTTP Code | 场景                                               | 返回格式                                        |
+| --------- | -------------------------------------------------- | ----------------------------------------------- |
+| `400`     | 请求参数格式错误（非验证错误）                     | `{"error": "bad_request", "detail": "..."}`     |
+| `422`     | Pydantic 验证失败（空 message、空 collected_data） | FastAPI 默认格式                                |
+| `429`     | OpenRouter 速率限制                                | `{"error": "rate_limited", "retry_after": 2}`   |
+| `503`     | OpenRouter 调用失败 / 超时                         | `{"error": "llm_unavailable", "detail": "..."}` |
 
 ### 14.2 LLM 调用降级策略
 
@@ -1191,14 +1209,14 @@ except (JSONDecodeError, ValidationError) as e:
 tests/test_guardrail_rules.py
 ```
 
-| 测试名称 | 对应规则 | 触发输入 | 期望行为 |
-|---------|---------|---------|---------|
-| `test_rule1_no_direct_recommendation` | Rule 1 | "你推荐我买哪个房子？" | 系统提示含 Rule 1 约束；回复不含直接推荐 |
-| `test_rule2_market_data_with_followup` | Rule 2 | "Hawthorn 三房中位价是多少？" | 系统提示含 Rule 2 约束；回复含数据 + 跟进问题 |
-| `test_rule3_budget_gap_flagged` | Rule 3 | budget=$500k，Hawthorn 3br | 系统提示注入 Budget Gap；回复含缺口告知 |
-| `test_rule4_legal_redirected` | Rule 4 | "这份合同有没有问题？" | 系统提示含 Rule 4 约束；回复含转介专业人士 |
-| `test_rule5_no_investment_prediction` | Rule 5 | "这个区域会涨价吗？" | 系统提示含 Rule 5 约束；回复含 ASIC 免责声明 |
-| `test_rule6_identity_transparent` | Rule 6 | "你是真正的买家代理吗？" | 系统提示含 Rule 6 约束；回复含 AI 助手身份说明 |
+| 测试名称                               | 对应规则 | 触发输入                      | 期望行为                                       |
+| -------------------------------------- | -------- | ----------------------------- | ---------------------------------------------- |
+| `test_rule1_no_direct_recommendation`  | Rule 1   | "你推荐我买哪个房子？"        | 系统提示含 Rule 1 约束；回复不含直接推荐       |
+| `test_rule2_market_data_with_followup` | Rule 2   | "Hawthorn 三房中位价是多少？" | 系统提示含 Rule 2 约束；回复含数据 + 跟进问题  |
+| `test_rule3_budget_gap_flagged`        | Rule 3   | budget=$500k，Hawthorn 3br    | 系统提示注入 Budget Gap；回复含缺口告知        |
+| `test_rule4_legal_redirected`          | Rule 4   | "这份合同有没有问题？"        | 系统提示含 Rule 4 约束；回复含转介专业人士     |
+| `test_rule5_no_investment_prediction`  | Rule 5   | "这个区域会涨价吗？"          | 系统提示含 Rule 5 约束；回复含 ASIC 免责声明   |
+| `test_rule6_identity_transparent`      | Rule 6   | "你是真正的买家代理吗？"      | 系统提示含 Rule 6 约束；回复含 AI 助手身份说明 |
 
 ---
 
@@ -1208,18 +1226,19 @@ tests/test_guardrail_rules.py
 
 ### 16.1 触发时机
 
-| 触发方式 | 条件 |
-|---------|------|
-| 自动触发 | `all_complete == True` 且 `user_intent` 为 `"done"` 或 `"answering"` |
+| 触发方式   | 条件                                                                       |
+| ---------- | -------------------------------------------------------------------------- |
+| 自动触发   | `all_complete == True` 且 `user_intent` 为 `"done"` 或 `"answering"`       |
 | 关键词触发 | 用户消息含意图关键词（见 S-E），即便未完成所有模块也可触发（携带部分数据） |
-| 手动触发 | 用户点击前端"查看推荐"→ 前端调用 `POST /chat/trigger-routing` |
+| 手动触发   | 用户点击前端"查看推荐"→ 前端调用 `POST /chat/trigger-routing`              |
 
 ### 16.2 传递方式
 
-| 阶段 | 传递方式 |
-|------|---------|
-| P0 | `ChatResponse.routing` 内嵌 `RoutingPayload`，前端负责转发给 Part 2 API |
-| P1 | Part 1 完成后写入 Redis key `routing:{session_id}`，Part 2 直接读取 |
+| 阶段  | 传递方式                                                                                                                                         |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| P0    | `ChatResponse.routing` 内嵌 `RoutingPayload`，前端负责转发给 Part 2 API                                                                         |
+| P1-A  | `ChatResponse.routing` 继续内嵌（供前端判断触发条件）；`UserNeeds` 同时写入 PostgreSQL `sessions.final_needs`，Part 2 直接查库，无需前端转发数据 |
+| P2    | Part 2 按需决定缓存策略；`routing:{session_id}` Redis key 不在 P1-A 实现范围内                                                                   |
 
 ### 16.3 RoutingPayload 完整定义（v1.1 更新）
 
@@ -1239,13 +1258,13 @@ class RoutingPayload:
 
 ### 16.4 agents_hint 映射表
 
-| Intent | Mode | agents_hint |
-|--------|------|-------------|
-| `recommend_suburbs` | `code_driven` | `["suburb_agent", "price_agent"]` |
-| `list_properties` | `code_driven` | `["suburb_agent", "price_agent"]` |
-| `property_detail` | `code_driven` | `["overlay_agent", "school_agent", "building_agent", "price_agent", "neighbourhood_agent", "transport_agent"]` |
-| `compare_properties` | `code_driven` | `["price_agent", "overlay_agent", "school_agent", "building_agent", "neighbourhood_agent", "transport_agent"]` |
-| `open_ended_query` | `agentic_loop` | `[]`（LLM 自主决定） |
+| Intent               | Mode           | agents_hint                                                                                                    |
+| -------------------- | -------------- | -------------------------------------------------------------------------------------------------------------- |
+| `recommend_suburbs`  | `code_driven`  | `["suburb_agent", "price_agent"]`                                                                              |
+| `list_properties`    | `code_driven`  | `["suburb_agent", "price_agent"]`                                                                              |
+| `property_detail`    | `code_driven`  | `["overlay_agent", "school_agent", "building_agent", "price_agent", "neighbourhood_agent", "transport_agent"]` |
+| `compare_properties` | `code_driven`  | `["price_agent", "overlay_agent", "school_agent", "building_agent", "neighbourhood_agent", "transport_agent"]` |
+| `open_ended_query`   | `agentic_loop` | `[]`（LLM 自主决定）                                                                                           |
 
 ---
 
@@ -1293,6 +1312,7 @@ class RoutingPayload:
 ### 17.4 RoutingPayload 采用 §16.3 定义（原 §3 S-E）
 
 **原始规格（§3 S-E）：**
+
 ```python
 @dataclass
 class RoutingPayload:
@@ -1302,6 +1322,7 @@ class RoutingPayload:
 ```
 
 **实际实现（§16.3）：**
+
 ```python
 class RoutingPayload:
     intent: EUserIntent
@@ -1335,6 +1356,7 @@ class RoutingPayload:
 **原始规格：** §4 的 `ConversationStateDTO` 不包含 `borrowing_capacity` 和 `budget_gap`。
 
 **实际实现：** 新增两个可选字段：
+
 ```python
 borrowing_capacity: BorrowingCapacityResult | None = None
 budget_gap: BudgetGapResult | None = None
@@ -1360,25 +1382,46 @@ budget_gap: BudgetGapResult | None = None
 
 ---
 
-## 20. P1 Scope
+## 20. P1-A / P1-B Scope
 
-### 20.1 P1 In Scope
+### 20.1 P1-A In Scope（匿名会话，当前实现）
 
-| 功能 | 优先级 | 依赖 | 说明 |
-|------|--------|------|------|
-| Redis 会话持久化 | 高 | Redis 容器 | 替换前端持有状态；支持会话跨设备恢复 |
-| SSE 流式响应 | 中 | FastAPI EventSourceResponse | 改善首字延迟，目标 < 1s 首 token |
-| 用户认证 | 中 | — | MVP 用 browser_fp；正式版接邮箱 / OAuth |
-| 用户画像持久化 | 中 | P1 数据库设计 | 跨 session 保存 CollectedData，新 session 预填 |
-| Session 历史列表 | 中 | Redis + PostgreSQL | 类 Claude.ai 对话历史，含自动生成 title |
-| Prompt Cache | 低 | httpx 或 Anthropic SDK | 系统提示静态部分 cache，降低 token 成本 |
+| 功能                   | 优先级 | 依赖                        | 说明                                                              |
+| ---------------------- | ------ | --------------------------- | ----------------------------------------------------------------- |
+| Redis 会话持久化       | 高     | Redis 容器                  | 替换前端持有状态；支持会话跨标签/服务端重启恢复；见 §21           |
+| PostgreSQL 渐进快照    | 高     | PostgreSQL 容器             | M1→M4 每模块完成时异步 upsert，防 Redis TTL 过期数据丢失；见 §24  |
+| Budget Gap Price Cache | 高     | Redis                       | Domain API 郊区中位价缓存 24h，避免重复调用；见 §25               |
+| SSE 流式响应           | 中     | FastAPI EventSourceResponse | 改善首字延迟，目标 < 1s 首 token                                  |
+| Prompt Cache           | 低     | httpx 或 Anthropic SDK      | 系统提示静态部分 cache，降低 token 成本                           |
 
-### 20.2 P1 Out of Scope
+### 20.2 P1-A Out of Scope
 
+以下功能 P1-A **不实现**，推迟至 P1-B 或 P2：
+
+- **用户账户 / 认证**：无注册、登录、JWT；"用户"等价于"持有 session_id 的浏览器"
+- **SESSION_SECRET_KEY**：无需签名，P1-A session_id 为不可猜的 UUID v4
+- **browser_fp（浏览器指纹）**：无匿名身份绑定，ChatRequest 只含 `session_id` + `message`
+- **用户画像持久化**：跨 session 预填 CollectedData 需要用户身份，P1-A 不支持
+- **Session 历史列表**：类 Claude.ai 对话历史，需用户账户关联，P1-B 实现
+- **Redis `routing:{session_id}` key**：Part 2 直接查 PostgreSQL `sessions.final_needs`；见 §16.2
+- **DELETE /session 端点**：Redis TTL 自然过期，无需主动删除
 - Crime Agent、Development Agent 等 Phase 2 agents
 - 多城市扩展（Sydney、Brisbane）
-- 报告导出 PDF
-- 浏览器插件
+- 报告导出 PDF / 浏览器插件
+
+### 20.3 P1-B Scope（规划中，不在当前 PRD 范围）
+
+P1-B 在 P1-A 基础上引入用户账户体系，主要包含：
+
+| 功能             | 说明                                              |
+| ---------------- | ------------------------------------------------- |
+| 用户注册 / 登录  | 邮箱 + 密码或 OAuth（Google）                     |
+| JWT 认证         | `SESSION_SECRET_KEY` 签发 token，保护会话端点     |
+| 用户画像持久化   | 跨 session 保存 CollectedData，新 session 预填    |
+| Session 历史列表 | `user:{user_id}:sessions` ZSET + 自动生成 title   |
+| 匿名 → 账户迁移  | 注册时将现有 session_id 绑定至新账户              |
+
+> P1-B 设计文档待另立，本 PRD 不展开。
 
 ---
 
@@ -1388,21 +1431,29 @@ budget_gap: BudgetGapResult | None = None
 
 ### 21.1 P0 vs P1 状态存储对比
 
-| 维度 | P0（前端持有） | P1（Redis 持久化） |
-|------|--------------|------------------|
-| 存储位置 | 前端 `useState` | Redis `session:{session_id}` |
-| 跨标签/设备 | 不支持 | 支持 |
-| 服务端重启后 | 丢失 | 保留（TTL 7 天） |
-| 接口变化 | `state` 随请求传入 | 服务端按 session_id 自动加载 |
-| 并发安全 | 前端单线程安全 | 需 Redis 原子操作（WATCH + MULTI） |
+| 维度         | P0（前端持有）     | P1（Redis 持久化）                 |
+| ------------ | ------------------ | ---------------------------------- |
+| 存储位置     | 前端 `useState`    | Redis `session:{session_id}`       |
+| 跨标签/设备  | 不支持             | 支持                               |
+| 服务端重启后 | 丢失               | 保留（TTL 7 天）                   |
+| 接口变化     | `state` 随请求传入 | 服务端按 session_id 自动加载       |
+| 并发安全     | 前端单线程安全     | 需 Redis 原子操作（WATCH + MULTI） |
 
 ### 21.2 Redis Key Schema
 
+P1 中 Redis 存两类数据，前缀不重叠、互不干扰：
+
+| Key 前缀   | 类型               | 用途                            | TTL 策略                     |
+| ---------- | ------------------ | ------------------------------- | ---------------------------- |
+| `session:` | Session Store      | `ConversationStateDTO` 工作内存 | 滑动窗口，7 天，每次写入重置 |
+| `price:`   | Agent Result Cache | Domain API 郊区中位价           | 固定过期，24 小时            |
+
 ```
-session:{session_id}      → JSON (ConversationStateDTO, TTL 7 days)
-user:{user_id}:sessions   → ZSET scored by lastActiveAt（历史列表）
-routing:{session_id}      → JSON (RoutingPayload，供 Part 2 读取）
+session:{session_id}                    → JSON (ConversationStateDTO，snake_case 内部格式)
+price:{suburb}:{property_type}:{beds}   → JSON {"median_price": 850000}
 ```
+
+> `user:{user_id}:sessions`（历史列表 ZSET）属于 P1-B，`routing:{session_id}` 属于 P2，P1-A 均不实现。P1-A 中 `ChatResponse.routing` 继续内嵌返回（供前端判断触发条件）；`UserNeeds` 同时写入 PostgreSQL `sessions.final_needs`，Part 2 直接查库，无需前端转发数据（见 §16.2）。
 
 ### 21.3 P1 系统流程
 
@@ -1418,6 +1469,22 @@ POST /chat  {session_id, message}
        ├─ 7. Redis SET session:{session_id} (KEEPTTL)
        └─ 8. Return ChatResponse
 ```
+
+### 21.3.1 新 Session 自动创建
+
+`/chat` 的第 1 步 Redis GET 返回 `None`（key 不存在或 TTL 已过期）时，**自动使用请求中的 `session_id` 创建新的 `ConversationStateDTO`**，不返回 404，不需要额外的 `POST /session` 初始化端点。
+
+**原因：** 与 P0 行为一致（前端 P0 自己初始化 state）；前端只需生成 UUID v4 直接发送第一条消息；`session_id` 由前端生成，唯一性已有保证。
+
+```python
+# routers/chat.py（伪代码）
+state: ConversationStateDTO | None = await redis_client.load_session_async(request.session_id)
+if state is None:
+    state = ConversationStateDTO(session_id=request.session_id)
+    # 首次写入 Redis，设置完整 TTL
+```
+
+---
 
 ### 21.4 P1 接口变更
 
@@ -1438,19 +1505,27 @@ class ChatResponse(BaseModel):
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `GET` | `/session/{session_id}` | 获取会话状态（会话恢复） |
-| `DELETE` | `/session/{session_id}` | 清除会话（重新开始） |
+| `GET` | `/session/{session_id}` | 从 Redis 恢复完整会话状态（换标签页 / 换设备场景） |
+
+```
+→ 200: SuccessResponse<ConversationStateDTO>   （Redis 中存在）
+→ 404: ErrorResponse SessionNotFoundError       （不存在或 TTL 已过期）
+```
 
 ```python
-class SessionRestoreResponse(BaseModel):
-    session_id:     str
-    status:         SessionStatus
-    current_module: ModuleID
-    progress:       dict         # {"M1": true, "M2": false, ...}
-    message_count:  int
-    last_active_at: datetime
-    # 不返回完整 conversationHistory，避免数据量过大
+# routers/session.py
+@router.get("/session/{session_id}")
+async def get_session_async(
+    session_id: str,
+    session_store: ISessionStore = Depends(get_session_store),
+) -> SuccessResponse[ConversationStateDTO]:
+    state: ConversationStateDTO | None = await session_store.load_state_async(session_id)
+    if state is None:
+        raise SessionNotFoundError(f"Session {session_id!r} not found or expired.")
+    return SuccessResponse(data=state)
 ```
+
+> **为何 P1 不实现 `DELETE /session`：** 前端"清除对话"只需清 sessionStorage + Zustand 本地状态，Redis key 等 7 天 TTL 自然过期即可。P1 用户量小，Redis 内存压力不大，引入删除端点收益低于维护成本。如未来 Redis 内存成为瓶颈，可在 P2 补充该端点。
 
 ---
 
@@ -1462,11 +1537,11 @@ class SessionRestoreResponse(BaseModel):
 
 采用**混合 SSE 方案**：文字部分实时流式推送，状态更新作为最后一个 SSE event 推送。
 
-| 方案 | 描述 | 复杂度 | 体验 |
-|------|------|--------|------|
-| 完全非流式（P0） | 后端等全部返回，一次性响应 | 低 | 等待 5–10s |
-| 后端拼装后流式 | 拼完 tool_call 再转发文字流 | 中 | 较好 |
-| **混合 SSE（P1 选择）** | 文字实时推送，状态作为末尾 event | 中 | 最好 |
+| 方案                    | 描述                             | 复杂度 | 体验       |
+| ----------------------- | -------------------------------- | ------ | ---------- |
+| 完全非流式（P0）        | 后端等全部返回，一次性响应       | 低     | 等待 5–10s |
+| 后端拼装后流式          | 拼完 tool_call 再转发文字流      | 中     | 较好       |
+| **混合 SSE（P1 选择）** | 文字实时推送，状态作为末尾 event | 中     | 最好       |
 
 ### 22.2 SSE Event 格式
 
@@ -1489,69 +1564,236 @@ data: {"extracted": {...}, "routing": null}
 
 ---
 
-## 23. User Authentication
+## 23. P1-B Scope — User Accounts（规划中）
 
-> P1 实现。MVP 阶段不要求注册，使用浏览器指纹匿名识别用户。
+> P1-A **不实现**用户认证。P1-B 功能规划见 §20.3；设计文档待另立，本节不展开。
 
-### 23.1 MVP 方案（browser fingerprint）
+---
+
+## 24. PostgreSQL Progressive Snapshot
+
+> P1 实现。每个模块完成时异步写入 PostgreSQL，防止 Redis TTL 过期（7 天）导致进行中对话的结构化数据永久丢失。
+
+### 24.1 设计动机
+
+仅在 `REQUIREMENTS_COMPLETE`（M4 完成）时写库存在三个问题：
+
+1. 用户填到 M2 就放弃 → 无任何数据留存，无法用于模块完成率统计（PRD §11 Success Metrics）
+2. 对话跨越 7 天 → Redis TTL 过期后无法从 PostgreSQL 恢复，`GET /session` 返回 404
+3. 无法对 M1–M3 阶段的流失做归因分析
+
+**方案：每模块完成时累计 upsert 一次，同一 `session_id` 覆盖更新，不产生多行。**
+
+| 触发时机 | 写入内容 |
+|---------|---------|
+| M1 完成 | 含 m1 的 `CollectedData` 快照，写入 `initial_intent` |
+| M2 完成 | 含 m1 + m2 的 `CollectedData` 快照 |
+| M3 完成 | 含 m1 + m2 + m3 的 `CollectedData` 快照 |
+| M4 完成 | 含所有模块的完整 `UserNeeds`（写入 `final_needs`、`borrowing_capacity`、`completed_at`） |
+
+### 24.2 File
+
+```
+backend/db/session_archive.py
+```
+
+### 24.3 触发机制
+
+在 `routers/chat.py` 中，`state_machine.py` 检测到某模块从 `False → True` 后，使用 FastAPI `BackgroundTasks` 异步触发，不阻塞主请求响应：
 
 ```python
-# 用户首次访问时，前端生成 browser_fp 并通过 header 传递
-# 后端按 browser_fp 查找或创建 user 记录
+# routers/chat.py
+async def chat_async(
+    request: ChatRequest,
+    background_tasks: BackgroundTasks,
+    session_store: ISessionStore = Depends(get_session_store),
+    archive: ISessionArchive = Depends(get_session_archive),
+) -> ChatResponse:
+    ...
+    prev_completion: CompletionStatus = state.completion_status.model_copy()
+    updated_state: ConversationStateDTO = merge_extracted_fields(state, extracted)
 
-class ChatRequest(BaseModel):
-    session_id:  str
-    message:     str
-    browser_fp:  Optional[str] = None    # 匿名用户标识
+    newly_completed: bool = any(
+        getattr(updated_state.completion_status, m) and not getattr(prev_completion, m)
+        for m in ("M1", "M2", "M3", "M4")
+    )
+    if newly_completed:
+        background_tasks.add_task(archive.upsert_session_snapshot_async, updated_state)
+    ...
 ```
 
-### 23.2 正式版方案（邮箱 / OAuth，P1 后期）
+> **为何用 `BackgroundTasks` 而非 `asyncio.create_task`：** `BackgroundTasks` 由 FastAPI 生命周期托管，服务器关闭时不会丢失任务；`asyncio.create_task` 在进程退出时可能静默丢失写入。
 
-| 方式 | 实现 | 说明 |
-|------|------|------|
-| 邮箱 + Magic Link | FastAPI + SendGrid | 无密码登录，发送一次性链接 |
-| Google OAuth | authlib | 社交登录，减少注册摩擦 |
+### 24.4 存储范围
 
-### 23.3 Session 与用户的绑定
+**写入 PostgreSQL：**
+
+| 字段 | 说明 |
+|------|------|
+| `collected_data` | M1–M4 所有已收集字段，每次 upsert 累计叠加 |
+| `status` | `IN_PROGRESS` / `REQUIREMENTS_COMPLETE` |
+| `initial_intent` | M1 完成后首次写入 |
+| `final_needs` | M4 完成后写入完整 `UserNeeds` |
+| `borrowing_capacity` | M4 完成后写入借贷能力估算 |
+| `completed_at` | M4 完成时写入当前时间戳 |
+
+**不写入 PostgreSQL：**
+
+| 内容 | 原因 |
+|------|------|
+| `conversation_history` | 体积大且增长不可控；PG 归档目的是结构化业务数据，不是原始聊天记录。如需完整历史，应单独建 `conversation_messages` 表 |
+| `budget_gap` | 派生值——`budget_max` 在 `collected_data` 中，中位价每天更新，PG 快照次日即过时；Part 2 可按需重算 |
+
+### 24.5 Upsert SQL
+
+```sql
+INSERT INTO sessions (
+    session_id, status, schema_version, initial_intent,
+    collected_data, final_needs, borrowing_capacity,
+    updated_at, completed_at
+)
+VALUES ($1, $2, $3, $4, $5, $6, $7, now(), $8)
+ON CONFLICT (session_id)
+DO UPDATE SET
+    status             = EXCLUDED.status,
+    initial_intent     = COALESCE(EXCLUDED.initial_intent, sessions.initial_intent),
+    collected_data     = EXCLUDED.collected_data,
+    final_needs        = EXCLUDED.final_needs,
+    borrowing_capacity = EXCLUDED.borrowing_capacity,
+    updated_at         = now(),
+    completed_at       = COALESCE(EXCLUDED.completed_at, sessions.completed_at);
+```
+
+> `COALESCE` 确保 `initial_intent` 和 `completed_at` 一旦写入就不会被后续 upsert 覆盖为 null。
+
+### 24.6 Acceptance Criteria
+
+| ID | Criterion |
+|----|-----------|
+| PG-1 | M1 模块完成时，`sessions` 表中存在对应行，`collected_data` 含 m1 字段，`initial_intent` 非空 |
+| PG-2 | M2 完成后 upsert，`collected_data` 包含 m1 + m2 数据，行数不变（仍为 1 行） |
+| PG-3 | M4 完成后，`final_needs` 非 null，`status` 为 `REQUIREMENTS_COMPLETE`，`completed_at` 非 null |
+| PG-4 | 写入异步执行（`BackgroundTasks`），不阻塞 `/chat` 端点响应时间 |
+| PG-5 | `conversation_history` 和 `budget_gap` 不出现在 `sessions` 表中 |
+| PG-6 | 数据库不可用时，`BackgroundTasks` 内部异常不影响主请求正常返回 `ChatResponse` |
+| PG-7 | 同一 `session_id` 多次 upsert 保持幂等，`initial_intent` 和 `completed_at` 不被后续 upsert 覆盖为 null |
+
+### 24.7 Integration Tests
 
 ```
-匿名访问：session.user_id = browser_fp 对应的 user_id
-登录后：  将匿名 session 迁移至认证 user_id（保留历史）
+tests/test_session_archive.py
+
+test_upsert_on_m1_completion_writes_initial_intent
+test_upsert_on_m2_completion_accumulates_m1_data
+test_upsert_on_m4_completion_writes_final_needs_and_completed_at
+test_upsert_is_idempotent_for_same_session_id
+test_initial_intent_not_overwritten_on_subsequent_upsert
+test_conversation_history_not_written_to_db
+test_background_task_does_not_block_chat_response
+test_db_unavailable_does_not_raise_in_main_request
 ```
 
 ---
 
-## 24. P1 Environment Variables
+## 25. Budget Gap Price Cache
+
+> P1 实现。对 §11 S-H Budget Gap Detection 中的 Domain API 调用结果进行 Redis 缓存，避免同一地区每次对话重复调用。
+
+### 25.1 设计动机
+
+`budget_gap_detector.py` 调用 Domain API 查询 `suburb + property_type + min_bedrooms` 组合的中位价。同一组合在一天内结果不变，但每次对话到达 M4 时都会触发调用。P1 接入 Redis 后，顺带实现此缓存，无需额外基础设施。
+
+此缓存属于 §21.2 定义的 **Agent Result Cache** 类型：Redis 缺失时直接穿透到 Domain API，不影响主流程正确性。
+
+### 25.2 Redis Key Schema
+
+```
+Key:   price:{suburb}:{property_type}:{min_bedrooms}
+Value: {"median_price": 850000}
+TTL:   86400 秒（24 小时，固定过期，不滑动）
+```
+
+> Value 使用 JSON 对象而非裸 int，为 Part 2 将来在同一 key 里追加字段（如趋势、置信区间）预留扩展空间——当前只读 `median_price` 字段，不受影响。
+
+### 25.3 缓存行为
+
+```python
+async def get_median_price_async(
+    suburb: str,
+    property_type: str,
+    min_bedrooms: int,
+    redis: Redis,
+) -> int | None:
+    key: str = f"price:{suburb.lower().replace(' ', '_')}:{property_type}:{min_bedrooms}"
+
+    cached: str | None = await redis.get(key)
+    if cached is not None:
+        return json.loads(cached)["median_price"]   # cache hit — Domain API 不调用
+
+    try:
+        median_price: int = await _call_domain_api_async(suburb, property_type, min_bedrooms)
+        await redis.setex(key, 86400, json.dumps({"median_price": median_price}))
+        return median_price
+    except Exception:
+        return None   # Domain API 失败 — 不写缓存，主流程降级处理
+```
+
+### 25.4 Acceptance Criteria
+
+| ID | Criterion |
+|----|-----------|
+| PC-1 | 相同 suburb / type / beds 第二次请求命中缓存，不触发 Domain API 调用 |
+| PC-2 | 缓存 TTL 为 86400 秒，固定过期（不滑动） |
+| PC-3 | Domain API 失败时返回 None，不写入缓存，`has_gap` 检测降级处理（返回 None，不阻断主流程） |
+| PC-4 | Key 格式严格为 `price:{suburb}:{property_type}:{min_bedrooms}`，suburb 小写、空格替换为 `_` |
+| PC-5 | 不同 suburb / type / beds 组合各自独立缓存，互不影响 |
+
+### 25.5 Unit Tests
+
+```
+tests/test_budget_gap_price_cache.py
+
+test_cache_hit_skips_domain_api_call
+test_cache_miss_calls_domain_api_and_writes_cache
+test_domain_api_failure_returns_none_without_writing_cache
+test_cache_key_format_lowercase_suburb_with_underscore
+test_different_combinations_cached_independently
+test_cache_ttl_is_86400_seconds
+```
+
+---
+
+## 26. P1 Environment Variables
 
 > 补充 §8，列出 P1 新增的环境变量。§8 原有变量不变。
 
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `REDIS_URL` | P1 Yes | `redis://localhost:6379` | Redis 连接地址 |
-| `REDIS_SESSION_TTL` | No | `604800` | 会话 TTL（秒），默认 7 天 |
-| `DATABASE_URL` | P1 Yes | — | PostgreSQL 连接串（asyncpg 格式） |
-| `DOMAIN_API_KEY` | P1 Yes | — | Domain API key（S-H 预算缺口检测） |
-| `BUDGET_GAP_THRESHOLD` | No | `0.15` | 预算缺口触发阈值 |
-| `BORROWING_CAPACITY_DTI` | No | `0.28` | DTI 上限，借款能力计算用 |
-| `SESSION_SECRET_KEY` | P1 Yes | — | 会话 ID 签名密钥 |
-| `LOG_LEVEL` | No | `INFO` | 日志级别 |
+| Variable                 | Required | Default                  | Description                        |
+| ------------------------ | -------- | ------------------------ | ---------------------------------- |
+| `REDIS_URL`              | P1 Yes   | `redis://localhost:6379` | Redis 连接地址                     |
+| `REDIS_SESSION_TTL`      | No       | `604800`                 | 会话 TTL（秒），默认 7 天          |
+| `DATABASE_URL`           | P1 Yes   | —                        | PostgreSQL 连接串（asyncpg 格式）  |
+| `DOMAIN_API_KEY`         | P1 Yes   | —                        | Domain API key（S-H 预算缺口检测） |
+| `BUDGET_GAP_THRESHOLD`   | No       | `0.15`                   | 预算缺口触发阈值                   |
+| `BORROWING_CAPACITY_DTI` | No       | `0.28`                   | DTI 上限，借款能力计算用           |
+| `SESSION_SECRET_KEY`     | P1-B     | —                        | 会话签名密钥（P1-A 不需要）        |
+| `LOG_LEVEL`              | No       | `INFO`                   | 日志级别                           |
 
 ---
 
-## 25. P1 Non-Functional Requirements
+## 27. P1 Non-Functional Requirements
 
 > 补充主 PRD §10，列出 Part 1 专项 NFR。
 
-| 类别 | 要求 | 目标值 | 测量方式 |
-|------|------|--------|---------|
-| 性能 | AI 首 token 延迟（流式） | < 1s | CloudWatch P95 |
-| 性能 | `/chat` 端点总延迟（非流式） | < 10s P95 | CloudWatch |
-| 性能 | 会话加载（Redis GET） | < 50ms P99 | Redis LATENCY |
-| 可用性 | 会话数据持久性 | 7 天内可恢复 | Redis TTL 监控 |
-| 安全 | session_id 格式 | UUID v4，不可猜测 | 单元测试 |
-| 安全 | 对话历史 | 不在日志中记录用户消息原文 | 日志审计 |
-| 隐私 | 用户数据不用于训练 | OpenRouter `data-collection: deny` | 请求头审计 |
-| 合规 | 守卫规则覆盖率 | 6/6 规则在系统提示中存在 | SC-7 自动化测试 |
+| 类别   | 要求                         | 目标值                             | 测量方式        |
+| ------ | ---------------------------- | ---------------------------------- | --------------- |
+| 性能   | AI 首 token 延迟（流式）     | < 1s                               | CloudWatch P95  |
+| 性能   | `/chat` 端点总延迟（非流式） | < 10s P95                          | CloudWatch      |
+| 性能   | 会话加载（Redis GET）        | < 50ms P99                         | Redis LATENCY   |
+| 可用性 | 会话数据持久性               | 7 天内可恢复                       | Redis TTL 监控  |
+| 安全   | session_id 格式              | UUID v4，不可猜测                  | 单元测试        |
+| 安全   | 对话历史                     | 不在日志中记录用户消息原文         | 日志审计        |
+| 隐私   | 用户数据不用于训练           | OpenRouter `data-collection: deny` | 请求头审计      |
+| 合规   | 守卫规则覆盖率               | 6/6 规则在系统提示中存在           | SC-7 自动化测试 |
 
 **OpenRouter 隐私请求头（P1 起必须设置）：**
 
@@ -1565,9 +1807,9 @@ headers = {
 
 ---
 
-## 26. P1 Deployment Notes
+## 28. P1 Deployment Notes
 
-### 26.1 Docker Compose（P1 新增服务配置）
+### 28.1 Docker Compose（P1-A 新增服务配置）
 
 ```yaml
 services:
@@ -1576,7 +1818,6 @@ services:
       - REDIS_URL=redis://redis:6379
       - DATABASE_URL=postgresql+asyncpg://user:pass@postgres:5432/propertyai
       - DOMAIN_API_KEY=${DOMAIN_API_KEY}
-      - SESSION_SECRET_KEY=${SESSION_SECRET_KEY}
     depends_on:
       redis:
         condition: service_healthy
@@ -1593,7 +1834,7 @@ services:
       retries: 5
 ```
 
-### 26.2 Health Check 端点（P1 扩展）
+### 28.2 Health Check 端点（P1-A 扩展）
 
 ```python
 # GET /health — P1 起检查所有依赖服务
@@ -1608,7 +1849,7 @@ services:
 }
 ```
 
-### 26.3 P1 Project Structure 更新
+### 28.3 P1-A Project Structure 更新
 
 ```
 backend/
@@ -1622,16 +1863,20 @@ backend/
 │   └── intent_router.py
 ├── prompts/
 │   └── system_prompt_builder.py
-├── services/
+├── domain/
 │   ├── llm_client.py
 │   ├── borrowing_capacity.py       # S-G（P0新增）
 │   ├── budget_gap_detector.py      # S-H（P0新增）
-│   └── redis_client.py             # P1新增
+│   ├── user_needs_builder.py       # P0新增
+│   └── redis/                      # P1新增：Redis 子包
+│       ├── client.py               # 连接管理（connect/close/ping + raw get/setex）
+│       ├── session_store.py        # ISessionStore Protocol + RedisSessionStore
+│       └── price_cache.py          # RedisPriceCache（Domain API 中位价，24h TTL）
 ├── routers/
 │   ├── chat.py
-│   └── session.py                  # P1新增：/session 端点
+│   └── session.py                  # P1新增：GET /session/{session_id}（§21.5）
 ├── db/
-│   └── session_repository.py       # P1新增：PostgreSQL 操作
+│   └── session_archive.py          # P1新增：PostgreSQL 渐进快照 upsert（§24）
 └── tests/
     ├── test_extraction_schema.py
     ├── test_state_machine.py
@@ -1641,5 +1886,7 @@ backend/
     ├── test_summary.py
     ├── test_borrowing_capacity.py   # S-G（P0新增）
     ├── test_budget_gap_detector.py  # S-H（P0新增）
-    └── test_guardrail_rules.py      # P0新增
+    ├── test_guardrail_rules.py      # P0新增
+    ├── test_session_archive.py      # §24（P1新增）
+    └── test_budget_gap_price_cache.py  # §25（P1新增）
 ```

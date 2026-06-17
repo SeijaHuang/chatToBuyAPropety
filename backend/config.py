@@ -12,6 +12,8 @@ class Settings(BaseSettings):
         model_strong: Model ID for high-quality responses.
         model_fast: Model ID for fast, lightweight responses.
         llm_base_url: Base URL for the LLM API. None uses the SDK default (OpenAI).
+        redis_url: Redis connection URL for session store and price cache.
+        redis_session_ttl: Session key TTL in seconds (default 7 days).
     """
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
@@ -25,6 +27,8 @@ class Settings(BaseSettings):
     borrowing_capacity_dti: float = 0.28
     domain_api_key: str = ""
     budget_gap_threshold: float = 0.15
+    redis_url: str = "redis://localhost:6379"
+    redis_session_ttl: int = 604800
 
     @field_validator("llm_base_url", mode="before")
     @classmethod

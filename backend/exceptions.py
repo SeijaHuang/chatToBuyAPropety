@@ -55,3 +55,14 @@ class RateLimitError(PropertyAIException):
             status_code=429,
             details={"retry_after": retry_after},
         )
+
+
+class SessionNotFoundError(PropertyAIException):
+    """Raised when a session_id is not found in Redis (missing or TTL expired)."""
+
+    def __init__(self, session_id: str) -> None:
+        super().__init__(
+            f"Session '{session_id}' not found or has expired.",
+            status_code=404,
+            details={"session_id": session_id},
+        )
