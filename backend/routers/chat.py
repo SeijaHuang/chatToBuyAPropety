@@ -1,4 +1,4 @@
-"""Chat router — exposes /chat and /chat/summary endpoints for the conversation flow."""
+"""Chat router — exposes /chat, /chat/summary, and /session endpoints."""
 
 import json
 from typing import Annotated
@@ -12,8 +12,9 @@ from conversation.state_machine import merge_extracted_fields
 from domain.borrowing_capacity import estimate_borrowing_capacity_async
 from domain.budget_gap_detector import detect_budget_gap_async
 from domain.llm_client import ILLMClient, OpenRouterClient
+from domain.redis.session_store import session_store
 from domain.user_needs_builder import build_user_needs
-from exceptions import SummaryValidationError
+from exceptions import SessionNotFoundError, SummaryValidationError
 from models.base import SuccessResponse
 from models.chat import ChatRequest, ChatResponse, RoutingPayload
 from models.conversation_state import (
@@ -45,23 +46,32 @@ async def chat_async(
 ) -> SuccessResponse[ChatResponse]:
     """Handle a single conversation turn and return the assistant reply.
 
+    State is loaded from Redis using the session_id in the request. When no
+    session exists yet (first call), a fresh ConversationStateDTO is created
+    automatically (PRD §21.3.1).
+
     Processing order:
-      1. Append user message to conversation history.
-      2. Round 1 — Extraction: call LLM with extraction tool to pull structured fields.
-      3. Merge extracted fields into state (advances module, recalculates completion).
-      4. Round 2 — Question generation: call LLM plain completion with updated state.
-      5. Append assistant reply to conversation history.
-      6. Classify intent for downstream routing.
-      7. Return ChatResponse.
+      1. Load state from Redis; auto-create if absent.
+      2. Append user message to conversation history.
+      3. Round 1 — Extraction: call LLM with extraction tool to pull structured fields.
+      4. Merge extracted fields into state (advances module, recalculates completion).
+      5. Round 2 — Question generation: call LLM plain completion with updated state.
+      6. Append assistant reply to conversation history.
+      7. Persist updated state back to Redis.
+      8. Classify intent for downstream routing.
+      9. Return ChatResponse.
 
     Args:
-        request: Inbound chat payload containing the user message and current state.
+        request: Inbound payload containing session_id and user message.
         llm_client: LLM client injected via FastAPI Depends (mockable in tests).
 
     Returns:
-        ChatResponse with reply, extracted fields, updated state, and optional routing.
+        ChatResponse with reply, extracted fields, and optional routing.
     """
-    state: ConversationStateDTO = request.state
+    state: ConversationStateDTO | None = await session_store.load_session_async(request.session_id)
+    if state is None:
+        state = ConversationStateDTO(session_id=request.session_id)
+
     log: structlog.BoundLogger = logger.bind(
         session_id=state.session_id,
         current_module=state.current_module,
@@ -82,7 +92,6 @@ async def chat_async(
     except (json.JSONDecodeError, ValidationError) as exc:
         log.warning("tool_call_parse_failed", error=str(exc))
         extracted = {}
-        # state unchanged — conversation flow continues without error
 
     log.info(
         "extraction_complete",
@@ -118,6 +127,8 @@ async def chat_async(
 
     state.conversation_history.append({"role": "assistant", "content": reply})
 
+    await session_store.save_session_async(state)
+
     user_needs: UserNeeds = build_user_needs(state.collected_data, state.session_id)
     routing: RoutingPayload | None = classify_intent(request.message, state, user_needs)
     log.info("chat_response_ready", has_routing=routing is not None)
@@ -126,10 +137,30 @@ async def chat_async(
         data=ChatResponse(
             reply=reply,
             extracted=extracted,
-            updated_state=state,
             routing=routing,
         )
     )
+
+
+@router.get("/session/{session_id}")
+async def get_session_async(
+    session_id: str,
+) -> SuccessResponse[ConversationStateDTO]:
+    """Return the current conversation state for a session.
+
+    Args:
+        session_id: UUID v4 session identifier.
+
+    Returns:
+        The stored ConversationStateDTO wrapped in SuccessResponse.
+
+    Raises:
+        SessionNotFoundError: When the session is absent or has expired from Redis.
+    """
+    state: ConversationStateDTO | None = await session_store.load_session_async(session_id)
+    if state is None:
+        raise SessionNotFoundError(session_id)
+    return SuccessResponse[ConversationStateDTO](data=state)
 
 
 @router.post("/chat/summary")
