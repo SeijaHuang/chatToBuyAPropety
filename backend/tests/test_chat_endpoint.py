@@ -1,11 +1,10 @@
 """Integration tests for POST /chat and GET /session — P1-A Redis session store."""
 
 import json
-from collections.abc import AsyncGenerator, Generator
+from collections.abc import Generator
 from contextlib import contextmanager
 from unittest.mock import AsyncMock, patch
 
-import pytest
 from httpx import AsyncClient
 
 import routers.chat as chat_module
@@ -197,8 +196,9 @@ async def test_missing_session_id_returns_422(client_async: AsyncClient) -> None
 async def test_llm_failure_returns_503(client_async: AsyncClient) -> None:
     """An LLMServiceError raised by Round 1 returns HTTP 503 with the error envelope."""
     tools_mock: AsyncMock = AsyncMock(side_effect=LLMServiceError("OpenRouter unavailable"))
-    with _mock_session(), patch.object(
-        chat_module._default_llm_client, "chat_with_tools_async", tools_mock
+    with (
+        _mock_session(),
+        patch.object(chat_module._default_llm_client, "chat_with_tools_async", tools_mock),
     ):
         response = await client_async.post("/api/v1/chat", json=_build_body("Hi"))
     assert response.status_code == 503
@@ -208,8 +208,9 @@ async def test_llm_failure_returns_503(client_async: AsyncClient) -> None:
 async def test_rate_limit_returns_429(client_async: AsyncClient) -> None:
     """A RateLimitError raised by Round 1 returns HTTP 429 with retry_after in details."""
     tools_mock: AsyncMock = AsyncMock(side_effect=RateLimitError())
-    with _mock_session(), patch.object(
-        chat_module._default_llm_client, "chat_with_tools_async", tools_mock
+    with (
+        _mock_session(),
+        patch.object(chat_module._default_llm_client, "chat_with_tools_async", tools_mock),
     ):
         response = await client_async.post("/api/v1/chat", json=_build_body("Hi"))
     assert response.status_code == 429
