@@ -2,6 +2,7 @@
 
 import React, { useRef, useEffect } from 'react'
 import { useConversationStore } from '@/stores/conversationStore'
+import { useUIStore } from '@/stores'
 import { useChat } from '@/hooks/useChat'
 import { useSession } from '@/hooks/useSession'
 import { ChatInput } from '@/components/ChatInput'
@@ -21,6 +22,7 @@ export function ChatSession({ sessionId }: ChatSessionProps): React.ReactElement
   const isLoading: boolean = useConversationStore((s) => s.isLoading)
   const state: ConversationStateDTO | null = useConversationStore((s) => s.state)
   const routing: RoutingPayload | null = useConversationStore((s) => s.routing)
+  const sidebarCollapsed: boolean = useUIStore((s) => s.sidebarCollapsed)
 
   const { sendMessage, errorMessage } = useChat()
   useSession(sessionId)
@@ -94,7 +96,8 @@ export function ChatSession({ sessionId }: ChatSessionProps): React.ReactElement
 
       <div
         className={cn(
-          'fixed bottom-0 left-0 right-0',
+          'fixed bottom-0 right-0 left-0',
+          sidebarCollapsed ? 'md:left-sidebar-collapsed' : 'md:left-sidebar-expanded',
           'px-md py-sm',
           'bg-surface/80 backdrop-blur-glass',
           'flex flex-col gap-xs',
