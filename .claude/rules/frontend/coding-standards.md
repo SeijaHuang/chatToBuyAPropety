@@ -797,9 +797,9 @@ export function BorrowingCapacityCard(...) { ... }
 
 ## Ladle Stories
 
-Every new shared UI component under `src/components/` **must** ship with a `.stories.tsx` file. A PR that adds a component without a story file is incomplete.
+Every new **shared UI component** under `src/components/shared/` **must** ship with a `.stories.tsx` file. A PR that adds a shared component without a story file is incomplete.
 
-**What counts as a shared UI component:** any file exported from `src/components/` (UI or container). One-off page-level fragments that are never reused are exempt.
+**What counts as a shared UI component:** components under `src/components/shared/` only — reusable atoms with no store dependencies (Button, Chip, AIBadge, Skeleton, etc.). Container components and page-level fragments (e.g. `ChatSession`) do **not** require stories, even if they live under `src/components/`.
 
 **Story file location:** centralised under `src/stories/`, in a subdirectory that mirrors the component's location:
 - `src/components/shared/` → `src/stories/shared/<ComponentName>.stories.tsx`
