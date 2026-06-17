@@ -50,7 +50,7 @@ describe('useChat', () => {
     expect(assistantMsg?.content).toBe('mock assistant reply')
   })
 
-  it('calls setUpdatedState with the response updatedState', async () => {
+  it('store state retains sessionId after successful send', async () => {
     const { result } = renderHook(() => useChat())
 
     await act(async () => {
@@ -197,7 +197,6 @@ describe('useChat', () => {
         HttpResponse.json({
           reply: 'done',
           extracted: {},
-          updatedState: createInitialState('test-session'),
           routing: { intent: 'list_properties', session_id: 'test-session' },
         })
       )

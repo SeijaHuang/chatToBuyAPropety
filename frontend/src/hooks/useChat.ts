@@ -32,12 +32,11 @@ export function useChat(): UseChatReturn {
     store.setAssistantLoading(true)
 
     try {
-      const response = await postChat(content, state)
+      const response = await postChat(content, state.sessionId)
       store.setAssistantLoading(false)
 
       if (response.ok === true) {
         store.addAssistantMessage(response.data.reply)
-        store.setUpdatedState(response.data.updatedState)
         if (response.data.routing !== null) {
           store.setRouting(response.data.routing)
         }
