@@ -5,12 +5,13 @@ import { MaterialSymbol } from '@/components/shared'
 export function TopNavBar(): React.ReactElement {
   return (
     <header
+      id="top-nav-bar"
       className={cn(
         'md:hidden flex',
         'items-center justify-between',
         'h-14 px-md',
         'bg-surface border-b border-outline-variant',
-        'sticky top-0 z-20',
+        'sticky top-0 z-20'
       )}
     >
       <div className={cn('flex items-center gap-xs')}>

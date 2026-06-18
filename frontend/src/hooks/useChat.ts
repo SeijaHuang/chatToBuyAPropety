@@ -33,7 +33,6 @@ export function useChat(): UseChatReturn {
 
     try {
       const response = await postChat(content, state.sessionId)
-      store.setAssistantLoading(false)
 
       if (response.ok === true) {
         store.addAssistantMessage(response.data.reply)
@@ -51,6 +50,7 @@ export function useChat(): UseChatReturn {
         }
       }
     } finally {
+      store.setAssistantLoading(false)
       store.setLoading(false)
     }
   }

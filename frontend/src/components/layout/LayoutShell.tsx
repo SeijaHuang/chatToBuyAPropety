@@ -18,7 +18,7 @@ export function LayoutShell({ children }: LayoutShellProps): React.ReactElement 
   const pathname: string = usePathname()
 
   return (
-    <div className="flex min-h-screen bg-surface text-on-surface">
+    <div id="layout-shell" className="flex min-h-screen bg-surface text-on-surface">
       <SideNavBar
         collapsed={sidebarCollapsed}
         onToggleCollapse={toggleSidebar}
@@ -28,7 +28,7 @@ export function LayoutShell({ children }: LayoutShellProps): React.ReactElement 
         className={cn(
           'flex flex-col flex-1 min-w-0',
           'transition-all duration-300 ease-in-out',
-          sidebarCollapsed ? 'md:ml-sidebar-collapsed' : 'md:ml-sidebar-expanded',
+          sidebarCollapsed ? 'md:ml-sidebar-collapsed' : 'md:ml-sidebar-expanded'
         )}
       >
         <TopNavBar />

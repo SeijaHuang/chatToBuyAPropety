@@ -75,7 +75,7 @@ export function SideNavBar({
   }
 
   return (
-    <aside className={sidebar({ collapsed })}>
+    <aside id="side-nav-bar" className={sidebar({ collapsed })}>
       {/* Header */}
       <div className={cn('flex items-center justify-between', 'h-14 px-sm')}>
         <div className={cn('flex items-center gap-xs overflow-hidden')}>

@@ -14,6 +14,7 @@ export function BudgetGapCard({ data }: BudgetGapCardProps): React.ReactElement 
 
   return (
     <div
+      id="budget-gap-card"
       className={cn(
         'glass-panel rounded-xl',
         'flex flex-col',
