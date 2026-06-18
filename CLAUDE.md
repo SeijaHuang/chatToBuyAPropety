@@ -58,10 +58,11 @@ pnpm type-check   # tsc --noEmit
 
 ## Docs Index
 
-| File                                                               | Contents                                                                                          |
-| ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------- |
-| [docs/part1-p0-implementation.md](docs/part1-p0-implementation.md) | Part 1 P0 story completion, E2E criteria, architectural decisions, test coverage                  |
-| [PRD/PropertyAI_PRD_v1_1.md](PRD/PropertyAI_PRD_v1_1.md) | Authoritative PRD v1.1 — P0 stories S-A→S-H, P1 stories §20–26, data models, error handling spec |
+| File                                                                           | Contents                                                                                          |
+| ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------- |
+| [docs/part1-p0-implementation.md](docs/part1-p0-implementation.md)             | Part 1 P0 story completion, E2E criteria, architectural decisions, test coverage                  |
+| [docs/frontend-implementation.md](docs/frontend-implementation.md)             | Full frontend source map, data flow, state persistence, component hierarchy, coverage targets     |
+| [PRD/PropertyAI_PRD_v1_1.md](PRD/PropertyAI_PRD_v1_1.md)                      | Authoritative PRD v1.1 — P0 stories S-A→S-H, P1 stories §20–26, data models, error handling spec |
 
 ---
 
@@ -130,8 +131,15 @@ Every source file and its single responsibility. Read this before adding code to
 frontend/
 ├── src/
 │   ├── app/
-│   │   └── layout.tsx             Root layout — loads Plus Jakarta Sans via next/font, injects
-│   │                              --font-plus-jakarta-sans CSS variable into <html>
+│   │   ├── layout.tsx             Root layout — loads Plus Jakarta Sans via next/font, injects
+│   │   │                          --font-plus-jakarta-sans CSS variable into <html>
+│   │   └── (main)/
+│   │       ├── layout.tsx         Route-group layout — wraps all (main) pages in <LayoutShell>
+│   │       ├── page.tsx           Landing/home page — hero ChatInput; first send generates uuid
+│   │       │                      sessionId and navigates to /chat/:id?q=…
+│   │       └── chat/
+│   │           └── [sessionId]/
+│   │               └── page.tsx   Chat session page — renders <ChatSession sessionId initialMessage>
 │   │
 │   ├── styles/
 │   │   └── globals.css            Tailwind CSS v4 design system — @theme tokens (colors,
@@ -139,25 +147,73 @@ frontend/
 │   │                              vars, @layer base (body, type scale, scrollbar, Material Symbols),
 │   │                              @layer utilities (glass-panel, glass-ai)
 │   │
-│   ├── constants/                 App-wide string constants; never use magic strings elsewhere
+│   ├── constants/                 App-wide as-const value objects; never use magic strings elsewhere
+│   │   ├── index.ts               Barrel — re-exports all constants
+│   │   ├── conversation.ts        MESSAGE_ROLE, MODULE_ID, SESSION_STATUS, SUBMODEL_KEY
+│   │   ├── routing.ts             USER_INTENT, EXECUTION_MODE, TRIGGER_SOURCE
+│   │   ├── ui.ts                  COMPONENT_SIZE, COMPONENT_VARIANT, COMPONENT_COLOR
+│   │   ├── storageKeys.ts         STORAGE_KEY — sessionStorage key prefixes
+│   │   │                          (CONVERSATION_STATE_PREFIX, ROUTING_PAYLOAD_PREFIX)
 │   │   ├── endpoints.ts           ENDPOINTS — API path constants (CHAT, CHAT_SUMMARY, HEALTH)
 │   │   └── errorCodes.ts          ERROR_CODE / ERROR_MESSAGE — normalised error identifiers
 │   │
 │   ├── lib/
-│   │   └── request.ts             Axios instance (baseURL, timeout, headers) + request interceptor
-│   │                              + normalizeError helper + exported request.post / request.get;
-│   │                              do not import this directly from components or hooks
+│   │   ├── request.ts             Axios instance (baseURL, timeout, headers) + request interceptor
+│   │   │                          + normalizeError helper + exported request.post / request.get;
+│   │   │                          do not import this directly from components or hooks
+│   │   ├── utils.ts               cn() (clsx + tailwind-merge), createInitialState(),
+│   │   │                          formatAUD() and other pure utility functions
+│   │   └── tv.ts                  Custom tv() via createTV() — extends twMerge config to classify
+│   │                              @theme text-size tokens (text-label-lg, text-body-md…) as
+│   │                              font-size so they don't conflict with text-primary color class
+│   │
+│   ├── services/                  Domain-level API calls — one file per backend resource
+│   │   ├── index.ts               Barrel — re-exports public surface of all service files
+│   │   ├── chat.ts                postChat(message, sessionId) → POST api/v1/chat
+│   │   └── summary.ts             postChatSummary(collectedData, sessionId, intent?)
+│   │                              → POST api/v1/chat/summary
+│   │
+│   ├── stores/                    Zustand stores — one file per domain concern
+│   │   ├── index.ts               Barrel — re-exports useConversationStore, useUIStore
+│   │   ├── conversationStore.ts   useConversationStore — sessionId, state (ConversationStateDTO),
+│   │   │                          messages (UIMessage[]), routing, isLoading; actions: initSession,
+│   │   │                          setUpdatedState (full replacement + sessionStorage sync + card
+│   │   │                          injection), addUserMessage, addAssistantMessage,
+│   │   │                          setAssistantLoading, setLoading, setRouting,
+│   │   │                          restoreFromStorage, clearSession
+│   │   └── uiStore.ts             useUIStore — sidebarCollapsed, activeModal;
+│   │                              actions: toggleSidebar, setSidebarCollapsed, openModal, closeModal
+│   │
+│   ├── hooks/                     React hooks — one responsibility each
+│   │   ├── index.ts               Barrel — re-exports useChat, useSession
+│   │   ├── useChat.ts             sendMessage, isLoading, errorMessage, clearError;
+│   │   │                          orchestrates store mutations and postChat call;
+│   │   │                          maps API error codes to user-facing messages
+│   │   └── useSession.ts          useSession(sessionId) → { isRestored };
+│   │                              on mount: attempts restoreFromStorage, falls back to initSession
 │   │
 │   ├── components/                UI and feature components
-│   │   ├── index.ts               Barrel — re-exports domain components (ChatInput, ChatMessage, …)
+│   │   ├── index.ts               Barrel — re-exports domain components
 │   │   ├── shared/                Generic UI atoms — no store reads, no hooks, no side effects
 │   │   │   ├── index.ts           Barrel — Button, Chip, AIBadge, Skeleton*, MaterialSymbol, TypingIndicator
-│   │   │   ├── Button.tsx         Multi-variant button with optional icon and loading spinner
+│   │   │   ├── Button.tsx         Multi-variant button (primary/secondary/ghost/danger) with
+│   │   │   │                      optional icon and loading spinner
 │   │   │   ├── Chip.tsx           Label chip with optional icon and remove button
 │   │   │   ├── AIBadge.tsx        Glass badge with AI icon; sizes sm | md
 │   │   │   ├── Skeleton.tsx       SkeletonText and SkeletonMessage loading placeholders
 │   │   │   ├── MaterialSymbol.tsx Thin wrapper for Material Symbols icon font
 │   │   │   └── TypingIndicator.tsx Three-dot animated typing indicator
+│   │   ├── layout/                App chrome — container components that read from UIStore
+│   │   │   ├── index.ts           Barrel
+│   │   │   ├── LayoutShell.tsx    Root layout container — composes SideNavBar + TopNavBar +
+│   │   │   │                      main slot + BottomNavBar; applies sidebar offset transition
+│   │   │   ├── TopNavBar.tsx      Top application bar — branding and top-level actions
+│   │   │   ├── SideNavBar.tsx     Collapsible side navigation; receives collapsed +
+│   │   │   │                      onToggleCollapse + activePath as props
+│   │   │   └── BottomNavBar.tsx   Mobile bottom navigation bar — shown below md breakpoint
+│   │   ├── ChatSession/           Top-level chat container — owns useSession + useChat;
+│   │   │                          renders message list, fixed ChatInput footer, error alert,
+│   │   │                          and post-completion CTA; auto-scrolls; fires initialMessage
 │   │   ├── ChatInput/             Textarea + send button; fires onSend(trimmedMessage)
 │   │   ├── ChatMessage/           Renders user / assistant message bubble; embeds result cards
 │   │   ├── ModuleProgress/        Sticky step-progress bar (M1→M4); ModuleStep is internal
@@ -172,13 +228,8 @@ frontend/
 │   │   ├── ChatMessage.stories.tsx
 │   │   └── ModuleProgress.stories.tsx
 │   │
-│   ├── services/                  Domain-level API calls — one file per backend resource
-│   │   ├── index.ts               Barrel — re-exports public surface of all service files
-│   │   ├── chat.ts                postChat(message, state) → POST api/v1/chat
-│   │   └── summary.ts             postChatSummary(collectedData, sessionId, intent?)
-│   │                              → POST api/v1/chat/summary
-│   │
 │   └── types/                     All type files end with .d.ts — mirrors backend models/ layout
+│       ├── index.d.ts             Barrel — re-exports public surface of all type files
 │       ├── conversation.d.ts      Domain enums (MODULE_ID, SESSION_STATUS, SUBMODEL_KEY, MESSAGE_ROLE),
 │       │                          M1–M4 sub-model interfaces, CollectedData, ConversationStateDTO, UIMessage
 │       ├── financial.d.ts         BorrowingCapacityResult, BudgetGapResult
@@ -187,6 +238,8 @@ frontend/
 │       ├── user_needs.d.ts        UserNeeds interface (mirrors backend models/user_needs.py)
 │       ├── routing.d.ts           USER_INTENT, EXECUTION_MODE, TRIGGER_SOURCE as const objects,
 │       │                          derived union types, RoutingPayload interface
+│       ├── ui.d.ts                ComponentSize, ComponentVariant, ComponentColor
+│       │                          (derived from constants/ui.ts via typeof)
 │       ├── api.d.ts               HTTP contract: APIResponse<TData>, ChatResponse, SummaryResponse,
 │       │                          ErrorDetail, ErrorResponse, SuccessResponse
 │       ├── global.d.ts            Ambient global type declarations
