@@ -150,19 +150,28 @@ backend/
 │   ├── state_machine.py
 │   └── intent_router.py
 ├── prompts/system_prompt_builder.py # All LLM system prompts
-├── domain/                          # LLM client, borrowing capacity, budget gap
+├── domain/                          # LLM client, borrowing capacity, budget gap, user needs
 ├── routers/chat.py                  # /chat and /chat/summary endpoints
 └── tests/
 
 frontend/
 ├── src/
-│   ├── app/                         # Next.js App Router pages and layouts
-│   ├── constants/                   # Shared string constants (endpoints, error codes)
-│   ├── lib/                         # Transport layer (axios instance + request wrapper)
-│   ├── services/                    # Domain API calls (chat, summary)
-│   ├── styles/                      # Tailwind CSS v4 design tokens
-│   └── types/                       # TypeScript type declarations (.d.ts)
+│   ├── app/                         # Next.js App Router — root layout + (main) route group
+│   │   └── (main)/                  #   layout.tsx (LayoutShell), page.tsx (home), chat/[sessionId]/
+│   ├── constants/                   # as-const value objects (MODULE_ID, USER_INTENT, STORAGE_KEY…)
+│   ├── lib/                         # request.ts (axios), utils.ts (cn, createInitialState), tv.ts
+│   ├── services/                    # Domain API calls — postChat, postChatSummary
+│   ├── stores/                      # Zustand — conversationStore, uiStore
+│   ├── hooks/                       # useChat, useSession
+│   ├── components/
+│   │   ├── shared/                  # UI atoms — Button, Chip, AIBadge, Skeleton, TypingIndicator
+│   │   ├── layout/                  # App chrome — LayoutShell, TopNavBar, SideNavBar, BottomNavBar
+│   │   └── (domain)/                # ChatSession, ChatInput, ChatMessage, ModuleProgress,
+│   │                                #   BorrowingCapacityCard, BudgetGapCard
+│   ├── styles/                      # Tailwind CSS v4 @theme design tokens
+│   └── types/                       # TypeScript .d.ts declarations (conversation, api, financial…)
 └── src/__tests__/                   # Vitest tests mirroring src/ structure
 ```
 
-See `CLAUDE.md` for full coding standards, architecture details, and invariants.
+See `CLAUDE.md` for full coding standards, architecture details, and invariants.  
+See `docs/frontend-implementation.md` for the complete frontend source map and data-flow diagram.

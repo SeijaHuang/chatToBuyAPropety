@@ -50,8 +50,9 @@ export function ChatInput({
   const isDisabled: boolean = isLoading || disabled
 
   return (
-    <div className={cn('glass-ai rounded-3xl', 'px-md py-sm')}>
+    <div id="chat-input" className={cn('glass-ai rounded-3xl', 'px-md py-sm')}>
       <textarea
+        id="chat-input-textarea"
         ref={textareaRef}
         value={value}
         onChange={handleChange}
@@ -69,8 +70,9 @@ export function ChatInput({
           isDisabled && 'opacity-50 cursor-not-allowed'
         )}
       />
-      <div className={cn('flex items-center justify-end', 'mt-xs')}>
+      <div id="chat-input-actions" className={cn('flex items-center justify-end', 'mt-xs')}>
         <Button
+          id="chat-input-send-btn"
           type="button"
           variant="primary"
           icon="send"

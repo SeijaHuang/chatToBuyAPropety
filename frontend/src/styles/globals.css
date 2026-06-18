@@ -36,6 +36,10 @@
   --height-md: 40px;
   --height-lg: 48px;
 
+  /* ─── Sidebar Widths ─────────────────────────────────────────────── */
+  --spacing-sidebar-expanded:  260px;
+  --spacing-sidebar-collapsed: 72px;
+
   /* ─── Icon / Avatar Sizes ────────────────────────────────────────── */
   --spacing-avatar-sm: 32px;
 

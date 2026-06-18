@@ -9,6 +9,7 @@ import { BudgetGapCard } from '../BudgetGapCard'
 import type { MessageRole, BorrowingCapacityResult, BudgetGapResult } from '@/types'
 
 interface ChatMessageProps {
+  id?: string
   role: MessageRole
   content: string
   isLoading?: boolean
@@ -18,6 +19,7 @@ interface ChatMessageProps {
 }
 
 export function ChatMessage({
+  id,
   role,
   content,
   isLoading = false,
@@ -28,14 +30,15 @@ export function ChatMessage({
 
   return (
     <div
+      id={id}
       className={cn(
         'flex flex-col',
         'gap-sm',
         isUser ? 'items-end' : 'items-start',
       )}
     >
-      <div className={cn('flex items-start', 'gap-sm')}>
-        {!isUser && (
+      <div className={cn('flex items-center', 'gap-sm')}>
+        {!isUser && !isLoading && (
           <MaterialSymbol
             name="auto_awesome"
             filled

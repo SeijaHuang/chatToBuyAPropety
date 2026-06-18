@@ -26,7 +26,7 @@ export function ModuleProgress({
   currentModule,
 }: ModuleProgressProps): React.ReactElement {
   return (
-    <div className={cn('flex items-center', 'sticky top-0 z-10', 'bg-surface px-md py-sm')}>
+    <div id="module-progress" className={cn('flex items-center', 'sticky top-0 z-10', 'bg-surface px-md py-sm')}>
       {MODULES.map((module, index) => {
         const isCompleted: boolean = completionStatus[module.key as ModuleKey]
         const isCurrent: boolean = module.id === currentModule && !isCompleted

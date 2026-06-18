@@ -3,20 +3,15 @@
 import React from 'react'
 import { useRouter } from 'next/navigation'
 import { v4 as uuid } from 'uuid'
-import { useConversationStore } from '@/stores/conversationStore'
 import { ChatInput } from '@/components'
 import { MaterialSymbol } from '@/components/shared'
 
 export default function HomePage(): React.ReactElement {
   const router: ReturnType<typeof useRouter> = useRouter()
-  const initSession = useConversationStore((s) => s.initSession)
-  const addUserMessage = useConversationStore((s) => s.addUserMessage)
 
   const handleFirstMessage = (message: string): void => {
     const sessionId: string = uuid()
-    initSession(sessionId)
-    addUserMessage(message)
-    router.push(`/chat/${sessionId}`)
+    router.push(`/chat/${sessionId}?q=${encodeURIComponent(message)}`)
   }
 
   return (

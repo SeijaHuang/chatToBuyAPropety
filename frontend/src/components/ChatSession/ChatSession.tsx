@@ -1,12 +1,12 @@
 'use client'
 
-import React, { useRef, useEffect } from 'react'
+import React, { useRef, useEffect, useCallback } from 'react'
 import { useConversationStore } from '@/stores/conversationStore'
+import { useUIStore } from '@/stores'
 import { useChat } from '@/hooks/useChat'
 import { useSession } from '@/hooks/useSession'
 import { ChatInput } from '@/components/ChatInput'
 import { ChatMessage } from '@/components/ChatMessage'
-import { ModuleProgress } from '@/components/ModuleProgress'
 import { Button } from '@/components/shared'
 import { cn } from '@/lib/utils'
 import { STORAGE_KEY } from '@/constants/storageKeys'
@@ -14,24 +14,35 @@ import type { UIMessage, ConversationStateDTO, RoutingPayload } from '@/types'
 
 interface ChatSessionProps {
   sessionId: string
+  initialMessage?: string | null
 }
 
-export function ChatSession({ sessionId }: ChatSessionProps): React.ReactElement | null {
+export function ChatSession({ sessionId, initialMessage = null }: ChatSessionProps): React.ReactElement | null {
   const messages: UIMessage[] = useConversationStore((s) => s.messages)
   const isLoading: boolean = useConversationStore((s) => s.isLoading)
   const state: ConversationStateDTO | null = useConversationStore((s) => s.state)
   const routing: RoutingPayload | null = useConversationStore((s) => s.routing)
+  const sidebarCollapsed: boolean = useUIStore((s) => s.sidebarCollapsed)
 
   const { sendMessage, errorMessage } = useChat()
   useSession(sessionId)
 
   const messageListRef = useRef<HTMLDivElement>(null)
+  const initialMessageSent = useRef<boolean>(false)
 
   useEffect(() => {
     if (messageListRef.current) {
       messageListRef.current.scrollTop = messageListRef.current.scrollHeight
     }
   }, [messages])
+
+  const stableSendMessage = useCallback(sendMessage, [sendMessage])
+
+  useEffect(() => {
+    if (state === null || initialMessage === null || initialMessageSent.current) return
+    initialMessageSent.current = true
+    void stableSendMessage(initialMessage)
+  }, [state, initialMessage, stableSendMessage])
 
   const handleViewProperties = (): void => {
     if (routing !== null) {
@@ -49,12 +60,7 @@ export function ChatSession({ sessionId }: ChatSessionProps): React.ReactElement
   }
 
   return (
-    <div className={cn('flex flex-col', 'h-screen')}>
-      <ModuleProgress
-        completionStatus={state.completionStatus}
-        currentModule={state.currentModule}
-      />
-
+    <div id="chat-session" className={cn('flex flex-col', 'h-screen')}>
       <div
         ref={messageListRef}
         className={cn(
@@ -66,6 +72,7 @@ export function ChatSession({ sessionId }: ChatSessionProps): React.ReactElement
         {messages.map((msg: UIMessage) => (
           <ChatMessage
             key={msg.id}
+            id={`chat-message-${msg.id}`}
             role={msg.role}
             content={msg.content}
             isLoading={msg.isLoading}
@@ -94,7 +101,8 @@ export function ChatSession({ sessionId }: ChatSessionProps): React.ReactElement
 
       <div
         className={cn(
-          'fixed bottom-0 left-0 right-0',
+          'fixed bottom-16 md:bottom-0 right-0 left-0',
+          sidebarCollapsed ? 'md:left-sidebar-collapsed' : 'md:left-sidebar-expanded',
           'px-md py-sm',
           'bg-surface/80 backdrop-blur-glass',
           'flex flex-col gap-xs',

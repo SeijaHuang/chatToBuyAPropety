@@ -65,7 +65,7 @@ const mockSummaryResponse: SummaryResponse = {
 }
 
 export const handlers = [
-  http.post(`${BASE_URL}/${ENDPOINTS.CHAT}`, () => HttpResponse.json(mockChatResponse)),
+  http.post(`${BASE_URL}/${ENDPOINTS.CHAT}`, () => HttpResponse.json({ ok: true, data: mockChatResponse })),
 
-  http.post(`${BASE_URL}/${ENDPOINTS.CHAT_SUMMARY}`, () => HttpResponse.json(mockSummaryResponse)),
+  http.post(`${BASE_URL}/${ENDPOINTS.CHAT_SUMMARY}`, () => HttpResponse.json({ ok: true, data: mockSummaryResponse })),
 ]

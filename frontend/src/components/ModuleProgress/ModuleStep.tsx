@@ -42,7 +42,7 @@ export function ModuleStep({ label, step, status }: ModuleStepProps): React.Reac
   const { root, circle, icon: iconSlot, label: labelSlot } = moduleStep({ status })
 
   return (
-    <div className={root()}>
+    <div id={`module-step-${step}`} className={root()}>
       <div className={circle()}>
         <span className={iconSlot()}>{step}</span>
       </div>

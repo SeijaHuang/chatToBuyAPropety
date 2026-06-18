@@ -12,6 +12,7 @@ interface BorrowingCapacityCardProps {
 export function BorrowingCapacityCard({ data }: BorrowingCapacityCardProps): React.ReactElement {
   return (
     <div
+      id="borrowing-capacity-card"
       className={cn(
         'glass-panel rounded-xl',
         'flex flex-col',

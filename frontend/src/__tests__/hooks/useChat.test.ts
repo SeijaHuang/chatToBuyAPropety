@@ -195,9 +195,12 @@ describe('useChat', () => {
     server.use(
       http.post(`${BASE_URL}/${ENDPOINTS.CHAT}`, () =>
         HttpResponse.json({
-          reply: 'done',
-          extracted: {},
-          routing: { intent: 'list_properties', session_id: 'test-session' },
+          ok: true,
+          data: {
+            reply: 'done',
+            extracted: {},
+            routing: { intent: 'list_properties', session_id: 'test-session' },
+          },
         })
       )
     )

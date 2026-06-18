@@ -65,8 +65,8 @@ export { axiosClient }
 export const request = {
   async post<TData>(url: string, data?: unknown): Promise<APIResponse<TData>> {
     try {
-      const response: AxiosResponse<TData> = await axiosClient.post<TData>(url, data)
-      return { ok: true, data: response.data }
+      const response: AxiosResponse<{ ok: true; data: TData }> = await axiosClient.post<{ ok: true; data: TData }>(url, data)
+      return { ok: true, data: response.data.data }
     } catch (err) {
       return { ok: false, error: normalizeError(err) }
     }
@@ -74,8 +74,8 @@ export const request = {
 
   async get<TData>(url: string, params?: unknown): Promise<APIResponse<TData>> {
     try {
-      const response: AxiosResponse<TData> = await axiosClient.get<TData>(url, { params })
-      return { ok: true, data: response.data }
+      const response: AxiosResponse<{ ok: true; data: TData }> = await axiosClient.get<{ ok: true; data: TData }>(url, { params })
+      return { ok: true, data: response.data.data }
     } catch (err) {
       return { ok: false, error: normalizeError(err) }
     }
