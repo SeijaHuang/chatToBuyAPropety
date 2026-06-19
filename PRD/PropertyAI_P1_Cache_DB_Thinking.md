@@ -6,7 +6,7 @@
 | ------------ | -------------------------- |
 | Version      | v0.1                       |
 | Status       | Living Document — 持续更新 |
-| Scope        | Part 1 — P1-A（匿名会话） |
+| Scope        | Part 1 — P1-A（匿名会话）  |
 | Last Updated | 11 Jun 2026                |
 
 > **说明**：本文档记录 PropertyAI 所有缓存相关的技术决策与取舍理由。涵盖 Session 状态缓存、数据库渐进快照、Agent 结果缓存、LLM Prompt Cache 等。是 `PropertyAI_Technical_Thinking.md` 中 §2–4 的专项展开。
@@ -68,7 +68,7 @@ Session 状态缓存解决两个问题：
 
 /chat/[sessionId] 页面加载
   → restoreFromStorage(sessionId)                          → null（新 session，无记录）
-  → restoreFromServer(sessionId)                           → GET /api/v1/session/{sessionId} → 404（Redis 无记录）
+  → restoreFromServer(sessionId)                           → GET /api/v1/chat/{sessionId} → 404（Redis 无记录）
   → 显示空白对话界面
 
 用户发消息
@@ -85,7 +85,7 @@ Session 状态缓存解决两个问题：
 /chat/[sessionId] 页面加载
   → restoreFromStorage(sessionId)                          成功 → 渲染历史对话 ✓（同一浏览器）
         ↓ sessionStorage 已清除（重启浏览器 / 换标签页）
-  → restoreFromServer(sessionId) → GET /api/v1/session/{sessionId}
+  → restoreFromServer(sessionId) → GET /api/v1/chat/{sessionId}
         ↓ 200                                              成功 → 渲染历史对话 ✓（从 Redis 恢复）
         ↓ 404（Redis TTL 已过期，7 天未活跃）
   → 告知用户"对话已过期"，提示开始新对话
@@ -112,19 +112,19 @@ Session 状态缓存解决两个问题：
 
 **不同场景下的恢复能力：**
 
-| 场景 | 结果 |
-| ---- | ---- |
-| 同一浏览器、同一标签页刷新 | 从 sessionStorage 恢复 ✅ |
-| 换标签页 / 关闭重开 | 从 Redis 恢复 ✅ |
-| 换设备 | 历史列表在 localStorage，换设备丢失 ❌（P2 才解决） |
-| Redis TTL 过期（7 天不活跃） | 提示"对话已过期"，无法恢复 |
+| 场景                         | 结果                                                |
+| ---------------------------- | --------------------------------------------------- |
+| 同一浏览器、同一标签页刷新   | 从 sessionStorage 恢复 ✅                           |
+| 换标签页 / 关闭重开          | 从 Redis 恢复 ✅                                    |
+| 换设备                       | 历史列表在 localStorage，换设备丢失 ❌（P2 才解决） |
+| Redis TTL 过期（7 天不活跃） | 提示"对话已过期"，无法恢复                          |
 
 页面加载时按以下顺序尝试恢复（在 `ChatSessionPage` 的 `useEffect` 中）：
 
 ```
 1. restoreFromStorage(sessionId)   → 读 sessionStorage，无网络，最快
          ↓ 失败（key 不存在）
-2. restoreFromServer(sessionId)    → GET /api/v1/session/{id}，从 Redis 恢复
+2. restoreFromServer(sessionId)    → GET /api/v1/chat/{id}，从 Redis 恢复
          ↓ 失败（404，session 已过期或不存在）
 3. 显示空白对话界面，等用户发首条消息，服务端自动初始化
 ```
@@ -154,7 +154,7 @@ conversation_history 每一条 → UIMessage:
 
 **需要新增**
 
-`restoreFromServer` 方法（`conversationStore.ts`，目前不存在）：调 `GET /api/v1/session/{sessionId}` 从 Redis 拿回 `ConversationStateDTO`，然后复用上述翻译逻辑重建 `UIMessage[]`。换标签页或换设备后能看到历史消息，靠的就是这个方法。
+`restoreFromServer` 方法（`conversationStore.ts`，目前不存在）：调 `GET /api/v1/chat/{sessionId}` 从 Redis 拿回 `ConversationStateDTO`，然后复用上述翻译逻辑重建 `UIMessage[]`。换标签页或换设备后能看到历史消息，靠的就是这个方法。
 
 ### 2.5 Redis Key Schema
 
@@ -220,7 +220,7 @@ ConversationStateDTO.model_validate_json(raw)
 - **滑动窗口**：每次写入（`save_state_async`）都用 `SETEX` 重置 TTL 为 7 天，而不是 `SET`。用户只要在用，计时器就持续刷新；7 天内完全没有操作才真正过期。
 - **不主动删除**：用户点击"清除对话"时，前端只清 sessionStorage 和 Zustand 本地状态，不调删除 API，Redis key 等 TTL 自然过期。P0 用户量小，Redis 内存压力不大，不值得为此引入一个删除端点。
 
-> P1 评估：若用户量上升、Redis 内存成为瓶颈，再加 `DELETE /api/v1/session/{session_id}` 端点。
+> P1 评估：若用户量上升、Redis 内存成为瓶颈，再加 `DELETE /api/v1/chat/{session_id}` 端点。
 
 **已存在 / 需要新增**
 
@@ -228,7 +228,7 @@ ConversationStateDTO.model_validate_json(raw)
 | ------------------------------------------ | ------- | --------- | ------------------------------------------------------------------------------------------------------- |
 | `frontend/src/stores/conversationStore.ts` | 170–176 | ✅ 已存在 | `clearSession()` 只清本地 sessionStorage + Zustand，P0 不需要调服务端删除接口，行为与计划一致，无需修改 |
 | `backend/config.py`                        | 27      | ⚠️ 需新增 | `session_ttl_seconds: int = 604800`，将 TTL 值集中在配置里，避免 `RedisSessionStore` 内硬编码           |
-| `backend/session/_redis_store.py`          | —       | ⚠️ 需新建 | `save_state_async` 实现中必须用 `SETEX(key, ttl, value)` 而非 `SET`，才能在每次写入时重置 TTL           |
+| `backend/chat/_redis_store.py`             | —       | ⚠️ 需新建 | `save_state_async` 实现中必须用 `SETEX(key, ttl, value)` 而非 `SET`，才能在每次写入时重置 TTL           |
 
 ### 2.8 API 契约变化
 
@@ -255,7 +255,7 @@ Response（不变）:
 2. 有数据 → 继续已有对话
 3. 没数据 → 用这个 `session_id` 创建全新的 `ConversationStateDTO`，首条消息自动初始化
 
-**新增：`GET /api/v1/session/{session_id}`**
+**新增：`GET /api/v1/chat/{session_id}`**
 
 用于从 Redis 恢复 session 状态，涵盖三种场景：页面刷新、换标签页、从历史列表进入旧对话（见 §2.3 恢复优先级）。
 
@@ -275,7 +275,7 @@ Response（不变）:
 | `frontend/src/app/(main)/chat/[sessionId]/page.tsx` | 1–7     | ✅ 已存在 | 路由存在，可读 `params.sessionId`                                                                      |
 | `frontend/src/app/(main)/page.tsx`                  | —       | ⚠️ 需修改 | 目前是占位符，添加"开始对话"按钮：`uuid()` 生成 sessionId → `router.push(/chat/${sessionId})`          |
 | `frontend/src/app/(main)/chat/[sessionId]/page.tsx` | —       | ⚠️ 需修改 | 添加 `useEffect`：`restoreFromStorage` → `restoreFromServer` → 空界面                                  |
-| `frontend/src/constants/endpoints.ts`               | 1–4     | ⚠️ 需修改 | 新增 `SESSION: (sessionId) => \`api/v1/session/${sessionId}\``                                         |
+| `frontend/src/constants/endpoints.ts`               | 1–4     | ⚠️ 需修改 | 新增 `SESSION: (sessionId) => \`api/v1/chat/${sessionId}\``                                            |
 | `frontend/src/services/chat.ts`                     | 5–9     | ⚠️ 需修改 | `postChat(message, state)` 改为 `postChat(message, sessionId)`                                         |
 | `frontend/src/stores/conversationStore.ts`          | —       | 🆕 需新增 | `restoreFromServer(sessionId)` 方法：调 `getSession`，重建 `UIMessage[]`                               |
 | `frontend/src/services/session.ts`                  | —       | 🆕 需新建 | `getSession(sessionId): Promise<APIResponse<ConversationStateDTO>>`                                    |
@@ -569,20 +569,20 @@ llm_client = HttpxOpenRouterClient()
 
 ### P1-A — 待实现（本文档覆盖范围，匿名会话）
 
-| 功能                     | 详见 | 说明                                                                                     |
-| ------------------------ | ---- | ---------------------------------------------------------------------------------------- |
-| Redis Session Store      | §2   | `session:{id}` 存 ConversationStateDTO，7天滑动 TTL                                      |
-| PostgreSQL 渐进快照      | §3   | 每模块完成时 upsert，`BackgroundTasks` 异步写                                            |
-| `GET /session/{id}` 端点 | §2.8 | 跨设备 / 跨标签页恢复对话                                                                |
-| Budget Gap Price Cache   | §4   | `price:{suburb}:{type}:{beds}`，24小时固定 TTL                                           |
-| Anthropic Prompt Cache   | §5   | 静态 prompt 段加 `cache_control`，通过 httpx 实现                                        |
-| 流式响应（SSE）          | —    | 文字实时流式，`updated_state` 作为末尾 event（见 `PropertyAI_Technical_Thinking.md` §1） |
+| 功能                   | 详见 | 说明                                                                                     |
+| ---------------------- | ---- | ---------------------------------------------------------------------------------------- |
+| Redis Session Store    | §2   | `session:{id}` 存 ConversationStateDTO，7天滑动 TTL                                      |
+| PostgreSQL 渐进快照    | §3   | 每模块完成时 upsert，`BackgroundTasks` 异步写                                            |
+| `GET /chat/{id}` 端点  | §2.8 | 跨设备 / 跨标签页恢复对话                                                                |
+| Budget Gap Price Cache | §4   | `price:{suburb}:{type}:{beds}`，24小时固定 TTL                                           |
+| Anthropic Prompt Cache | §5   | 静态 prompt 段加 `cache_control`，通过 httpx 实现                                        |
+| 流式响应（SSE）        | —    | 文字实时流式，`updated_state` 作为末尾 event（见 `PropertyAI_Technical_Thinking.md` §1） |
 
 ### P1-B / P2 — 暂不实现（留存理由）
 
-| 功能 | P1-A 不做的理由 | 触发条件 |
-| ---- | --------------- | -------- |
-| **用户账户 / 认证（P1-B）** | P1-A 是匿名会话，"用户"等价于"持有 session_id 的浏览器"，无需身份体系；引入账户会增加注册/登录流程，超出当前 MVP 范围 | 需要跨设备同步对话历史、用户画像持久化、或用户主动管理历史会话时实现 |
-| **SESSION_SECRET_KEY（P1-B）** | P1-A 的 session_id 是 UUID v4（122 位随机熵），本身不可猜测，无需额外签名；无用户账户则无需防止 A 访问 B 的数据 | P1-B 引入 JWT 认证后，`SESSION_SECRET_KEY` 用于签发 token，保护会话端点 |
-| **Session 历史列表（P1-B）** | 需要用户 ID 作为 key（`user:{user_id}:sessions`），P1-A 无用户账户，无法关联 | P1-B 实现用户注册/登录后，同步建立 Redis ZSET 历史索引 |
-| **Request Signature（P2）** | P1-A 是匿名会话，没有用户身份可证明；`session_id` 本身是 122 位随机 UUID，充当 secret，猜中概率为 2⁻¹²²，暴力枚举不可行；session 里存的是房产偏好，敏感度低，signature 的保护收益远小于引入成本 | P2 引入用户账户后，需要防止用户 A 读取用户 B 的会话；届时在 HTTP 请求头加 `Authorization: Bearer <JWT>`，JWT 含 `user_id`，后端校验 `session.user_id == jwt.user_id`，而不是给 `session_id` 本身加 HMAC |
+| 功能                           | P1-A 不做的理由                                                                                                                                                                                 | 触发条件                                                                                                                                                                                                |
+| ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **用户账户 / 认证（P1-B）**    | P1-A 是匿名会话，"用户"等价于"持有 session_id 的浏览器"，无需身份体系；引入账户会增加注册/登录流程，超出当前 MVP 范围                                                                           | 需要跨设备同步对话历史、用户画像持久化、或用户主动管理历史会话时实现                                                                                                                                    |
+| **SESSION_SECRET_KEY（P1-B）** | P1-A 的 session_id 是 UUID v4（122 位随机熵），本身不可猜测，无需额外签名；无用户账户则无需防止 A 访问 B 的数据                                                                                 | P1-B 引入 JWT 认证后，`SESSION_SECRET_KEY` 用于签发 token，保护会话端点                                                                                                                                 |
+| **Session 历史列表（P1-B）**   | 需要用户 ID 作为 key（`user:{user_id}:sessions`），P1-A 无用户账户，无法关联                                                                                                                    | P1-B 实现用户注册/登录后，同步建立 Redis ZSET 历史索引                                                                                                                                                  |
+| **Request Signature（P2）**    | P1-A 是匿名会话，没有用户身份可证明；`session_id` 本身是 122 位随机 UUID，充当 secret，猜中概率为 2⁻¹²²，暴力枚举不可行；session 里存的是房产偏好，敏感度低，signature 的保护收益远小于引入成本 | P2 引入用户账户后，需要防止用户 A 读取用户 B 的会话；届时在 HTTP 请求头加 `Authorization: Bearer <JWT>`，JWT 含 `user_id`，后端校验 `session.user_id == jwt.user_id`，而不是给 `session_id` 本身加 HMAC |

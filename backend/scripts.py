@@ -36,7 +36,17 @@ def typecheck() -> None:
 
 
 def dev() -> None:
-    """Start the uvicorn dev server with hot-reload on port 8000."""
+    """Start Docker services then the uvicorn dev server with hot-reload on port 8000."""
+    import pathlib
+
+    repo_root: pathlib.Path = pathlib.Path(__file__).parent.parent
+
+    subprocess.run(
+        ["docker-compose", "up", "-d", "redis", "postgres"],
+        cwd=repo_root,
+        check=True,
+    )
+
     try:
         result: subprocess.CompletedProcess[bytes] = subprocess.run(
             [sys.executable, "-m", "uvicorn", "main:app", "--reload", "--port", "8000"],
