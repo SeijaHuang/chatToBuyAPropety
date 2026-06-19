@@ -150,23 +150,23 @@ async def test_completion_status_updated_in_session(client_async: AsyncClient) -
 
 
 # ---------------------------------------------------------------------------
-# GET /session/{session_id}
+# GET /chat/{session_id}
 # ---------------------------------------------------------------------------
 
 
 async def test_get_session_returns_stored_state(client_async: AsyncClient) -> None:
-    """GET /session/{id} returns the current session state from Redis."""
+    """GET /chat/{id} returns the current session state from Redis."""
     initial: ConversationStateDTO = ConversationStateDTO(session_id=_SESSION_ID)
     with _mock_session(initial=initial):
-        response = await client_async.get(f"/api/v1/session/{_SESSION_ID}")
+        response = await client_async.get(f"/api/v1/chat/{_SESSION_ID}")
     assert response.status_code == 200
     assert response.json()["data"]["sessionId"] == _SESSION_ID
 
 
 async def test_get_session_404_when_not_found(client_async: AsyncClient) -> None:
-    """GET /session/{id} returns 404 when the session_id is absent from Redis."""
+    """GET /chat/{id} returns 404 when the session_id is absent from Redis."""
     with _mock_session():
-        response = await client_async.get("/api/v1/session/nonexistent-session")
+        response = await client_async.get("/api/v1/chat/nonexistent-session")
     assert response.status_code == 404
     assert response.json()["error"]["code"] == "SessionNotFoundError"
 

@@ -10,5 +10,5 @@ export function postChat(
 }
 
 export function getSession(sessionId: string): Promise<APIResponse<ConversationStateDTO>> {
-  return request.get<ConversationStateDTO>(`${ENDPOINTS.SESSION}/${sessionId}`)
+  return request.get<ConversationStateDTO>(`${ENDPOINTS.CHAT}/${sessionId}`)
 }

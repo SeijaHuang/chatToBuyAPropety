@@ -1234,11 +1234,11 @@ tests/test_guardrail_rules.py
 
 ### 16.2 传递方式
 
-| 阶段  | 传递方式                                                                                                                                         |
-| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| P0    | `ChatResponse.routing` 内嵌 `RoutingPayload`，前端负责转发给 Part 2 API                                                                         |
-| P1-A  | `ChatResponse.routing` 继续内嵌（供前端判断触发条件）；`UserNeeds` 同时写入 PostgreSQL `sessions.final_needs`，Part 2 直接查库，无需前端转发数据 |
-| P2    | Part 2 按需决定缓存策略；`routing:{session_id}` Redis key 不在 P1-A 实现范围内                                                                   |
+| 阶段 | 传递方式                                                                                                                                         |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| P0   | `ChatResponse.routing` 内嵌 `RoutingPayload`，前端负责转发给 Part 2 API                                                                          |
+| P1-A | `ChatResponse.routing` 继续内嵌（供前端判断触发条件）；`UserNeeds` 同时写入 PostgreSQL `sessions.final_needs`，Part 2 直接查库，无需前端转发数据 |
+| P2   | Part 2 按需决定缓存策略；`routing:{session_id}` Redis key 不在 P1-A 实现范围内                                                                   |
 
 ### 16.3 RoutingPayload 完整定义（v1.1 更新）
 
@@ -1386,13 +1386,13 @@ budget_gap: BudgetGapResult | None = None
 
 ### 20.1 P1-A In Scope（匿名会话，当前实现）
 
-| 功能                   | 优先级 | 依赖                        | 说明                                                              |
-| ---------------------- | ------ | --------------------------- | ----------------------------------------------------------------- |
-| Redis 会话持久化       | 高     | Redis 容器                  | 替换前端持有状态；支持会话跨标签/服务端重启恢复；见 §21           |
-| PostgreSQL 渐进快照    | 高     | PostgreSQL 容器             | M1→M4 每模块完成时异步 upsert，防 Redis TTL 过期数据丢失；见 §24  |
-| Budget Gap Price Cache | 高     | Redis                       | Domain API 郊区中位价缓存 24h，避免重复调用；见 §25               |
-| SSE 流式响应           | 中     | FastAPI EventSourceResponse | 改善首字延迟，目标 < 1s 首 token                                  |
-| Prompt Cache           | 低     | httpx 或 Anthropic SDK      | 系统提示静态部分 cache，降低 token 成本                           |
+| 功能                   | 优先级 | 依赖                        | 说明                                                             |
+| ---------------------- | ------ | --------------------------- | ---------------------------------------------------------------- |
+| Redis 会话持久化       | 高     | Redis 容器                  | 替换前端持有状态；支持会话跨标签/服务端重启恢复；见 §21          |
+| PostgreSQL 渐进快照    | 高     | PostgreSQL 容器             | M1→M4 每模块完成时异步 upsert，防 Redis TTL 过期数据丢失；见 §24 |
+| Budget Gap Price Cache | 高     | Redis                       | Domain API 郊区中位价缓存 24h，避免重复调用；见 §25              |
+| SSE 流式响应           | 中     | FastAPI EventSourceResponse | 改善首字延迟，目标 < 1s 首 token                                 |
+| Prompt Cache           | 低     | httpx 或 Anthropic SDK      | 系统提示静态部分 cache，降低 token 成本                          |
 
 ### 20.2 P1-A Out of Scope
 
@@ -1413,13 +1413,13 @@ budget_gap: BudgetGapResult | None = None
 
 P1-B 在 P1-A 基础上引入用户账户体系，主要包含：
 
-| 功能             | 说明                                              |
-| ---------------- | ------------------------------------------------- |
-| 用户注册 / 登录  | 邮箱 + 密码或 OAuth（Google）                     |
-| JWT 认证         | `SESSION_SECRET_KEY` 签发 token，保护会话端点     |
-| 用户画像持久化   | 跨 session 保存 CollectedData，新 session 预填    |
-| Session 历史列表 | `user:{user_id}:sessions` ZSET + 自动生成 title   |
-| 匿名 → 账户迁移  | 注册时将现有 session_id 绑定至新账户              |
+| 功能             | 说明                                            |
+| ---------------- | ----------------------------------------------- |
+| 用户注册 / 登录  | 邮箱 + 密码或 OAuth（Google）                   |
+| JWT 认证         | `SESSION_SECRET_KEY` 签发 token，保护会话端点   |
+| 用户画像持久化   | 跨 session 保存 CollectedData，新 session 预填  |
+| Session 历史列表 | `user:{user_id}:sessions` ZSET + 自动生成 title |
+| 匿名 → 账户迁移  | 注册时将现有 session_id 绑定至新账户            |
 
 > P1-B 设计文档待另立，本 PRD 不展开。
 
@@ -1503,9 +1503,9 @@ class ChatResponse(BaseModel):
 
 ### 21.5 新增端点
 
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/session/{session_id}` | 从 Redis 恢复完整会话状态（换标签页 / 换设备场景） |
+| Method | Path                 | Description                                        |
+| ------ | -------------------- | -------------------------------------------------- |
+| `GET`  | `/chat/{session_id}` | 从 Redis 恢复完整会话状态（换标签页 / 换设备场景） |
 
 ```
 → 200: SuccessResponse<ConversationStateDTO>   （Redis 中存在）
@@ -1514,7 +1514,7 @@ class ChatResponse(BaseModel):
 
 ```python
 # routers/session.py
-@router.get("/session/{session_id}")
+@router.get("/chat/{session_id}")
 async def get_session_async(
     session_id: str,
     session_store: ISessionStore = Depends(get_session_store),
@@ -1584,12 +1584,12 @@ data: {"extracted": {...}, "routing": null}
 
 **方案：每模块完成时累计 upsert 一次，同一 `session_id` 覆盖更新，不产生多行。**
 
-| 触发时机 | 写入内容 |
-|---------|---------|
-| M1 完成 | 含 m1 的 `CollectedData` 快照，写入 `initial_intent` |
-| M2 完成 | 含 m1 + m2 的 `CollectedData` 快照 |
-| M3 完成 | 含 m1 + m2 + m3 的 `CollectedData` 快照 |
-| M4 完成 | 含所有模块的完整 `UserNeeds`（写入 `final_needs`、`borrowing_capacity`、`completed_at`） |
+| 触发时机 | 写入内容                                                                                 |
+| -------- | ---------------------------------------------------------------------------------------- |
+| M1 完成  | 含 m1 的 `CollectedData` 快照，写入 `initial_intent`                                     |
+| M2 完成  | 含 m1 + m2 的 `CollectedData` 快照                                                       |
+| M3 完成  | 含 m1 + m2 + m3 的 `CollectedData` 快照                                                  |
+| M4 完成  | 含所有模块的完整 `UserNeeds`（写入 `final_needs`、`borrowing_capacity`、`completed_at`） |
 
 ### 24.2 File
 
@@ -1628,21 +1628,21 @@ async def chat_async(
 
 **写入 PostgreSQL：**
 
-| 字段 | 说明 |
-|------|------|
-| `collected_data` | M1–M4 所有已收集字段，每次 upsert 累计叠加 |
-| `status` | `IN_PROGRESS` / `REQUIREMENTS_COMPLETE` |
-| `initial_intent` | M1 完成后首次写入 |
-| `final_needs` | M4 完成后写入完整 `UserNeeds` |
-| `borrowing_capacity` | M4 完成后写入借贷能力估算 |
-| `completed_at` | M4 完成时写入当前时间戳 |
+| 字段                 | 说明                                       |
+| -------------------- | ------------------------------------------ |
+| `collected_data`     | M1–M4 所有已收集字段，每次 upsert 累计叠加 |
+| `status`             | `IN_PROGRESS` / `REQUIREMENTS_COMPLETE`    |
+| `initial_intent`     | M1 完成后首次写入                          |
+| `final_needs`        | M4 完成后写入完整 `UserNeeds`              |
+| `borrowing_capacity` | M4 完成后写入借贷能力估算                  |
+| `completed_at`       | M4 完成时写入当前时间戳                    |
 
 **不写入 PostgreSQL：**
 
-| 内容 | 原因 |
-|------|------|
+| 内容                   | 原因                                                                                                                 |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------- |
 | `conversation_history` | 体积大且增长不可控；PG 归档目的是结构化业务数据，不是原始聊天记录。如需完整历史，应单独建 `conversation_messages` 表 |
-| `budget_gap` | 派生值——`budget_max` 在 `collected_data` 中，中位价每天更新，PG 快照次日即过时；Part 2 可按需重算 |
+| `budget_gap`           | 派生值——`budget_max` 在 `collected_data` 中，中位价每天更新，PG 快照次日即过时；Part 2 可按需重算                    |
 
 ### 24.5 Upsert SQL
 
@@ -1668,14 +1668,14 @@ DO UPDATE SET
 
 ### 24.6 Acceptance Criteria
 
-| ID | Criterion |
-|----|-----------|
-| PG-1 | M1 模块完成时，`sessions` 表中存在对应行，`collected_data` 含 m1 字段，`initial_intent` 非空 |
-| PG-2 | M2 完成后 upsert，`collected_data` 包含 m1 + m2 数据，行数不变（仍为 1 行） |
-| PG-3 | M4 完成后，`final_needs` 非 null，`status` 为 `REQUIREMENTS_COMPLETE`，`completed_at` 非 null |
-| PG-4 | 写入异步执行（`BackgroundTasks`），不阻塞 `/chat` 端点响应时间 |
-| PG-5 | `conversation_history` 和 `budget_gap` 不出现在 `sessions` 表中 |
-| PG-6 | 数据库不可用时，`BackgroundTasks` 内部异常不影响主请求正常返回 `ChatResponse` |
+| ID   | Criterion                                                                                              |
+| ---- | ------------------------------------------------------------------------------------------------------ |
+| PG-1 | M1 模块完成时，`sessions` 表中存在对应行，`collected_data` 含 m1 字段，`initial_intent` 非空           |
+| PG-2 | M2 完成后 upsert，`collected_data` 包含 m1 + m2 数据，行数不变（仍为 1 行）                            |
+| PG-3 | M4 完成后，`final_needs` 非 null，`status` 为 `REQUIREMENTS_COMPLETE`，`completed_at` 非 null          |
+| PG-4 | 写入异步执行（`BackgroundTasks`），不阻塞 `/chat` 端点响应时间                                         |
+| PG-5 | `conversation_history` 和 `budget_gap` 不出现在 `sessions` 表中                                        |
+| PG-6 | 数据库不可用时，`BackgroundTasks` 内部异常不影响主请求正常返回 `ChatResponse`                          |
 | PG-7 | 同一 `session_id` 多次 upsert 保持幂等，`initial_intent` 和 `completed_at` 不被后续 upsert 覆盖为 null |
 
 ### 24.7 Integration Tests
@@ -1740,13 +1740,13 @@ async def get_median_price_async(
 
 ### 25.4 Acceptance Criteria
 
-| ID | Criterion |
-|----|-----------|
-| PC-1 | 相同 suburb / type / beds 第二次请求命中缓存，不触发 Domain API 调用 |
-| PC-2 | 缓存 TTL 为 86400 秒，固定过期（不滑动） |
-| PC-3 | Domain API 失败时返回 None，不写入缓存，`has_gap` 检测降级处理（返回 None，不阻断主流程） |
+| ID   | Criterion                                                                                   |
+| ---- | ------------------------------------------------------------------------------------------- |
+| PC-1 | 相同 suburb / type / beds 第二次请求命中缓存，不触发 Domain API 调用                        |
+| PC-2 | 缓存 TTL 为 86400 秒，固定过期（不滑动）                                                    |
+| PC-3 | Domain API 失败时返回 None，不写入缓存，`has_gap` 检测降级处理（返回 None，不阻断主流程）   |
 | PC-4 | Key 格式严格为 `price:{suburb}:{property_type}:{min_bedrooms}`，suburb 小写、空格替换为 `_` |
-| PC-5 | 不同 suburb / type / beds 组合各自独立缓存，互不影响 |
+| PC-5 | 不同 suburb / type / beds 组合各自独立缓存，互不影响                                        |
 
 ### 25.5 Unit Tests
 
@@ -1874,7 +1874,6 @@ backend/
 │       └── price_cache.py          # RedisPriceCache（Domain API 中位价，24h TTL）
 ├── routers/
 │   ├── chat.py
-│   └── session.py                  # P1新增：GET /session/{session_id}（§21.5）
 ├── db/
 │   └── session_archive.py          # P1新增：PostgreSQL 渐进快照 upsert（§24）
 └── tests/

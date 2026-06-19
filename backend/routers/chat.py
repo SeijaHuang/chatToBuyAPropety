@@ -142,7 +142,7 @@ async def chat_async(
     )
 
 
-@router.get("/session/{session_id}")
+@router.get("/chat/{session_id}")
 async def get_session_async(
     session_id: str,
 ) -> SuccessResponse[ConversationStateDTO]:
