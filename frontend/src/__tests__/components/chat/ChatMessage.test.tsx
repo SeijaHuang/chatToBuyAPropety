@@ -25,6 +25,11 @@ const SAMPLE_BUDGET_GAP: BudgetGapResult = {
 }
 
 describe('ChatMessage', () => {
+  it('renders the message content text', () => {
+    render(<ChatMessage role="assistant" content="Hello from assistant" />)
+    expect(screen.getByText('Hello from assistant')).toBeInTheDocument()
+  })
+
   it('applies right-alignment class for user role', () => {
     const { container } = render(<ChatMessage role="user" content="Hello" />)
     const wrapper = container.firstChild as HTMLElement
