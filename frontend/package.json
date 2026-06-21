@@ -9,6 +9,7 @@
     "lint": "next lint",
     "test": "vitest",
     "test:run": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "type-check": "tsc --noEmit",
     "ladle": "ladle serve",
     "ladle:build": "ladle build"
@@ -38,6 +39,7 @@
     "@types/react-dom": "^18.3.7",
     "@types/uuid": "^9.0.8",
     "@vitejs/plugin-react": "^4.7.0",
+    "@vitest/coverage-v8": "^2.1.9",
     "eslint": "^8",
     "eslint-config-next": "14.2.35",
     "jsdom": "^29.1.1",

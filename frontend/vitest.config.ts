@@ -24,6 +24,27 @@ export default defineConfig({
     env: {
       NEXT_PUBLIC_API_BASE_URL: 'http://localhost:8000',
     },
+    coverage: {
+      provider: 'v8',
+      include: ['src/**'],
+      exclude: [
+        'src/types/**',
+        'src/app/**',
+        'src/styles/**',
+        'src/stories/**',
+        'src/__tests__/**',
+        // App chrome/shell — no business logic; require Next.js routing mocks to test
+        'src/components/layout/**',
+        // Root barrel — re-exports only; actual components tested via sub-directory barrels
+        'src/components/index.ts',
+      ],
+      thresholds: {
+        branches: 80,
+        functions: 80,
+        lines: 80,
+        statements: 80,
+      },
+    },
   },
   resolve: {
     alias: { '@': resolve(__dirname, './src') },

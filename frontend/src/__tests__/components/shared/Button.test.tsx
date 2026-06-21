@@ -4,6 +4,11 @@ import { describe, it, expect, vi } from 'vitest'
 import { Button } from '@/components/shared/Button'
 
 describe('Button', () => {
+  it('renders children text', () => {
+    render(<Button>Submit</Button>)
+    expect(screen.getByRole('button')).toHaveTextContent('Submit')
+  })
+
   it('renders with primary variant classes', () => {
     render(<Button variant="primary">Click</Button>)
     const btn = screen.getByRole('button')

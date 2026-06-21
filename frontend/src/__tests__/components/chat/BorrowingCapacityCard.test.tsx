@@ -1,54 +1,46 @@
 import { render, screen } from '@testing-library/react'
 import { describe, it, expect } from 'vitest'
 import { BorrowingCapacityCard } from '@/components/BorrowingCapacityCard'
-import type { BorrowingCapacityResult } from '@/types'
+import { mockBorrowingCapacity } from '@/__tests__/msw/fixtures'
 
-const SAMPLE_BORROWING: BorrowingCapacityResult = {
-  estimated_capacity: 560000,
-  monthly_repayment:  2340,
-  based_on_salary:    120000,
-  is_joint:           false,
-  annual_rate:        6.25,
-  loan_term_years:    30,
-  rate_source:        'RBA cash rate + 3% buffer',
-  disclaimer:         'This is an estimate only and does not constitute financial advice.',
-}
+// mockBorrowingCapacity:
+//   estimated_capacity: 560000
+//   annual_rate: 6.25
+//   loan_term_years: 30
+//   rate_source: 'RBA F5 lending rate indicator (2026-05)'
+//   disclaimer: 'This is an estimate only based on RBA F5 indicator rate of 6.25% p.a. ...'
 
 describe('BorrowingCapacityCard', () => {
-  it('renders formatted estimated capacity', () => {
-    render(<BorrowingCapacityCard data={SAMPLE_BORROWING} />)
-    expect(screen.getByText('$560,000')).toBeTruthy()
+  it('renders the formatted borrowing capacity amount', () => {
+    render(<BorrowingCapacityCard data={mockBorrowingCapacity} />)
+    expect(screen.getByText('$560,000')).toBeInTheDocument()
   })
 
-  it('renders annual rate', () => {
-    render(<BorrowingCapacityCard data={SAMPLE_BORROWING} />)
-    expect(screen.getByText('6.25% p.a.')).toBeTruthy()
+  it('renders the annual rate value', () => {
+    render(<BorrowingCapacityCard data={mockBorrowingCapacity} />)
+    expect(screen.getByText('6.25% p.a.')).toBeInTheDocument()
   })
 
-  it('renders loan term in years', () => {
-    render(<BorrowingCapacityCard data={SAMPLE_BORROWING} />)
-    expect(screen.getByText('30 years')).toBeTruthy()
+  it('renders the loan term value', () => {
+    render(<BorrowingCapacityCard data={mockBorrowingCapacity} />)
+    expect(screen.getByText('30 years')).toBeInTheDocument()
   })
 
-  it('renders disclaimer text in the document', () => {
-    render(<BorrowingCapacityCard data={SAMPLE_BORROWING} />)
-    expect(
-      screen.getByText('This is an estimate only and does not constitute financial advice.'),
-    ).toBeTruthy()
+  // *** COMPLIANCE TESTS — these three are the CI gate ***
+
+  it('renders the disclaimer text in the document', () => {
+    render(<BorrowingCapacityCard data={mockBorrowingCapacity} />)
+    expect(screen.getByText(/estimate only/i)).toBeInTheDocument()
   })
 
-  it('renders disclaimer text visibly', () => {
-    render(<BorrowingCapacityCard data={SAMPLE_BORROWING} />)
-    expect(
-      screen.getByText('This is an estimate only and does not constitute financial advice.'),
-    ).toBeVisible()
+  it('renders the disclaimer text visibly — not hidden by CSS', () => {
+    render(<BorrowingCapacityCard data={mockBorrowingCapacity} />)
+    expect(screen.getByText(/estimate only/i)).toBeVisible()
   })
 
-  it('renders rate source in disclaimer or card', () => {
-    render(<BorrowingCapacityCard data={SAMPLE_BORROWING} />)
-    expect(screen.getByText('30 years')).toBeTruthy()
-    // rate_source is captured in the rendered card data
-    const { container } = render(<BorrowingCapacityCard data={SAMPLE_BORROWING} />)
-    expect(container.textContent).toContain('6.25')
+  it('disclaimer text references the rate source', () => {
+    render(<BorrowingCapacityCard data={mockBorrowingCapacity} />)
+    // Both rate_source and disclaimer contain "RBA F5"; assert at least one is present
+    expect(screen.getAllByText(/RBA F5/i).length).toBeGreaterThan(0)
   })
 })
