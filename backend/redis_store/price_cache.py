@@ -4,7 +4,7 @@ import json
 
 import structlog
 
-from domain.redis.client import redis_client
+from redis_store.client import redis_client
 
 logger = structlog.get_logger()
 

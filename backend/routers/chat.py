@@ -12,7 +12,6 @@ from conversation.state_machine import merge_extracted_fields
 from domain.borrowing_capacity import estimate_borrowing_capacity_async
 from domain.budget_gap_detector import detect_budget_gap_async
 from domain.llm_client import ILLMClient, OpenRouterClient
-from domain.redis.session_store import session_store
 from domain.user_needs_builder import build_user_needs
 from exceptions import SessionNotFoundError, SummaryValidationError
 from models.base import SuccessResponse
@@ -31,6 +30,7 @@ from prompts.system_prompt_builder import (
     build_question_prompt,
     build_summary_prompt,
 )
+from redis_store.session_store import session_store
 from tools.extraction_schema import EXTRACT_REQUIREMENTS_TOOL
 
 router = APIRouter()

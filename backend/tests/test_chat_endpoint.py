@@ -8,9 +8,9 @@ from unittest.mock import AsyncMock, patch
 from httpx import AsyncClient
 
 import routers.chat as chat_module
-from domain.redis import session_store as session_store_module
 from exceptions import LLMServiceError, RateLimitError
 from models.conversation_state import ConversationStateDTO
+from redis_store import session_store as session_store_module
 
 _SESSION_ID: str = "test-session-001"
 
