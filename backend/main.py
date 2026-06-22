@@ -7,8 +7,8 @@ from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from domain.redis.client import redis_client
 from error_handlers import register_exception_handlers
+from redis_store.client import redis_client
 from routers.chat import router as chat_router
 
 load_dotenv()

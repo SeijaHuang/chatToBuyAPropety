@@ -6,9 +6,9 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from domain.redis.client import redis_client
 from main import app
 from models.conversation_state import ConversationStateDTO
+from redis_store.client import redis_client
 
 
 @pytest.fixture
