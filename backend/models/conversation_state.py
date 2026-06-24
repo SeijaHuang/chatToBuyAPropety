@@ -223,6 +223,7 @@ class ConversationStateDTO(PropertyAIBaseModel):
     completion_status: CompletionStatus = Field(default_factory=CompletionStatus)
     collected_data: CollectedData = Field(default_factory=CollectedData)
     conversation_history: list[dict[str, object]] = Field(default_factory=list)
+    initial_intent: EUserIntent | None = None
     final_needs: CollectedData | None = None
     borrowing_capacity: BorrowingCapacityResult | None = None
     budget_gap: BudgetGapResult | None = None
