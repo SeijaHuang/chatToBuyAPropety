@@ -1458,74 +1458,161 @@ price:{suburb}:{property_type}:{beds}   → JSON {"median_price": 850000}
 ### 21.3 P1 系统流程
 
 ```
-POST /chat  {session_id, message}
+POST /chat  {session_id?, message}
        │
+       ├─ 0. session_id 为 None → 后端生成 UUID v4
        ├─ 1. Redis GET session:{session_id}
-       ├─ 2. Build dynamic system prompt
-       ├─ 3. Call OpenRouter
-       ├─ 4. Parse tool_call, merge fields
-       ├─ 5. Update completionStatus
-       ├─ 6. Evaluate intent routing
-       ├─ 7. Redis SET session:{session_id} (KEEPTTL)
-       └─ 8. Return ChatResponse
+       │       └─ None → 创建新 ConversationStateDTO(session_id)
+       ├─ 2. 追加 user message 到 conversation_history
+       ├─ 3. Round 1: build_extraction_prompt → chat_with_tools_async → merge_extracted_fields
+       ├─ 4. 计算 borrowing_capacity / budget_gap（条件触发）
+       ├─ 5. Round 2: build_question_prompt → complete_async → reply
+       ├─ 6. 追加 assistant reply 到 conversation_history
+       ├─ 7. Redis SET session:{session_id}（滑动 TTL 重置）
+       ├─ 8. classify_intent → RoutingPayload?
+       └─ 9. Return ChatResponse {reply, extracted, session_id, state, routing}
 ```
 
-### 21.3.1 新 Session 自动创建
+### 21.3.1 Session ID 生成——后端负责
 
-`/chat` 的第 1 步 Redis GET 返回 `None`（key 不存在或 TTL 已过期）时，**自动使用请求中的 `session_id` 创建新的 `ConversationStateDTO`**，不返回 404，不需要额外的 `POST /session` 初始化端点。
+**设计决策（v1.2 更新）：** `session_id` 由**后端生成**，前端不生成 UUID。
 
-**原因：** 与 P0 行为一致（前端 P0 自己初始化 state）；前端只需生成 UUID v4 直接发送第一条消息；`session_id` 由前端生成，唯一性已有保证。
+**原因：**
+- 唯一性保证不应依赖客户端实现；后端生成可确保格式（UUID v4）和唯一性
+- 前端不再需要引入 `uuid` 依赖；session 创建的职责清晰归属后端
+- 与 P1-B 用户账户接入后的行为一致（登录态下 session_id 也将由后端关联用户生成）
+
+**实现：** `ChatRequest.session_id` 改为可选字段（`str | None`，默认 `None`）。后端逻辑：
 
 ```python
-# routers/chat.py（伪代码）
-state: ConversationStateDTO | None = await redis_client.load_session_async(request.session_id)
+# routers/chat.py
+from uuid import uuid4
+
+session_id: str = request.session_id if request.session_id else str(uuid4())
+state: ConversationStateDTO | None = await session_store.load_session_async(session_id)
 if state is None:
-    state = ConversationStateDTO(session_id=request.session_id)
-    # 首次写入 Redis，设置完整 TTL
+    state = ConversationStateDTO(session_id=session_id)
 ```
+
+**首次调用流程（前端视角）：**
+
+```
+用户在首页输入第一条消息
+       │
+       ▼
+POST /chat { session_id: null, message: "..." }
+       │
+       ▼  后端生成 session_id，处理消息，存入 Redis
+       │
+ChatResponse { session_id: "uuid-v4", reply: "...", state: {...}, ... }
+       │
+       ▼
+前端 navigate → /chat/:session_id
+```
+
+后续消息始终携带 URL 中的 `session_id`，Redis 自动加载对应会话。
 
 ---
 
-### 21.4 P1 接口变更
+### 21.4 P1 接口定义
 
 ```python
-# P1 ChatRequest（移除 state 字段）
-class ChatRequest(BaseModel):
-    session_id: str
-    message:    str
+# P1 ChatRequest — session_id 可选，None 表示新建会话
+class ChatRequest(PropertyAIBaseModel):
+    session_id: str | None = None   # None → 后端生成新 UUID v4
+    message:    str = Field(min_length=1)
 
-# P1 ChatResponse（移除 updated_state）
-class ChatResponse(BaseModel):
-    reply:    str
-    extracted: dict
-    routing:  Optional[RoutingPayload] = None
+# P1 ChatResponse — 包含 session_id 和本轮处理后的 state 快照
+class ChatResponse(PropertyAIBaseModel):
+    reply:      str
+    extracted:  dict[str, object]
+    session_id: str                      # 当前会话 ID（新建或沿用），前端用于构建 URL
+    state:      ConversationStateDTO     # 本轮结束后的最新状态快照，供前端展示用
+    routing:    RoutingPayload | None = None
 ```
 
-### 21.5 新增端点
+**`state` 字段的设计意图：**
 
-| Method | Path                 | Description                                        |
-| ------ | -------------------- | -------------------------------------------------- |
-| `GET`  | `/chat/{session_id}` | 从 Redis 恢复完整会话状态（换标签页 / 换设备场景） |
+前端不在本地维护或修改 `ConversationStateDTO`。每次 `/chat` 响应后，前端用返回的 `state` 替换本地展示缓存（覆盖写），用于渲染 ModuleProgress、注入 BorrowingCapacity / BudgetGap 卡片。`state` 是只读快照，前端不拥有状态的权威副本。
+
+| 字段 | 前端用途 |
+|------|---------|
+| `state.currentModule` | ModuleProgress 进度条当前步骤 |
+| `state.completionStatus` | ModuleProgress 各步骤完成标记 |
+| `state.borrowingCapacity` | 触发 BorrowingCapacityCard 注入 |
+| `state.budgetGap` | 触发 BudgetGapCard 注入 |
+| `state.conversationHistory` | 前端不使用（前端有独立的 UIMessage[]） |
+
+### 21.5 端点清单（P1-A 实现）
+
+| Method | Path                 | Status | Description                                                      |
+| ------ | -------------------- | ------ | ---------------------------------------------------------------- |
+| `POST` | `/chat`              | ✅ 已实现 | 发送消息；`session_id` 可选，None 时后端生成并在响应中返回        |
+| `GET`  | `/chat/{session_id}` | ✅ 已实现 | 从 Redis 恢复完整会话状态（换标签页 / 换设备 / 页面刷新场景）    |
+| `POST` | `/chat/summary`      | ✅ 已实现 | 生成自然语言需求摘要                                              |
+
+**GET /chat/{session_id} 响应规范：**
 
 ```
 → 200: SuccessResponse<ConversationStateDTO>   （Redis 中存在）
 → 404: ErrorResponse SessionNotFoundError       （不存在或 TTL 已过期）
 ```
 
+实际实现位于 `routers/chat.py`：
+
 ```python
-# routers/session.py
 @router.get("/chat/{session_id}")
-async def get_session_async(
-    session_id: str,
-    session_store: ISessionStore = Depends(get_session_store),
-) -> SuccessResponse[ConversationStateDTO]:
-    state: ConversationStateDTO | None = await session_store.load_state_async(session_id)
+async def get_session_async(session_id: str) -> SuccessResponse[ConversationStateDTO]:
+    state: ConversationStateDTO | None = await session_store.load_session_async(session_id)
     if state is None:
-        raise SessionNotFoundError(f"Session {session_id!r} not found or expired.")
-    return SuccessResponse(data=state)
+        raise SessionNotFoundError(session_id)
+    return SuccessResponse[ConversationStateDTO](data=state)
 ```
 
-> **为何 P1 不实现 `DELETE /session`：** 前端"清除对话"只需清 sessionStorage + Zustand 本地状态，Redis key 等 7 天 TTL 自然过期即可。P1 用户量小，Redis 内存压力不大，引入删除端点收益低于维护成本。如未来 Redis 内存成为瓶颈，可在 P2 补充该端点。
+> **为何 P1-A 不实现 `DELETE /session`：** Redis TTL（7 天）自然过期即可。前端"清除对话"只清本地 Zustand 状态，导航离开即可。如未来 Redis 内存成为瓶颈，P2 再补充该端点。
+
+---
+
+### 21.6 前端状态契约
+
+> 本节描述 P1-A 下前端与后端状态的职责边界，指导前端实现（Zustand store 设计）。
+
+**核心原则：后端是唯一的状态权威，前端只读不写。**
+
+| 维度 | 规范 |
+|------|------|
+| 状态权威 | Redis 中的 `ConversationStateDTO` 是唯一来源 |
+| 前端写状态 | **禁止**。前端不在本地创建、修改或合并 `ConversationStateDTO` |
+| 前端读状态 | 从 `ChatResponse.state` 或 `GET /chat/{session_id}` 响应中读取 |
+| 本地缓存 | **禁止使用 sessionStorage / localStorage 缓存 state**。前端不持久化状态 |
+| session_id 来源 | 首次由 `ChatResponse.session_id` 返回，后续从 URL 参数读取 |
+
+**前端 Zustand store 职责：**
+
+| 字段 | 来源 | 说明 |
+|------|------|------|
+| `sessionId: string \| null` | URL 参数 / ChatResponse.session_id | 用于 API 调用 |
+| `messages: UIMessage[]` | 前端自维护 | 对话气泡渲染，不来自后端 `conversationHistory` |
+| `state: ConversationStateDTO \| null` | ChatResponse.state / GET 响应 | 展示用只读快照，每次响应后完整替换（不 merge） |
+| `routing: RoutingPayload \| null` | ChatResponse.routing | Part 2 路由触发用 |
+| `isLoading: boolean` | 前端自维护 | UI loading 状态 |
+
+**页面生命周期：**
+
+```
+用户访问 /chat/:sessionId（刷新 / 换标签页）
+       │
+       ▼
+useSession(sessionId)
+       ├─ GET /chat/:sessionId
+       │       ├─ 200 → store.setState(response.state)
+       │       │         重建 messages from state.conversationHistory
+       │       └─ 404 → session 已过期 → initSession(重定向首页或提示)
+       │
+每次 POST /chat 成功后
+       │
+       └─ store.setState(response.state)   ← 完整替换，不 merge
+          注入 BorrowingCapacity / BudgetGap 卡片（检测 state 变化触发）
 
 ---
 

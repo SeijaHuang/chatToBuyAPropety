@@ -291,11 +291,18 @@ preferred_suburbs: {m3.preferred_suburbs}
 
 ## 待讨论议题
 
-> 以下问题尚未形成决策，待后续讨论补充。
+> 以下问题尚未形成决策，待后续讨论补充。已决策项移入下方"已决议"表。
 
 | # | 议题 | 背景 |
 |---|------|------|
-| 1 | 前端状态管理方案 | P0 前端持有状态，具体用 useState 还是 Zustand？ |
-| 2 | session_id 生成方式 | 前端生成还是后端生成？首次调用时机？ |
 | 3 | OpenRouter 数据留存确认 | 用户对话数据是否会被 OpenRouter 用于训练，需确认隐私条款 |
 | 4 | Domain API 中位价数据粒度 | 预算缺口检测所需的 suburb+property_type+bedrooms 组合，Domain 免费 tier 是否支持 |
+
+---
+
+## 已决议
+
+| # | 议题 | 决策 | 原因 |
+|---|------|------|------|
+| 1 | 前端状态管理方案 | Zustand（UI 状态） + 后端 Redis（权威状态） | P0 用 Zustand 持有前端副本；P1-A 改为后端 Redis 持有权威状态，前端 Zustand 只保留 `UIMessage[]`（消息渲染用）和 `state` 展示快照（只读，每次响应覆盖替换，不 merge） |
+| 2 | session_id 生成方式 | **后端生成** | 唯一性保证归属后端；前端不引入 `uuid` 依赖；与 P1-B 账户体系行为一致。实现：`ChatRequest.session_id` 为可选字段（`str \| None`），`None` 时后端生成 UUID v4 并在 `ChatResponse.session_id` 中返回，前端导航至 `/chat/:session_id` |
