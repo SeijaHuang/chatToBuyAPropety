@@ -153,8 +153,7 @@ async def chat_async(
 
     # Trigger DB upsert in background whenever any module newly completes
     newly_completed: bool = any(
-        getattr(state.completion_status, m) and not getattr(prev_completion, m)
-        for m in ("M1", "M2", "M3", "M4")
+        state.completion_status[m] and not prev_completion[m] for m in ESubmodel
     )
     if newly_completed:
         background_tasks.add_task(chat_repo.upsert_chat_snapshot_async, state)
