@@ -4,11 +4,12 @@ import json
 from typing import Annotated
 
 import structlog
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, BackgroundTasks, Depends
 from pydantic import ValidationError
 
 from conversation.intent_router import classify_intent
 from conversation.state_machine import merge_extracted_fields
+from db.repositories.chat import SqlAlchemyChatRepository, get_chat_repository
 from domain.borrowing_capacity import estimate_borrowing_capacity_async
 from domain.budget_gap_detector import detect_budget_gap_async
 from domain.llm_client import ILLMClient, OpenRouterClient
@@ -18,8 +19,10 @@ from models.base import SuccessResponse
 from models.chat import ChatRequest, ChatResponse, RoutingPayload
 from models.conversation_state import (
     CollectedData,
+    CompletionStatus,
     ConversationStateDTO,
     ESubmodel,
+    EUserIntent,
     M3SuburbPreference,
     M4Budget,
 )
@@ -42,7 +45,9 @@ _default_llm_client: ILLMClient = OpenRouterClient()
 @router.post("/chat")
 async def chat_async(
     request: ChatRequest,
+    background_tasks: BackgroundTasks,
     llm_client: Annotated[ILLMClient, Depends(lambda: _default_llm_client)],
+    chat_repo: Annotated[SqlAlchemyChatRepository, Depends(get_chat_repository)],
 ) -> SuccessResponse[ChatResponse]:
     """Handle a single conversation turn and return the assistant reply.
 
@@ -59,11 +64,14 @@ async def chat_async(
       6. Append assistant reply to conversation history.
       7. Persist updated state back to Redis.
       8. Classify intent for downstream routing.
-      9. Return ChatResponse.
+      9. Schedule DB upsert via BackgroundTasks if any module newly completed.
+      10. Return ChatResponse.
 
     Args:
         request: Inbound payload containing session_id and user message.
+        background_tasks: FastAPI background task queue for async DB writes.
         llm_client: LLM client injected via FastAPI Depends (mockable in tests).
+        chat_repo: Chat repository injected via FastAPI Depends.
 
     Returns:
         ChatResponse with reply, extracted fields, and optional routing.
@@ -79,6 +87,9 @@ async def chat_async(
     log.info("chat_request_received", message_length=len(request.message))
 
     state.conversation_history.append({"role": "user", "content": request.message})
+
+    # Snapshot completion before extraction to detect newly completed modules
+    prev_completion: CompletionStatus = state.completion_status.model_copy()
 
     extraction_prompt: str = build_extraction_prompt(state)
     extracted: dict[str, object]
@@ -132,6 +143,21 @@ async def chat_async(
     user_needs: UserNeeds = build_user_needs(state.collected_data, state.session_id)
     routing: RoutingPayload | None = classify_intent(request.message, state, user_needs)
     log.info("chat_response_ready", has_routing=routing is not None)
+
+    # Write initial_intent when M1 first completes this turn
+    m1_just_completed: bool = state.completion_status.M1 and not prev_completion.M1
+    if m1_just_completed and state.initial_intent is None:
+        state.initial_intent = (
+            routing.intent if routing is not None else EUserIntent.OPEN_ENDED_QUERY
+        )
+
+    # Trigger DB upsert in background whenever any module newly completes
+    newly_completed: bool = any(
+        state.completion_status[m] and not prev_completion[m] for m in ESubmodel
+    )
+    if newly_completed:
+        background_tasks.add_task(chat_repo.upsert_chat_snapshot_async, state)
+        log.info("db_upsert_scheduled", session_id=state.session_id)
 
     return SuccessResponse[ChatResponse](
         data=ChatResponse(
