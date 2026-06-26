@@ -2,6 +2,7 @@
 
 import json
 from typing import Annotated
+from uuid import uuid4
 
 import structlog
 from fastapi import APIRouter, Depends
@@ -15,7 +16,7 @@ from domain.llm_client import ILLMClient, OpenRouterClient
 from domain.user_needs_builder import build_user_needs
 from exceptions import SessionNotFoundError, SummaryValidationError
 from models.base import SuccessResponse
-from models.chat import ChatRequest, ChatResponse, RoutingPayload
+from models.chat import ChatRequest, ChatResponse, ConversationSnapshotDTO, RoutingPayload
 from models.conversation_state import (
     CollectedData,
     ConversationStateDTO,
@@ -68,9 +69,10 @@ async def chat_async(
     Returns:
         ChatResponse with reply, extracted fields, and optional routing.
     """
-    state: ConversationStateDTO | None = await session_store.load_session_async(request.session_id)
+    session_id: str = request.session_id if request.session_id else str(uuid4())
+    state: ConversationStateDTO | None = await session_store.load_session_async(session_id)
     if state is None:
-        state = ConversationStateDTO(session_id=request.session_id)
+        state = ConversationStateDTO(session_id=session_id)
 
     log: structlog.BoundLogger = logger.bind(
         session_id=state.session_id,
@@ -133,10 +135,22 @@ async def chat_async(
     routing: RoutingPayload | None = classify_intent(request.message, state, user_needs)
     log.info("chat_response_ready", has_routing=routing is not None)
 
+    snapshot: ConversationSnapshotDTO = ConversationSnapshotDTO(
+        session_id=state.session_id,
+        current_module=state.current_module,
+        status=state.status,
+        completion_status=state.completion_status,
+        collected_data=state.collected_data,
+        borrowing_capacity=state.borrowing_capacity,
+        budget_gap=state.budget_gap,
+    )
+
     return SuccessResponse[ChatResponse](
         data=ChatResponse(
             reply=reply,
             extracted=extracted,
+            session_id=state.session_id,
+            state=snapshot,
             routing=routing,
         )
     )

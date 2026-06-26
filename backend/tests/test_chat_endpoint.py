@@ -1,6 +1,7 @@
 """Integration tests for POST /chat and GET /session — P1-A Redis session store."""
 
 import json
+import re
 from collections.abc import Generator
 from contextlib import contextmanager
 from unittest.mock import AsyncMock, patch
@@ -13,6 +14,11 @@ from models.conversation_state import ConversationStateDTO
 from redis_store import session_store as session_store_module
 
 _SESSION_ID: str = "test-session-001"
+
+_UUID4_PATTERN: re.Pattern[str] = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    re.IGNORECASE,
+)
 
 
 def _build_body(message: str, session_id: str = _SESSION_ID) -> dict[str, object]:
@@ -74,12 +80,14 @@ async def test_valid_request_returns_200(client_async: AsyncClient) -> None:
 
 
 async def test_response_conforms_to_chat_response_schema(client_async: AsyncClient) -> None:
-    """Response body contains reply and extracted keys; no updatedState (server-managed)."""
+    """Response body contains reply, extracted, sessionId, and state; no updatedState."""
     with _mock_session(), _mock_llm(reply="Hello!"):
         response = await client_async.post("/api/v1/chat", json=_build_body("Hi"))
     data: dict[str, object] = response.json()["data"]
     assert "reply" in data
     assert "extracted" in data
+    assert "sessionId" in data
+    assert "state" in data
     assert "updatedState" not in data
 
 
@@ -92,7 +100,7 @@ async def test_no_tool_call_returns_empty_extracted(client_async: AsyncClient) -
 
 
 # ---------------------------------------------------------------------------
-# Auto-create new session on first message
+# session_id generation and reuse
 # ---------------------------------------------------------------------------
 
 
@@ -102,6 +110,37 @@ async def test_auto_creates_session_on_first_message(client_async: AsyncClient) 
         response = await client_async.post("/api/v1/chat", json=_build_body("Hi"))
     assert response.status_code == 200
     assert _SESSION_ID in store
+
+
+async def test_omitting_session_id_generates_uuid_v4(client_async: AsyncClient) -> None:
+    """Omitting session_id causes the backend to generate a UUID v4 and return it."""
+    with _mock_session(), _mock_llm():
+        response = await client_async.post("/api/v1/chat", json={"message": "Hi"})
+    assert response.status_code == 200
+    returned_id: object = response.json()["data"]["sessionId"]
+    assert isinstance(returned_id, str)
+    assert _UUID4_PATTERN.match(returned_id), f"Not a UUID v4: {returned_id}"
+
+
+async def test_omitting_session_id_response_state_has_no_conversation_history(
+    client_async: AsyncClient,
+) -> None:
+    """When session_id is omitted, the returned state snapshot excludes conversationHistory."""
+    with _mock_session(), _mock_llm():
+        response = await client_async.post("/api/v1/chat", json={"message": "Hi"})
+    state: object = response.json()["data"]["state"]
+    assert isinstance(state, dict)
+    assert "conversationHistory" not in state
+    assert "conversation_history" not in state
+
+
+async def test_sending_existing_session_id_reuses_session(client_async: AsyncClient) -> None:
+    """When session_id matches a stored session, that session is loaded and its id echoed back."""
+    existing: ConversationStateDTO = ConversationStateDTO(session_id=_SESSION_ID)
+    with _mock_session(initial=existing), _mock_llm():
+        response = await client_async.post("/api/v1/chat", json=_build_body("Hi"))
+    assert response.status_code == 200
+    assert response.json()["data"]["sessionId"] == _SESSION_ID
 
 
 # ---------------------------------------------------------------------------
@@ -150,6 +189,31 @@ async def test_completion_status_updated_in_session(client_async: AsyncClient) -
 
 
 # ---------------------------------------------------------------------------
+# ChatResponse.state snapshot
+# ---------------------------------------------------------------------------
+
+
+async def test_chat_response_state_does_not_include_conversation_history(
+    client_async: AsyncClient,
+) -> None:
+    """The state snapshot in ChatResponse never contains conversationHistory."""
+    with _mock_session(), _mock_llm():
+        response = await client_async.post("/api/v1/chat", json=_build_body("Hi"))
+    state: object = response.json()["data"]["state"]
+    assert isinstance(state, dict)
+    assert "conversationHistory" not in state
+    assert "conversation_history" not in state
+
+
+async def test_chat_response_state_contains_current_module(client_async: AsyncClient) -> None:
+    """The state snapshot in ChatResponse includes currentModule."""
+    with _mock_session(), _mock_llm():
+        response = await client_async.post("/api/v1/chat", json=_build_body("Hi"))
+    state: dict[str, object] = response.json()["data"]["state"]
+    assert "currentModule" in state
+
+
+# ---------------------------------------------------------------------------
 # GET /chat/{session_id}
 # ---------------------------------------------------------------------------
 
@@ -182,10 +246,11 @@ async def test_empty_message_returns_422(client_async: AsyncClient) -> None:
     assert response.status_code == 422
 
 
-async def test_missing_session_id_returns_422(client_async: AsyncClient) -> None:
-    """A request without sessionId triggers Pydantic validation and returns HTTP 422."""
-    response = await client_async.post("/api/v1/chat", json={"message": "Hi"})
-    assert response.status_code == 422
+async def test_omitting_session_id_is_valid(client_async: AsyncClient) -> None:
+    """A request without sessionId is valid — session_id is optional and backend-generated."""
+    with _mock_session(), _mock_llm():
+        response = await client_async.post("/api/v1/chat", json={"message": "Hi"})
+    assert response.status_code == 200
 
 
 # ---------------------------------------------------------------------------
