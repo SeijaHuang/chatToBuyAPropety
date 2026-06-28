@@ -35,8 +35,26 @@ def typecheck() -> None:
     sys.exit(result.returncode)
 
 
+def _migrate() -> None:
+    """Run pending Alembic migrations; retries while Postgres is starting up."""
+    import time
+
+    print("Checking for pending migrations…")
+    for attempt in range(1, 16):
+        result: subprocess.CompletedProcess[bytes] = subprocess.run(
+            [sys.executable, "-m", "alembic", "upgrade", "head"], check=False
+        )
+        if result.returncode == 0:
+            return
+        if attempt < 15:
+            print(f"Postgres not ready yet, retrying in 1 s… ({attempt}/15)")
+            time.sleep(1.0)
+    print("ERROR: migrations failed — Postgres unavailable after 15 attempts.", file=sys.stderr)
+    sys.exit(1)
+
+
 def dev() -> None:
-    """Start Docker services then the uvicorn dev server with hot-reload on port 8000."""
+    """Start Docker services, run any pending migrations, then start uvicorn."""
     import pathlib
 
     repo_root: pathlib.Path = pathlib.Path(__file__).parent.parent
@@ -46,6 +64,8 @@ def dev() -> None:
         cwd=repo_root,
         check=True,
     )
+
+    _migrate()
 
     try:
         result: subprocess.CompletedProcess[bytes] = subprocess.run(
