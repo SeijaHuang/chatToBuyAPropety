@@ -30,7 +30,7 @@ describe('postChat', () => {
     expect(capturedBody.message).toBe('hello')
   })
 
-  it('omits sessionId from request body when null', async () => {
+  it('sends sessionId as null in request body when not provided', async () => {
     let capturedBody: Record<string, unknown> = {}
     server.use(
       http.post(`${BASE_URL}/${ENDPOINTS.CHAT}`, async ({ request }) => {
@@ -39,7 +39,7 @@ describe('postChat', () => {
       })
     )
     await postChat('hello', null)
-    expect('sessionId' in capturedBody).toBe(false)
+    expect(capturedBody.sessionId).toBeNull()
     expect(capturedBody.message).toBe('hello')
   })
 

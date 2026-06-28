@@ -92,7 +92,7 @@ describe('useChat', () => {
     expect(mockReplace).toHaveBeenCalledWith('/chat/server-generated-id')
   })
 
-  it('sends without sessionId when store.sessionId is "new"', async () => {
+  it('sends sessionId as null when store.sessionId is "new"', async () => {
     let capturedBody: Record<string, unknown> = {}
     server.use(
       http.post(`${BASE_URL}/${ENDPOINTS.CHAT}`, async ({ request }) => {
@@ -109,7 +109,7 @@ describe('useChat', () => {
       await result.current.sendMessage('hello')
     })
 
-    expect('sessionId' in capturedBody).toBe(false)
+    expect(capturedBody.sessionId).toBeNull()
     expect(capturedBody.message).toBe('hello')
   })
 

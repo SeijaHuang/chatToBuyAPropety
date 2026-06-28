@@ -6,9 +6,7 @@ export function postChat(
   message: string,
   sessionId: string | null
 ): Promise<APIResponse<ChatResponse>> {
-  const body: Record<string, unknown> = { message }
-  if (sessionId !== null) body.sessionId = sessionId
-  return request.post<ChatResponse>(ENDPOINTS.CHAT, body)
+  return request.post<ChatResponse>(ENDPOINTS.CHAT, { message, sessionId })
 }
 
 export function getSession(sessionId: string): Promise<APIResponse<ConversationStateDTO>> {
