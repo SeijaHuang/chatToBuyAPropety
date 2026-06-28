@@ -15,7 +15,7 @@ const initialState = {
 }
 
 function makeSnapshot(sessionId: string): ConversationSnapshotDTO {
-  const { conversationHistory: _, ...snapshot } = createInitialState(sessionId)
+  const { conversationHistory: _conversationHistory, ...snapshot } = createInitialState(sessionId)
   return snapshot
 }
 

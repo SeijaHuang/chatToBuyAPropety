@@ -17,7 +17,7 @@ vi.mock('next/navigation', () => ({
 
 const BASE_URL = 'http://localhost:8000'
 
-const { conversationHistory: _, ...mockSnap } = createInitialState('test-session')
+const { conversationHistory: _conversationHistory, ...mockSnap } = createInitialState('test-session')
 
 const initialStoreState = {
   sessionId: 'test-session',
