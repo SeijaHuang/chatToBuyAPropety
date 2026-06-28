@@ -23,11 +23,18 @@ export function ChatSession({ sessionId, initialMessage = null }: ChatSessionPro
   const sidebarCollapsed: boolean = useUIStore((s) => s.sidebarCollapsed)
 
   const isNewSession: boolean = sessionId === 'new'
+  const clearSession = useConversationStore((s) => s.clearSession)
   const { sendMessage, errorMessage } = useChat()
   const { isLoading: sessionLoading } = useSession(sessionId, !isNewSession)
 
   const messageListRef = useRef<HTMLDivElement>(null)
   const initialMessageSent = useRef<boolean>(false)
+
+  useEffect(() => {
+    if (isNewSession) {
+      clearSession()
+    }
+  }, [isNewSession, clearSession])
 
   useEffect(() => {
     if (messageListRef.current) {

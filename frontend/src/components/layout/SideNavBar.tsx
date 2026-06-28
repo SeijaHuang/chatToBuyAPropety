@@ -83,7 +83,7 @@ export function SideNavBar({
           variant={activePath === '/' ? 'primary' : 'ghost'}
           size="md"
           icon="home"
-          onClick={() => router.push('/')}
+          onClick={handleNewChat}
           className={cn(
             !collapsed && 'w-full justify-start',
             activePath !== '/' && 'text-on-surface-variant hover:bg-surface-variant'
