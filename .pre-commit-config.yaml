@@ -31,9 +31,23 @@ repos:
         files: ^frontend/
         pass_filenames: false
 
+      - id: frontend-lint
+        name: frontend lint
+        entry: pnpm --dir frontend lint
+        language: system
+        files: ^frontend/
+        pass_filenames: false
+
       - id: frontend-test
         name: frontend unit tests
         entry: pnpm --dir frontend test:run
+        language: system
+        files: ^frontend/
+        pass_filenames: false
+
+      - id: frontend-build
+        name: frontend build
+        entry: pnpm --dir frontend build
         language: system
         files: ^frontend/
         pass_filenames: false

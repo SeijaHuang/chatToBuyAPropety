@@ -1,15 +1,12 @@
 'use client'
 
-import React, { useEffect, useState } from 'react'
+import React from 'react'
 import { useRouter } from 'next/navigation'
 import { tv } from '@/lib/tv'
 import { cn } from '@/lib/utils'
 import { MaterialSymbol } from '@/components/shared'
 import { Button } from '@/components/shared'
 import { useConversationStore } from '@/stores'
-import { STORAGE_KEY } from '@/constants/storageKeys'
-import { MESSAGE_ROLE } from '@/constants'
-import type { ConversationStateDTO } from '@/types'
 
 const sidebar = tv({
   base: 'hidden md:flex flex-col h-screen fixed top-0 left-0 bg-surface-container-low border-r border-outline-variant transition-all duration-300 ease-in-out overflow-hidden',
@@ -28,12 +25,6 @@ interface SideNavBarProps {
   activePath: string
 }
 
-interface SessionHistoryItem {
-  sessionId: string
-  preview: string
-  timestamp: string
-}
-
 export function SideNavBar({
   collapsed,
   onToggleCollapse,
@@ -41,33 +32,6 @@ export function SideNavBar({
 }: SideNavBarProps): React.ReactElement {
   const router = useRouter()
   const clearSession = useConversationStore((s) => s.clearSession)
-  const [sessions, setSessions] = useState<SessionHistoryItem[]>([])
-
-  useEffect(() => {
-    const items: SessionHistoryItem[] = []
-    for (let i: number = 0; i < sessionStorage.length; i++) {
-      const key: string | null = sessionStorage.key(i)
-      if (key === null) continue
-      if (!key.startsWith(STORAGE_KEY.CONVERSATION_STATE_PREFIX)) continue
-
-      const sessionId: string = key.slice(STORAGE_KEY.CONVERSATION_STATE_PREFIX.length)
-      const raw: string | null = sessionStorage.getItem(key)
-      if (raw === null) continue
-
-      const parsed: ConversationStateDTO = JSON.parse(raw) as ConversationStateDTO
-      const firstUserMsg = parsed.conversationHistory.find(
-        (entry) => entry.role === MESSAGE_ROLE.USER
-      )
-      if (firstUserMsg === undefined) continue
-
-      const preview: string = firstUserMsg.content.slice(0, 30)
-      if (preview.length === 0) continue
-
-      items.push({ sessionId, preview, timestamp: 'recent' })
-      if (items.length >= 10) break
-    }
-    setSessions(items)
-  }, [])
 
   const handleNewChat = (): void => {
     clearSession()
@@ -119,7 +83,7 @@ export function SideNavBar({
           variant={activePath === '/' ? 'primary' : 'ghost'}
           size="md"
           icon="home"
-          onClick={() => router.push('/')}
+          onClick={handleNewChat}
           className={cn(
             !collapsed && 'w-full justify-start',
             activePath !== '/' && 'text-on-surface-variant hover:bg-surface-variant'
@@ -141,29 +105,10 @@ export function SideNavBar({
         </Button>
       </nav>
 
-      {/* Session history — expanded only */}
+      {/* Session history — P2 feature, requires server-side session listing */}
       {!collapsed && (
         <div className={cn('flex flex-col', 'mt-md px-sm', 'flex-1 overflow-y-auto')}>
           <p className="text-label-md text-outline px-sm mb-xs">Recent</p>
-          {sessions.map((item: SessionHistoryItem) => {
-            const isActive: boolean = activePath === `/chat/${item.sessionId}`
-            return (
-              <Button
-                key={item.sessionId}
-                variant={isActive ? 'primary' : 'ghost'}
-                onClick={() => router.push(`/chat/${item.sessionId}`)}
-                className={cn(
-                  'h-auto flex-col items-start justify-start',
-                  'w-full px-sm py-xs rounded-xl',
-                  'text-left',
-                  !isActive && 'text-on-surface-variant hover:bg-surface-variant'
-                )}
-              >
-                <span className="text-label-md truncate w-full">{item.preview}</span>
-                <span className="text-caption text-outline">{item.timestamp}</span>
-              </Button>
-            )
-          })}
         </div>
       )}
     </aside>

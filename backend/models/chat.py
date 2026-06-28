@@ -6,7 +6,14 @@ from enum import StrEnum
 from pydantic import ConfigDict, Field
 
 from models.base import PropertyAIBaseModel
-from models.conversation_state import EUserIntent
+from models.conversation_state import (
+    CollectedData,
+    CompletionStatus,
+    EModule,
+    EStatus,
+    EUserIntent,
+)
+from models.financial import BorrowingCapacityResult, BudgetGapResult
 from models.user_needs import UserNeeds
 
 
@@ -60,11 +67,37 @@ class RoutingPayload(PropertyAIBaseModel):
     trigger_source: ETriggerSource
 
 
+class ConversationSnapshotDTO(PropertyAIBaseModel):
+    """Lightweight conversation state snapshot returned in ChatResponse.
+
+    Mirrors ConversationStateDTO but omits conversation_history to keep
+    the HTTP payload small. Frontend uses this as a read-only display cache.
+
+    Attributes:
+        session_id: UUID v4 session identifier.
+        current_module: The module currently being collected.
+        status: Overall session status.
+        completion_status: Per-module completion flags.
+        collected_data: All collected fields across M1–M4.
+        borrowing_capacity: Borrowing capacity estimate; populated after M4 salary is collected.
+        budget_gap: Budget gap result; populated when budget_max and suburb data are available.
+    """
+
+    session_id: str
+    current_module: EModule
+    status: EStatus
+    completion_status: CompletionStatus
+    collected_data: CollectedData
+    borrowing_capacity: BorrowingCapacityResult | None = None
+    budget_gap: BudgetGapResult | None = None
+
+
 class ChatRequest(PropertyAIBaseModel):
     """Inbound payload for a single conversation turn.
 
     Attributes:
-        session_id: UUID v4 session identifier; state is loaded server-side from Redis.
+        session_id: UUID v4 session identifier. When None (first message), the backend
+            generates a new UUID v4 and returns it in ChatResponse.session_id.
         message: The user's message text. Must be non-empty.
     """
 
@@ -77,7 +110,7 @@ class ChatRequest(PropertyAIBaseModel):
         },
     )
 
-    session_id: str = Field(min_length=1)
+    session_id: str | None = None
     message: str = Field(min_length=1)
 
 
@@ -87,6 +120,8 @@ class ChatResponse(PropertyAIBaseModel):
     Attributes:
         reply: The assistant's reply text.
         extracted: Business fields extracted by the LLM tool call in Round 1.
+        session_id: Current session ID — either echoed back or newly generated.
+        state: Lightweight snapshot of conversation state (excludes conversation_history).
         routing: Populated when the state is complete or a routing keyword is detected.
     """
 
@@ -99,6 +134,12 @@ class ChatResponse(PropertyAIBaseModel):
                     "min_bedrooms": 3,
                     "intended_use": "owner_occupier",
                 },
+                "sessionId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+                "state": {
+                    "sessionId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+                    "currentModule": "M1_PROPERTY_NEEDS",
+                    "status": "IN_PROGRESS",
+                },
                 "routing": None,
             }
         }
@@ -106,4 +147,6 @@ class ChatResponse(PropertyAIBaseModel):
 
     reply: str
     extracted: dict[str, object]
+    session_id: str
+    state: ConversationSnapshotDTO
     routing: RoutingPayload | None = None

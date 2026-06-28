@@ -17,6 +17,32 @@ describe('postChat', () => {
     }
   })
 
+  it('includes sessionId in request body when provided', async () => {
+    let capturedBody: Record<string, unknown> = {}
+    server.use(
+      http.post(`${BASE_URL}/${ENDPOINTS.CHAT}`, async ({ request }) => {
+        capturedBody = (await request.json()) as Record<string, unknown>
+        return HttpResponse.json({ ok: true, data: { reply: 'ok', extracted: {}, sessionId: TEST_SESSION_ID, state: null, routing: null } })
+      })
+    )
+    await postChat('hello', TEST_SESSION_ID)
+    expect(capturedBody.sessionId).toBe(TEST_SESSION_ID)
+    expect(capturedBody.message).toBe('hello')
+  })
+
+  it('sends sessionId as null in request body when not provided', async () => {
+    let capturedBody: Record<string, unknown> = {}
+    server.use(
+      http.post(`${BASE_URL}/${ENDPOINTS.CHAT}`, async ({ request }) => {
+        capturedBody = (await request.json()) as Record<string, unknown>
+        return HttpResponse.json({ ok: true, data: { reply: 'ok', extracted: {}, sessionId: 'new-id', state: null, routing: null } })
+      })
+    )
+    await postChat('hello', null)
+    expect(capturedBody.sessionId).toBeNull()
+    expect(capturedBody.message).toBe('hello')
+  })
+
   it('test_post_chat_returns_ok_false_on_503', async () => {
     server.use(
       http.post(`${BASE_URL}/${ENDPOINTS.CHAT}`, () =>

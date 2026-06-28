@@ -6,14 +6,22 @@ import { useConversationStore } from '@/stores/conversationStore'
 import { createInitialState } from '@/lib/utils'
 import { ENDPOINTS } from '@/constants/endpoints'
 import { server } from '@/__tests__/msw/server'
+import { mockChatResponse } from '@/__tests__/msw/fixtures'
+
+const mockReplace = vi.hoisted(() => vi.fn())
 
 vi.mock('uuid', () => ({ v4: () => 'test-id' }))
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ replace: mockReplace }),
+}))
 
 const BASE_URL = 'http://localhost:8000'
 
+const { conversationHistory: _conversationHistory, ...mockSnap } = createInitialState('test-session')
+
 const initialStoreState = {
   sessionId: 'test-session',
-  state: createInitialState('test-session'),
+  state: mockSnap,
   messages: [],
   routing: null,
   isLoading: false,
@@ -50,15 +58,59 @@ describe('useChat', () => {
     expect(assistantMsg?.content).toBe('mock assistant reply')
   })
 
-  it('store state retains sessionId after successful send', async () => {
+  it('updates store state after successful send', async () => {
     const { result } = renderHook(() => useChat())
 
     await act(async () => {
       await result.current.sendMessage('hello')
     })
 
-    const storeState = useConversationStore.getState().state
-    expect(storeState?.sessionId).toBe('test-session')
+    expect(useConversationStore.getState().state?.sessionId).toBe('test-session')
+  })
+
+  it('for new session sets sessionId from response and calls router.replace', async () => {
+    mockReplace.mockClear()
+
+    server.use(
+      http.post(`${BASE_URL}/${ENDPOINTS.CHAT}`, () =>
+        HttpResponse.json({
+          ok: true,
+          data: { ...mockChatResponse, sessionId: 'server-generated-id' },
+        })
+      )
+    )
+
+    useConversationStore.setState({ ...initialStoreState, sessionId: 'new', state: null })
+
+    const { result } = renderHook(() => useChat())
+
+    await act(async () => {
+      await result.current.sendMessage('hello')
+    })
+
+    expect(useConversationStore.getState().sessionId).toBe('server-generated-id')
+    expect(mockReplace).toHaveBeenCalledWith('/chat/server-generated-id')
+  })
+
+  it('sends sessionId as null when store.sessionId is "new"', async () => {
+    let capturedBody: Record<string, unknown> = {}
+    server.use(
+      http.post(`${BASE_URL}/${ENDPOINTS.CHAT}`, async ({ request }) => {
+        capturedBody = (await request.json()) as Record<string, unknown>
+        return HttpResponse.json({ ok: true, data: mockChatResponse })
+      })
+    )
+
+    useConversationStore.setState({ ...initialStoreState, sessionId: 'new', state: null })
+
+    const { result } = renderHook(() => useChat())
+
+    await act(async () => {
+      await result.current.sendMessage('hello')
+    })
+
+    expect(capturedBody.sessionId).toBeNull()
+    expect(capturedBody.message).toBe('hello')
   })
 
   it('sets errorMessage and does not add error text to messages on non-ok response', async () => {
@@ -84,32 +136,14 @@ describe('useChat', () => {
     ).toBe(true)
   })
 
-  it('sets isLoading true during request, false after', async () => {
-    const loadingDuring: boolean[] = []
-
-    const { result } = renderHook(() => useChat())
-
-    const promise = act(async () => {
-      const p = result.current.sendMessage('hello')
-      loadingDuring.push(useConversationStore.getState().isLoading)
-      await p
-    })
-
-    await promise
-
-    expect(useConversationStore.getState().isLoading).toBe(false)
-  })
-
-  it('is a no-op when state is null', async () => {
-    useConversationStore.setState({ ...initialStoreState, state: null })
-
+  it('sets isLoading false after request completes', async () => {
     const { result } = renderHook(() => useChat())
 
     await act(async () => {
       await result.current.sendMessage('hello')
     })
 
-    expect(useConversationStore.getState().messages).toHaveLength(0)
+    expect(useConversationStore.getState().isLoading).toBe(false)
   })
 
   it('is a no-op when isLoading is already true', async () => {
@@ -197,8 +231,7 @@ describe('useChat', () => {
         HttpResponse.json({
           ok: true,
           data: {
-            reply: 'done',
-            extracted: {},
+            ...mockChatResponse,
             routing: { intent: 'list_properties', session_id: 'test-session' },
           },
         })

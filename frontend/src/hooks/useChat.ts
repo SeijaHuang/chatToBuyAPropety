@@ -1,10 +1,10 @@
 'use client'
 
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { useConversationStore } from '@/stores/conversationStore'
 import { postChat } from '@/services'
 import { ERROR_CODE } from '@/constants/errorCodes'
-import type { ConversationStateDTO } from '@/types'
 
 interface UseChatReturn {
   sendMessage: (content: string) => Promise<void>
@@ -17,14 +17,16 @@ export function useChat(): UseChatReturn {
   const store = useConversationStore()
   const isLoading: boolean = store.isLoading
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const router = useRouter()
 
   const clearError = (): void => setErrorMessage(null)
 
   const sendMessage = async (content: string): Promise<void> => {
     if (content.trim() === '') return
+    if (store.isLoading) return
 
-    const state: ConversationStateDTO | null = store.state
-    if (state === null || store.isLoading) return
+    const isNewSession: boolean = store.sessionId === null || store.sessionId === 'new'
+    const sessionId: string | null = isNewSession ? null : store.sessionId
 
     setErrorMessage(null)
     store.setLoading(true)
@@ -32,10 +34,18 @@ export function useChat(): UseChatReturn {
     store.setAssistantLoading(true)
 
     try {
-      const response = await postChat(content, state.sessionId)
+      const response = await postChat(content, sessionId)
 
       if (response.ok === true) {
         store.addAssistantMessage(response.data.reply)
+
+        if (isNewSession) {
+          store.setSessionFromResponse(response.data.sessionId, response.data.state)
+          router.replace(`/chat/${response.data.sessionId}`)
+        } else {
+          store.setUpdatedState(response.data.state)
+        }
+
         if (response.data.routing !== null) {
           store.setRouting(response.data.routing)
         }

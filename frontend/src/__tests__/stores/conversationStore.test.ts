@@ -1,9 +1,8 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { useConversationStore } from '@/stores/conversationStore'
 import { SESSION_STATUS, MODULE_ID } from '@/constants'
-import type { ConversationStateDTO, RoutingPayload, BorrowingCapacityResult, BudgetGapResult } from '@/types'
+import type { ConversationSnapshotDTO, ConversationStateDTO, RoutingPayload, BorrowingCapacityResult, BudgetGapResult } from '@/types'
 import { createInitialState } from '@/lib/utils'
-import { STORAGE_KEY } from '@/constants/storageKeys'
 
 vi.mock('uuid', () => ({ v4: () => 'test-id' }))
 
@@ -13,6 +12,11 @@ const initialState = {
   messages:   [],
   routing:    null,
   isLoading:  false,
+}
+
+function makeSnapshot(sessionId: string): ConversationSnapshotDTO {
+  const { conversationHistory: _conversationHistory, ...snapshot } = createInitialState(sessionId)
+  return snapshot
 }
 
 function makeDTO(sessionId: string): ConversationStateDTO {
@@ -42,7 +46,6 @@ const mockBudgetGap: BudgetGapResult = {
 
 beforeEach(() => {
   useConversationStore.setState(initialState)
-  sessionStorage.clear()
 })
 
 describe('conversationStore', () => {
@@ -52,17 +55,9 @@ describe('conversationStore', () => {
       expect(useConversationStore.getState().sessionId).toBe('s1')
     })
 
-    it('sets status to IN_PROGRESS via createInitialState', () => {
+    it('leaves state as null (backend is state authority in P1)', () => {
       useConversationStore.getState().initSession('s1')
-      expect(useConversationStore.getState().state?.status).toBe(SESSION_STATUS.IN_PROGRESS)
-    })
-
-    it('writes state to sessionStorage', () => {
-      useConversationStore.getState().initSession('s1')
-      const raw: string | null = sessionStorage.getItem(STORAGE_KEY.CONVERSATION_STATE_PREFIX + 's1')
-      expect(raw).not.toBeNull()
-      const parsed = JSON.parse(raw!)
-      expect(parsed.sessionId).toBe('s1')
+      expect(useConversationStore.getState().state).toBeNull()
     })
 
     it('clears any existing messages', () => {
@@ -74,33 +69,22 @@ describe('conversationStore', () => {
 
   describe('setUpdatedState', () => {
     it('completely replaces state (no merge)', () => {
-      useConversationStore.getState().initSession('s1')
-      const newState: ConversationStateDTO = makeDTO('s1')
-      newState.currentModule = MODULE_ID.M2
+      const newState: ConversationSnapshotDTO = { ...makeSnapshot('s1'), currentModule: MODULE_ID.M2 }
       useConversationStore.getState().setUpdatedState(newState)
       expect(useConversationStore.getState().state?.currentModule).toBe(MODULE_ID.M2)
     })
 
     it('does not retain fields from the previous state', () => {
-      useConversationStore.getState().initSession('s1')
-      const prev: ConversationStateDTO = { ...makeDTO('s1'), currentModule: MODULE_ID.M3 }
+      const prev: ConversationSnapshotDTO = { ...makeSnapshot('s1'), currentModule: MODULE_ID.M3 }
       useConversationStore.setState({ state: prev })
-      const next: ConversationStateDTO = makeDTO('s1')
+      const next: ConversationSnapshotDTO = makeSnapshot('s1')
       useConversationStore.getState().setUpdatedState(next)
       expect(useConversationStore.getState().state?.currentModule).toBe(MODULE_ID.M1)
     })
 
-    it('writes updated state to sessionStorage', () => {
-      useConversationStore.getState().initSession('s1')
-      const newState: ConversationStateDTO = makeDTO('s1')
-      useConversationStore.getState().setUpdatedState(newState)
-      const raw: string | null = sessionStorage.getItem(STORAGE_KEY.CONVERSATION_STATE_PREFIX + 's1')
-      expect(raw).not.toBeNull()
-    })
-
     it('appends borrowingCapacity card message when first non-null', () => {
-      useConversationStore.getState().initSession('s1')
-      const newState: ConversationStateDTO = { ...makeDTO('s1'), borrowingCapacity: mockBorrowingCapacity }
+      useConversationStore.setState({ state: makeSnapshot('s1') })
+      const newState: ConversationSnapshotDTO = { ...makeSnapshot('s1'), borrowingCapacity: mockBorrowingCapacity }
       useConversationStore.getState().setUpdatedState(newState)
       const msgs = useConversationStore.getState().messages
       expect(msgs).toHaveLength(1)
@@ -108,17 +92,15 @@ describe('conversationStore', () => {
     })
 
     it('does not append borrowingCapacity card when already present', () => {
-      useConversationStore.getState().initSession('s1')
-      const withCapacity: ConversationStateDTO = { ...makeDTO('s1'), borrowingCapacity: mockBorrowingCapacity }
+      const withCapacity: ConversationSnapshotDTO = { ...makeSnapshot('s1'), borrowingCapacity: mockBorrowingCapacity }
       useConversationStore.setState({ state: withCapacity })
-      const newState: ConversationStateDTO = { ...makeDTO('s1'), borrowingCapacity: mockBorrowingCapacity }
+      const newState: ConversationSnapshotDTO = { ...makeSnapshot('s1'), borrowingCapacity: mockBorrowingCapacity }
       useConversationStore.getState().setUpdatedState(newState)
       expect(useConversationStore.getState().messages).toHaveLength(0)
     })
 
     it('appends budgetGap card message when has_gap is true', () => {
-      useConversationStore.getState().initSession('s1')
-      const newState: ConversationStateDTO = { ...makeDTO('s1'), budgetGap: mockBudgetGap }
+      const newState: ConversationSnapshotDTO = { ...makeSnapshot('s1'), budgetGap: mockBudgetGap }
       useConversationStore.getState().setUpdatedState(newState)
       const msgs = useConversationStore.getState().messages
       expect(msgs).toHaveLength(1)
@@ -126,11 +108,76 @@ describe('conversationStore', () => {
     })
 
     it('does not append budgetGap card when has_gap is false', () => {
-      useConversationStore.getState().initSession('s1')
       const gapFalse: BudgetGapResult = { ...mockBudgetGap, has_gap: false }
-      const newState: ConversationStateDTO = { ...makeDTO('s1'), budgetGap: gapFalse }
+      const newState: ConversationSnapshotDTO = { ...makeSnapshot('s1'), budgetGap: gapFalse }
       useConversationStore.getState().setUpdatedState(newState)
       expect(useConversationStore.getState().messages).toHaveLength(0)
+    })
+  })
+
+  describe('setSessionFromResponse', () => {
+    it('sets sessionId and state together', () => {
+      const snapshot: ConversationSnapshotDTO = makeSnapshot('s1')
+      useConversationStore.getState().setSessionFromResponse('s1', snapshot)
+      expect(useConversationStore.getState().sessionId).toBe('s1')
+      expect(useConversationStore.getState().state?.sessionId).toBe('s1')
+    })
+
+    it('injects borrowingCapacity card when first non-null', () => {
+      const snapshot: ConversationSnapshotDTO = { ...makeSnapshot('s1'), borrowingCapacity: mockBorrowingCapacity }
+      useConversationStore.getState().setSessionFromResponse('s1', snapshot)
+      const msgs = useConversationStore.getState().messages
+      expect(msgs).toHaveLength(1)
+      expect(msgs[0].borrowingCapacity).toEqual(mockBorrowingCapacity)
+    })
+
+    it('state status is IN_PROGRESS after response', () => {
+      const snapshot: ConversationSnapshotDTO = makeSnapshot('s1')
+      useConversationStore.getState().setSessionFromResponse('s1', snapshot)
+      expect(useConversationStore.getState().state?.status).toBe(SESSION_STATUS.IN_PROGRESS)
+    })
+  })
+
+  describe('restoreSession', () => {
+    it('sets sessionId from the full state', () => {
+      const dto: ConversationStateDTO = makeDTO('s1')
+      useConversationStore.getState().restoreSession(dto)
+      expect(useConversationStore.getState().sessionId).toBe('s1')
+    })
+
+    it('state does not include conversationHistory', () => {
+      const dto: ConversationStateDTO = makeDTO('s1')
+      useConversationStore.getState().restoreSession(dto)
+      const state = useConversationStore.getState().state
+      expect(state).not.toBeNull()
+      expect('conversationHistory' in (state ?? {})).toBe(false)
+    })
+
+    it('rebuilds messages from conversationHistory', () => {
+      const dto: ConversationStateDTO = { ...makeDTO('s1'), conversationHistory: [{ role: 'user', content: 'hello' }] }
+      useConversationStore.getState().restoreSession(dto)
+      const msgs = useConversationStore.getState().messages
+      expect(msgs).toHaveLength(1)
+      expect(msgs[0].content).toBe('hello')
+      expect(msgs[0].role).toBe('user')
+    })
+
+    it('appends borrowingCapacity card if present in restored state', () => {
+      const dto: ConversationStateDTO = { ...makeDTO('s1'), borrowingCapacity: mockBorrowingCapacity }
+      useConversationStore.getState().restoreSession(dto)
+      const msgs = useConversationStore.getState().messages
+      const cardMsg = msgs.find((m) => m.borrowingCapacity !== undefined)
+      expect(cardMsg).toBeDefined()
+      expect(cardMsg?.borrowingCapacity).toEqual(mockBorrowingCapacity)
+    })
+
+    it('appends budgetGap card if has_gap is true in restored state', () => {
+      const dto: ConversationStateDTO = { ...makeDTO('s1'), budgetGap: mockBudgetGap }
+      useConversationStore.getState().restoreSession(dto)
+      const msgs = useConversationStore.getState().messages
+      const cardMsg = msgs.find((m) => m.budgetGap !== undefined)
+      expect(cardMsg).toBeDefined()
+      expect(cardMsg?.budgetGap).toEqual(mockBudgetGap)
     })
   })
 
@@ -213,53 +260,6 @@ describe('conversationStore', () => {
     })
   })
 
-  describe('restoreFromStorage', () => {
-    it('returns true and restores state when key exists', () => {
-      const dto: ConversationStateDTO = makeDTO('s1')
-      sessionStorage.setItem(STORAGE_KEY.CONVERSATION_STATE_PREFIX + 's1', JSON.stringify(dto))
-      const result: boolean = useConversationStore.getState().restoreFromStorage('s1')
-      expect(result).toBe(true)
-      expect(useConversationStore.getState().state?.sessionId).toBe('s1')
-    })
-
-    it('rebuilds messages from conversationHistory', () => {
-      const dto: ConversationStateDTO = makeDTO('s1')
-      dto.conversationHistory = [{ role: 'user', content: 'hello' }]
-      sessionStorage.setItem(STORAGE_KEY.CONVERSATION_STATE_PREFIX + 's1', JSON.stringify(dto))
-      useConversationStore.getState().restoreFromStorage('s1')
-      const msgs = useConversationStore.getState().messages
-      expect(msgs).toHaveLength(1)
-      expect(msgs[0].content).toBe('hello')
-      expect(msgs[0].role).toBe('user')
-    })
-
-    it('appends borrowingCapacity card if present in restored state', () => {
-      const dto: ConversationStateDTO = { ...makeDTO('s1'), borrowingCapacity: mockBorrowingCapacity }
-      sessionStorage.setItem(STORAGE_KEY.CONVERSATION_STATE_PREFIX + 's1', JSON.stringify(dto))
-      useConversationStore.getState().restoreFromStorage('s1')
-      const msgs = useConversationStore.getState().messages
-      const cardMsg = msgs.find((m) => m.borrowingCapacity !== undefined)
-      expect(cardMsg).toBeDefined()
-      expect(cardMsg?.borrowingCapacity).toEqual(mockBorrowingCapacity)
-    })
-
-    it('appends budgetGap card if has_gap is true in restored state', () => {
-      const dto: ConversationStateDTO = { ...makeDTO('s1'), budgetGap: mockBudgetGap }
-      sessionStorage.setItem(STORAGE_KEY.CONVERSATION_STATE_PREFIX + 's1', JSON.stringify(dto))
-      useConversationStore.getState().restoreFromStorage('s1')
-      const msgs = useConversationStore.getState().messages
-      const cardMsg = msgs.find((m) => m.budgetGap !== undefined)
-      expect(cardMsg).toBeDefined()
-      expect(cardMsg?.budgetGap).toEqual(mockBudgetGap)
-    })
-
-    it('returns false and leaves state unchanged when key is absent', () => {
-      const result: boolean = useConversationStore.getState().restoreFromStorage('missing')
-      expect(result).toBe(false)
-      expect(useConversationStore.getState().state).toBeNull()
-    })
-  })
-
   describe('clearSession', () => {
     it('resets all state fields to initial values', () => {
       useConversationStore.getState().initSession('s1')
@@ -271,13 +271,6 @@ describe('conversationStore', () => {
       expect(s.messages).toHaveLength(0)
       expect(s.routing).toBeNull()
       expect(s.isLoading).toBe(false)
-    })
-
-    it('removes the sessionStorage key', () => {
-      useConversationStore.getState().initSession('s1')
-      expect(sessionStorage.getItem(STORAGE_KEY.CONVERSATION_STATE_PREFIX + 's1')).not.toBeNull()
-      useConversationStore.getState().clearSession()
-      expect(sessionStorage.getItem(STORAGE_KEY.CONVERSATION_STATE_PREFIX + 's1')).toBeNull()
     })
   })
 })

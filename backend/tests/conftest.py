@@ -55,9 +55,19 @@ async def db_engine() -> AsyncGenerator[AsyncEngine, None]:
     Creates all tables idempotently on startup. Does not drop tables so
     subsequent tests inherit the schema without recreation overhead.
     Requires a live PostgreSQL instance (docker-compose postgres service).
+    Skips automatically when PostgreSQL is unreachable.
     """
+    import pytest
+    from sqlalchemy.exc import OperationalError
+
     engine: AsyncEngine = create_async_engine(settings.database_url)
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    try:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+    except (OperationalError, OSError, Exception) as exc:
+        await engine.dispose()
+        pytest.skip(
+            f"PostgreSQL unavailable — start docker-compose postgres to run DB tests: {exc}"
+        )
     yield engine
     await engine.dispose()
