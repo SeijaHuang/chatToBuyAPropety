@@ -27,6 +27,7 @@ async def create_engine_async() -> None:
         max_overflow=10,
         pool_timeout=30,
         echo=False,
+        connect_args={"ssl": False},
     )
     _session_factory = async_sessionmaker(
         bind=_engine,

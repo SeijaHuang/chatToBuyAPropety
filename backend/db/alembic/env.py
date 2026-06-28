@@ -1,10 +1,9 @@
-import asyncio
+import re
 from logging.config import fileConfig
 
 from alembic import context
-from sqlalchemy import pool
+from sqlalchemy import create_engine, pool
 from sqlalchemy.engine import Connection
-from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from config import settings
 from db.models import Base  # noqa: F401 — registers all ORM models with Base.metadata
@@ -14,8 +13,10 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# Inject DB URL from settings so alembic.ini does not need a hardcoded URL
-config.set_main_option("sqlalchemy.url", settings.database_url)
+# Alembic migrations run synchronously via psycopg2; strip the +asyncpg driver suffix
+# so the URL is compatible with the standard psycopg2 dialect.
+_sync_url: str = re.sub(r"postgresql\+asyncpg", "postgresql", settings.database_url)
+config.set_main_option("sqlalchemy.url", _sync_url)
 
 target_metadata = Base.metadata
 
@@ -39,20 +40,16 @@ def do_run_migrations(connection: Connection) -> None:
         context.run_migrations()
 
 
-async def run_migrations_online_async() -> None:
-    """Run migrations in 'online' mode using an async engine."""
-    connectable = async_engine_from_config(
-        config.get_section(config.config_ini_section, {}),
-        prefix="sqlalchemy.",
+def run_migrations_online() -> None:
+    """Run migrations in 'online' mode using a synchronous psycopg2 engine."""
+    db_url: str = config.get_main_option("sqlalchemy.url") or _sync_url
+    connectable = create_engine(
+        db_url,
         poolclass=pool.NullPool,
     )
-    async with connectable.connect() as connection:
-        await connection.run_sync(do_run_migrations)
-    await connectable.dispose()
-
-
-def run_migrations_online() -> None:
-    asyncio.run(run_migrations_online_async())
+    with connectable.connect() as connection:
+        do_run_migrations(connection)
+    connectable.dispose()
 
 
 if context.is_offline_mode():
