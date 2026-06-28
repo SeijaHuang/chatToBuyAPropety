@@ -2,5 +2,6 @@
 
 from db.models.base import Base
 from db.models.chat import ChatRow
+from db.models.user import UserRow
 
-__all__ = ["Base", "ChatRow"]
+__all__ = ["Base", "ChatRow", "UserRow"]

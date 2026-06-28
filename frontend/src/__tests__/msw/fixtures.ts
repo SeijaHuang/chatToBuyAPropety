@@ -88,6 +88,7 @@ export const mockChatResponse: ChatResponse = {
   reply: 'mock assistant reply',
   extracted: {},
   sessionId: 'test-session',
+  anonId: 'aaaabbbb-cccc-4000-aaaa-bbbbbbbbbbbb',
   state: mockSnapshot,
   routing: null,
 }
@@ -112,6 +113,7 @@ export const mockChatResponseWithRouting: ChatResponse = {
   reply: 'I have gathered everything I need.',
   extracted: {},
   sessionId: 'test-session',
+  anonId: 'aaaabbbb-cccc-4000-aaaa-bbbbbbbbbbbb',
   state: mockSnapshot,
   routing: mockRoutingPayload,
 }

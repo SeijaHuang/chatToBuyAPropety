@@ -92,12 +92,38 @@ class ConversationSnapshotDTO(PropertyAIBaseModel):
     budget_gap: BudgetGapResult | None = None
 
 
+class ChatSessionDTO(PropertyAIBaseModel):
+    """Metadata for a single chat session — one row from the chats table.
+
+    Returned as items in the GET /chats list endpoint. Contains only session-level
+    fields, not the full conversation history or collected data details.
+
+    Attributes:
+        session_id: UUID v4 session identifier.
+        status: Current session status (IN_PROGRESS or REQUIREMENTS_COMPLETE).
+        initial_intent: Intent classified at M1 completion; None while M1 is incomplete.
+        created_at: Timestamp when the session was first persisted.
+        updated_at: Timestamp of the most recent upsert.
+        completed_at: Timestamp when all four modules were completed; None if in progress.
+    """
+
+    session_id: str
+    status: str
+    initial_intent: str | None
+    created_at: datetime
+    updated_at: datetime
+    completed_at: datetime | None
+
+
 class ChatRequest(PropertyAIBaseModel):
     """Inbound payload for a single conversation turn.
 
     Attributes:
         session_id: UUID v4 session identifier. When None (first message), the backend
             generates a new UUID v4 and returns it in ChatResponse.session_id.
+        anon_id: Anonymous user identifier from the client's localStorage. When None
+            (first ever request from this browser), the backend creates a new anonymous
+            user and returns the UUID in ChatResponse.anon_id.
         message: The user's message text. Must be non-empty.
     """
 
@@ -105,12 +131,14 @@ class ChatRequest(PropertyAIBaseModel):
         json_schema_extra={
             "example": {
                 "sessionId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+                "anonId": "aaaabbbb-cccc-4000-aaaa-bbbbbbbbbbbb",
                 "message": "I want to buy a 3-bedroom house to live in",
             }
         },
     )
 
     session_id: str | None = None
+    anon_id: str | None = None
     message: str = Field(min_length=1)
 
 
@@ -121,6 +149,8 @@ class ChatResponse(PropertyAIBaseModel):
         reply: The assistant's reply text.
         extracted: Business fields extracted by the LLM tool call in Round 1.
         session_id: Current session ID — either echoed back or newly generated.
+        anon_id: Anonymous user ID — echoed back or newly created. Frontend must
+            persist this in localStorage and include it in every subsequent request.
         state: Lightweight snapshot of conversation state (excludes conversation_history).
         routing: Populated when the state is complete or a routing keyword is detected.
     """
@@ -135,6 +165,7 @@ class ChatResponse(PropertyAIBaseModel):
                     "intended_use": "owner_occupier",
                 },
                 "sessionId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+                "anonId": "aaaabbbb-cccc-4000-aaaa-bbbbbbbbbbbb",
                 "state": {
                     "sessionId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
                     "currentModule": "M1_PROPERTY_NEEDS",
@@ -148,5 +179,6 @@ class ChatResponse(PropertyAIBaseModel):
     reply: str
     extracted: dict[str, object]
     session_id: str
+    anon_id: str
     state: ConversationSnapshotDTO
     routing: RoutingPayload | None = None
