@@ -1,3 +1,4 @@
+import type { ConversationSnapshotDTO } from './conversation'
 import type { RoutingPayload } from './routing'
 import type { UserNeeds } from './user_needs'
 
@@ -30,6 +31,8 @@ export type APIResponse<TData> = SuccessResponse<TData> | ErrorResponse
 export interface ChatResponse {
   reply: string
   extracted: Record<string, unknown>
+  sessionId: string
+  state: ConversationSnapshotDTO
   routing: RoutingPayload | null
 }
 

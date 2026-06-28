@@ -4,9 +4,11 @@ import type { APIResponse, ChatResponse, ConversationStateDTO } from '@/types'
 
 export function postChat(
   message: string,
-  sessionId: string
+  sessionId: string | null
 ): Promise<APIResponse<ChatResponse>> {
-  return request.post<ChatResponse>(ENDPOINTS.CHAT, { message, sessionId })
+  const body: Record<string, unknown> = { message }
+  if (sessionId !== null) body.sessionId = sessionId
+  return request.post<ChatResponse>(ENDPOINTS.CHAT, body)
 }
 
 export function getSession(sessionId: string): Promise<APIResponse<ConversationStateDTO>> {

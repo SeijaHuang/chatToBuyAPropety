@@ -3,6 +3,7 @@
 import { create } from 'zustand'
 import { v4 as uuid } from 'uuid'
 import type {
+  ConversationSnapshotDTO,
   ConversationStateDTO,
   UIMessage,
   RoutingPayload,
@@ -11,24 +12,23 @@ import type {
   MessageRole,
 } from '@/types'
 import { MESSAGE_ROLE } from '@/constants'
-import { createInitialState } from '@/lib/utils'
-import { STORAGE_KEY } from '@/constants/storageKeys'
 
 interface ConversationStore {
   sessionId: string | null
-  state: ConversationStateDTO | null
+  state: ConversationSnapshotDTO | null
   messages: UIMessage[]
   routing: RoutingPayload | null
   isLoading: boolean
 
   initSession(sessionId: string): void
-  setUpdatedState(newState: ConversationStateDTO): void
+  setUpdatedState(newState: ConversationSnapshotDTO): void
+  setSessionFromResponse(sessionId: string, newState: ConversationSnapshotDTO): void
+  restoreSession(fullState: ConversationStateDTO): void
   addUserMessage(content: string): void
   addAssistantMessage(content: string): void
   setAssistantLoading(loading: boolean): void
   setLoading(loading: boolean): void
   setRouting(routing: RoutingPayload): void
-  restoreFromStorage(sessionId: string): boolean
   clearSession(): void
 }
 
@@ -46,6 +46,23 @@ function makeAssistantMessage(
   }
 }
 
+function injectCardMessages(
+  prevState: ConversationSnapshotDTO | null,
+  newState: ConversationSnapshotDTO
+): UIMessage[] {
+  const cards: UIMessage[] = []
+  if (
+    (prevState === null || prevState.borrowingCapacity === null) &&
+    newState.borrowingCapacity !== null
+  ) {
+    cards.push(makeAssistantMessage('', { borrowingCapacity: newState.borrowingCapacity }))
+  }
+  if (newState.budgetGap?.has_gap === true) {
+    cards.push(makeAssistantMessage('', { budgetGap: newState.budgetGap }))
+  }
+  return cards
+}
+
 export const useConversationStore = create<ConversationStore>((set, get) => ({
   sessionId: null,
   state: null,
@@ -54,29 +71,51 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
   isLoading: false,
 
   initSession(sessionId: string): void {
-    const freshState: ConversationStateDTO = createInitialState(sessionId)
-    sessionStorage.setItem(STORAGE_KEY.CONVERSATION_STATE_PREFIX + sessionId, JSON.stringify(freshState))
-    set({ sessionId, state: freshState, messages: [], routing: null, isLoading: false })
+    set({ sessionId, state: null, messages: [], routing: null, isLoading: false })
   },
 
-  setUpdatedState(newState: ConversationStateDTO): void {
-    const prevState: ConversationStateDTO | null = get().state
+  setUpdatedState(newState: ConversationSnapshotDTO): void {
+    const prevState: ConversationSnapshotDTO | null = get().state
     set({ state: newState })
-    sessionStorage.setItem(STORAGE_KEY.CONVERSATION_STATE_PREFIX + newState.sessionId, JSON.stringify(newState))
-
-    const cardMessages: UIMessage[] = []
-
-    if (prevState?.borrowingCapacity === null && newState.borrowingCapacity !== null) {
-      cardMessages.push(makeAssistantMessage('', { borrowingCapacity: newState.borrowingCapacity }))
+    const cards: UIMessage[] = injectCardMessages(prevState, newState)
+    if (cards.length > 0) {
+      set((s) => ({ messages: [...s.messages, ...cards] }))
     }
+  },
 
-    if (newState.budgetGap?.has_gap === true) {
-      cardMessages.push(makeAssistantMessage('', { budgetGap: newState.budgetGap }))
+  setSessionFromResponse(sessionId: string, newState: ConversationSnapshotDTO): void {
+    const prevState: ConversationSnapshotDTO | null = get().state
+    set({ sessionId, state: newState })
+    const cards: UIMessage[] = injectCardMessages(prevState, newState)
+    if (cards.length > 0) {
+      set((s) => ({ messages: [...s.messages, ...cards] }))
     }
+  },
 
-    if (cardMessages.length > 0) {
-      set((s) => ({ messages: [...s.messages, ...cardMessages] }))
+  restoreSession(fullState: ConversationStateDTO): void {
+    const { conversationHistory, ...snapshot } = fullState
+    const messages: UIMessage[] = conversationHistory.map(
+      (entry): UIMessage => ({
+        id: uuid(),
+        role: entry.role,
+        content: entry.content,
+        isLoading: false,
+        timestamp: new Date(),
+      })
+    )
+    if (snapshot.borrowingCapacity !== null) {
+      messages.push(makeAssistantMessage('', { borrowingCapacity: snapshot.borrowingCapacity }))
     }
+    if (snapshot.budgetGap?.has_gap === true) {
+      messages.push(makeAssistantMessage('', { budgetGap: snapshot.budgetGap }))
+    }
+    set({
+      sessionId: fullState.sessionId,
+      state: snapshot,
+      messages,
+      routing: null,
+      isLoading: false,
+    })
   },
 
   addUserMessage(content: string): void {
@@ -135,43 +174,7 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
     set({ routing })
   },
 
-  restoreFromStorage(sessionId: string): boolean {
-    const raw: string | null = sessionStorage.getItem(STORAGE_KEY.CONVERSATION_STATE_PREFIX + sessionId)
-    if (raw === null) {
-      return false
-    }
-
-    const restoredState: ConversationStateDTO = JSON.parse(raw) as ConversationStateDTO
-
-    const messages: UIMessage[] = restoredState.conversationHistory.map(
-      (entry): UIMessage => ({
-        id: uuid(),
-        role: entry.role,
-        content: entry.content,
-        isLoading: false,
-        timestamp: new Date(),
-      })
-    )
-
-    if (restoredState.borrowingCapacity !== null) {
-      messages.push(
-        makeAssistantMessage('', { borrowingCapacity: restoredState.borrowingCapacity })
-      )
-    }
-
-    if (restoredState.budgetGap?.has_gap === true) {
-      messages.push(makeAssistantMessage('', { budgetGap: restoredState.budgetGap }))
-    }
-
-    set({ sessionId, state: restoredState, messages, routing: null, isLoading: false })
-    return true
-  },
-
   clearSession(): void {
-    const currentSessionId: string | null = get().sessionId
-    if (currentSessionId !== null) {
-      sessionStorage.removeItem(STORAGE_KEY.CONVERSATION_STATE_PREFIX + currentSessionId)
-    }
     set({ sessionId: null, state: null, messages: [], routing: null, isLoading: false })
   },
 }))

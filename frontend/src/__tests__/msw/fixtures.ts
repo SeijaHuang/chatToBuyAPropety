@@ -1,6 +1,6 @@
 import type { BorrowingCapacityResult, BudgetGapResult } from '@/types/financial'
 import type { ChatResponse, SummaryResponse } from '@/types/api'
-import type { CollectedData, ConversationStateDTO } from '@/types/conversation'
+import type { CollectedData, ConversationStateDTO, ConversationSnapshotDTO } from '@/types/conversation'
 import type { RoutingPayload } from '@/types/routing'
 import { SUBMODEL_KEY, MODULE_ID, SESSION_STATUS } from '@/constants/conversation'
 import { USER_INTENT, EXECUTION_MODE, TRIGGER_SOURCE } from '@/constants/routing'
@@ -73,9 +73,22 @@ export const mockBudgetGap: BudgetGapResult = {
   ],
 }
 
+export const mockSnapshot: ConversationSnapshotDTO = {
+  sessionId: 'test-session',
+  status: SESSION_STATUS.IN_PROGRESS,
+  currentModule: MODULE_ID.M1,
+  completionStatus: { M1: false, M2: false, M3: false, M4: false },
+  collectedData: emptyCollected,
+  finalNeeds: null,
+  borrowingCapacity: null,
+  budgetGap: null,
+}
+
 export const mockChatResponse: ChatResponse = {
   reply: 'mock assistant reply',
   extracted: {},
+  sessionId: 'test-session',
+  state: mockSnapshot,
   routing: null,
 }
 
@@ -98,6 +111,8 @@ const mockRoutingPayload: RoutingPayload = {
 export const mockChatResponseWithRouting: ChatResponse = {
   reply: 'I have gathered everything I need.',
   extracted: {},
+  sessionId: 'test-session',
+  state: mockSnapshot,
   routing: mockRoutingPayload,
 }
 

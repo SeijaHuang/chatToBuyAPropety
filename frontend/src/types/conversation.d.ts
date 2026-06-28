@@ -74,6 +74,10 @@ export interface ConversationStateDTO {
   budgetGap:           BudgetGapResult | null
 }
 
+// ─── Lightweight snapshot returned in ChatResponse (no conversationHistory) ───
+
+export type ConversationSnapshotDTO = Omit<ConversationStateDTO, 'conversationHistory'>
+
 // ─── UI Message (frontend-only, not sent to backend) ─────────────────────────
 
 export interface UIMessage {

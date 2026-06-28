@@ -9,6 +9,7 @@ export type {
   M4Budget,
   CollectedData,
   ConversationStateDTO,
+  ConversationSnapshotDTO,
   UIMessage,
 } from './conversation'
 

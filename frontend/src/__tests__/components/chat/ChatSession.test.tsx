@@ -11,7 +11,9 @@ vi.mock('uuid', () => ({ v4: () => 'test-id' }))
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn() }),
 }))
-vi.mock('@/hooks/useSession', () => ({ useSession: vi.fn() }))
+vi.mock('@/hooks/useSession', () => ({
+  useSession: vi.fn(() => ({ isLoading: false, isRestored: true })),
+}))
 vi.mock('@/hooks/useChat', () => ({
   useChat: vi.fn(() => ({
     sendMessage: vi.fn(),
@@ -31,7 +33,6 @@ const initialStoreState = {
 
 beforeEach(() => {
   useConversationStore.setState(initialStoreState)
-  sessionStorage.clear()
   vi.mocked(useChat).mockImplementation(() => ({
     sendMessage: vi.fn(),
     isLoading: false,

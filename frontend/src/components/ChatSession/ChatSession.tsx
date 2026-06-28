@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useRef, useEffect, useCallback } from 'react'
+import React, { useRef, useEffect } from 'react'
 import { useConversationStore } from '@/stores/conversationStore'
 import { useUIStore } from '@/stores'
 import { useChat } from '@/hooks/useChat'
@@ -9,8 +9,7 @@ import { ChatInput } from '@/components/ChatInput'
 import { ChatMessage } from '@/components/ChatMessage'
 import { Button } from '@/components/shared'
 import { cn } from '@/lib/utils'
-import { STORAGE_KEY } from '@/constants/storageKeys'
-import type { UIMessage, ConversationStateDTO, RoutingPayload } from '@/types'
+import type { UIMessage, RoutingPayload } from '@/types'
 
 interface ChatSessionProps {
   sessionId: string
@@ -20,12 +19,12 @@ interface ChatSessionProps {
 export function ChatSession({ sessionId, initialMessage = null }: ChatSessionProps): React.ReactElement | null {
   const messages: UIMessage[] = useConversationStore((s) => s.messages)
   const isLoading: boolean = useConversationStore((s) => s.isLoading)
-  const state: ConversationStateDTO | null = useConversationStore((s) => s.state)
   const routing: RoutingPayload | null = useConversationStore((s) => s.routing)
   const sidebarCollapsed: boolean = useUIStore((s) => s.sidebarCollapsed)
 
+  const isNewSession: boolean = sessionId === 'new'
   const { sendMessage, errorMessage } = useChat()
-  useSession(sessionId)
+  const { isLoading: sessionLoading } = useSession(sessionId, !isNewSession)
 
   const messageListRef = useRef<HTMLDivElement>(null)
   const initialMessageSent = useRef<boolean>(false)
@@ -36,26 +35,18 @@ export function ChatSession({ sessionId, initialMessage = null }: ChatSessionPro
     }
   }, [messages])
 
-  const stableSendMessage = useCallback(sendMessage, [sendMessage])
-
   useEffect(() => {
-    if (state === null || initialMessage === null || initialMessageSent.current) return
+    if (!isNewSession || initialMessage === null || initialMessageSent.current) return
     initialMessageSent.current = true
-    void stableSendMessage(initialMessage)
-  }, [state, initialMessage, stableSendMessage])
+    void sendMessage(initialMessage)
+  }, [isNewSession, initialMessage, sendMessage])
 
   const handleViewProperties = (): void => {
-    if (routing !== null) {
-      sessionStorage.setItem(
-        STORAGE_KEY.ROUTING_PAYLOAD_PREFIX + sessionId,
-        JSON.stringify(routing)
-      )
-    }
-    // P2: router.push('/properties')
+    // P2: router.push('/properties') — routing payload passed via router state
     alert('Coming soon — property search will be available in the next release.')
   }
 
-  if (state === null) {
+  if (sessionLoading) {
     return null
   }
 

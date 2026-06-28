@@ -2,7 +2,6 @@
 
 import React from 'react'
 import { useRouter } from 'next/navigation'
-import { v4 as uuid } from 'uuid'
 import { ChatInput } from '@/components'
 import { MaterialSymbol } from '@/components/shared'
 
@@ -10,8 +9,7 @@ export default function HomePage(): React.ReactElement {
   const router: ReturnType<typeof useRouter> = useRouter()
 
   const handleFirstMessage = (message: string): void => {
-    const sessionId: string = uuid()
-    router.push(`/chat/${sessionId}?q=${encodeURIComponent(message)}`)
+    router.push(`/chat/new?q=${encodeURIComponent(message)}`)
   }
 
   return (

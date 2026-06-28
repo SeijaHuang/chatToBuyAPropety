@@ -2,24 +2,38 @@
 
 import { useEffect, useState } from 'react'
 import { useConversationStore } from '@/stores/conversationStore'
+import { getSession } from '@/services/chat'
 
 interface UseSessionReturn {
   isRestored: boolean
+  isLoading: boolean
 }
 
-export function useSession(sessionId: string): UseSessionReturn {
-  const restoreFromStorage = useConversationStore((s) => s.restoreFromStorage)
+export function useSession(sessionId: string, enabled = true): UseSessionReturn {
   const initSession = useConversationStore((s) => s.initSession)
+  const restoreSession = useConversationStore((s) => s.restoreSession)
   const [isRestored, setIsRestored] = useState<boolean>(false)
+  const [isLoading, setIsLoading] = useState<boolean>(false)
 
   useEffect(() => {
-    const restored: boolean = restoreFromStorage(sessionId)
-    setIsRestored(restored)
-    if (!restored) {
-      initSession(sessionId)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId])
+    if (!enabled) return
 
-  return { isRestored }
+    setIsLoading(true)
+
+    async function loadSession(): Promise<void> {
+      const response = await getSession(sessionId)
+      if (response.ok) {
+        restoreSession(response.data)
+        setIsRestored(true)
+      } else {
+        initSession(sessionId)
+        setIsRestored(false)
+      }
+      setIsLoading(false)
+    }
+
+    void loadSession()
+  }, [sessionId, enabled, initSession, restoreSession])
+
+  return { isRestored, isLoading: enabled && isLoading }
 }
