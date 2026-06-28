@@ -1940,39 +1940,67 @@ services:
 
 ```
 backend/
-├── main.py
+├── main.py                              FastAPI app factory — CORS middleware, router mount, /health
+├── config.py                            pydantic-settings Settings class — single source of env vars
+├── exceptions.py                        Typed exception hierarchy (PropertyAIException, LLMServiceError, …)
+├── error_handlers.py                    structlog configuration + FastAPI exception handler registration
+├── scripts.py                           [project.scripts] entry points — test / lint / format / typecheck / dev
+│
 ├── models/
-│   └── schemas.py
+│   ├── base.py                          PropertyAIBaseModel — camelCase alias_generator; all public DTOs inherit
+│   ├── conversation_state.py            Enums (EModule, EStatus, ESubmodel, ESubmodelLabel),
+│   │                                    M1–M4 sub-models, CollectedData, CompletionStatus, ConversationStateDTO
+│   ├── chat.py                          ChatRequest, ChatResponse, RoutingPayload
+│   ├── summary.py                       SummaryRequest, SummaryResponse
+│   ├── financial.py                     Internal frozen dataclasses: BorrowingCapacityResult, BudgetGapResult
+│   └── user_needs.py                    Part 1 → Part 2 output contract: UserNeeds
+│
 ├── tools/
-│   └── extraction_schema.py
+│   └── extraction_schema.py             S-A: extract_requirements tool definition
+│
 ├── conversation/
-│   ├── state_machine.py
-│   └── intent_router.py
+│   ├── state_machine.py                 S-B: module progression — merges fields, advances module,
+│   │                                    recalculates completion, owns null-safety invariant
+│   └── intent_router.py                 S-E: intent classification and routing
+│
 ├── prompts/
-│   └── system_prompt_builder.py
+│   ├── system_prompt_builder.py         S-C: SOLE public interface — four build_* functions
+│   └── sections/                        Internal sub-package (do not import outside prompts/)
+│       ├── role.py                      ROLE_DEFINITION — static assistant role block
+│       ├── guardrails.py                GUARDRAIL_RULES — six compliance guardrail rules
+│       ├── context.py                   OWNER_OCCUPIER_CONTEXT, INVESTMENT_CONTEXT
+│       ├── instructions.py              EXTRACTION_INSTRUCTION, QUESTION_TASK_INSTRUCTION
+│       ├── state.py                     build_state_section, build_collected_summary, build_missing_fields
+│       └── financial.py                 build_borrowing_capacity_section
+│
 ├── domain/
-│   ├── llm_client.py
-│   ├── borrowing_capacity.py       # S-G（P0新增）
-│   ├── budget_gap_detector.py      # S-H（P0新增）
-│   ├── user_needs_builder.py       # P0新增
-│   └── redis/                      # P1新增：Redis 子包
-│       ├── client.py               # 连接管理（connect/close/ping + raw get/setex）
-│       ├── session_store.py        # ISessionStore Protocol + RedisSessionStore
-│       └── price_cache.py          # RedisPriceCache（Domain API 中位价，24h TTL）
+│   ├── llm_client.py                    S-D: OpenRouter async wrapper — ILLMClient Protocol
+│   ├── borrowing_capacity.py            S-G: borrowing capacity estimation from salary data
+│   ├── budget_gap_detector.py           S-H: compares budget_max against Domain API median price
+│   └── user_needs_builder.py            §12: assembles UserNeeds for Part 1 → Part 2 handoff
+│
+├── redis_store/                         P1新增：Redis 子包（已从 domain/redis/ 迁移至顶层包）
+│   ├── client.py                        连接管理（connect/close/ping + raw get/setex）
+│   ├── session_store.py                 ISessionStore Protocol + RedisSessionStore
+│   └── price_cache.py                   RedisPriceCache（Domain API 中位价，24h TTL）§25
+│
 ├── routers/
-│   ├── chat.py
-├── db/
-│   └── session_archive.py          # P1新增：PostgreSQL 渐进快照 upsert（§24）
+│   └── chat.py                          S-D + S-F: POST /chat 和 POST /chat/summary 路由处理
+│
 └── tests/
-    ├── test_extraction_schema.py
-    ├── test_state_machine.py
-    ├── test_system_prompt.py
-    ├── test_chat_endpoint.py
-    ├── test_intent_router.py
-    ├── test_summary.py
-    ├── test_borrowing_capacity.py   # S-G（P0新增）
-    ├── test_budget_gap_detector.py  # S-H（P0新增）
-    ├── test_guardrail_rules.py      # P0新增
-    ├── test_session_archive.py      # §24（P1新增）
-    └── test_budget_gap_price_cache.py  # §25（P1新增）
+    ├── conftest.py                       共享 fixtures：client_async (AsyncClient), sample_state
+    ├── test_extraction_schema.py         S-A 单元测试
+    ├── test_state_machine.py             S-B 单元测试
+    ├── test_system_prompt.py             S-C 单元测试
+    ├── test_chat_endpoint.py             S-D 集成测试
+    ├── test_intent_router.py             S-E 单元测试
+    ├── test_summary.py                   S-F 集成测试
+    ├── test_borrowing_capacity.py        S-G 单元测试
+    └── test_budget_gap_detector.py       S-H 单元测试
 ```
+
+> **待实现（P1 未完成）：**
+> - `db/session_archive.py` — PostgreSQL 渐进快照 upsert（§24）
+> - `tests/test_guardrail_rules.py` — 六条守卫规则专项测试（§15）
+> - `tests/test_session_archive.py` — PostgreSQL 快照集成测试（§24）
+> - `tests/test_budget_gap_price_cache.py` — Redis 价格缓存单元测试（§25）

@@ -15,6 +15,8 @@ dependencies = [
     "geopandas>=0.14.0",
     "python-dotenv>=1.0.0",
     "structlog>=24.1.0",
+    "sqlalchemy[asyncio]>=2.0.0",
+    "alembic>=1.13.0",
 ]
 
 [build-system]
@@ -25,7 +27,7 @@ build-backend = "setuptools.build_meta"
 py-modules = ["scripts"]
 
 [tool.setuptools.packages.find]
-include = ["conversation*", "domain*", "models*", "prompts*", "routers*", "tools*"]
+include = ["conversation*", "db*", "domain*", "models*", "prompts*", "routers*", "tools*"]
 
 [tool.uv]
 package = true

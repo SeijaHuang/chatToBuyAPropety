@@ -27,8 +27,17 @@ class Settings(BaseSettings):
     borrowing_capacity_dti: float = 0.28
     domain_api_key: str = ""
     budget_gap_threshold: float = 0.15
+    database_url: str = "postgresql+asyncpg://user:password@localhost:5432/propertyai"
     redis_url: str = "redis://localhost:6379"
     redis_session_ttl: int = 604800
+
+    @field_validator("database_url", mode="before")
+    @classmethod
+    def _ensure_asyncpg_prefix(cls, v: object) -> object:
+        """Auto-convert postgresql:// DSNs to the asyncpg driver prefix."""
+        if isinstance(v, str) and v.startswith("postgresql://"):
+            return v.replace("postgresql://", "postgresql+asyncpg://", 1)
+        return v
 
     @field_validator("llm_base_url", mode="before")
     @classmethod
