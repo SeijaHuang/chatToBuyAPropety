@@ -1,10 +1,13 @@
 """Shared pytest fixtures for the PropertyAI backend test suite."""
 
 from collections.abc import AsyncGenerator
+from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
 import pytest_asyncio
+from alembic import command as alembic_command
+from alembic.config import Config as AlembicConfig
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -14,21 +17,29 @@ from sqlalchemy.ext.asyncio import (
 from config import settings
 from db.models import Base
 from db.repositories.chat import SqlAlchemyChatRepository, get_chat_repository
+from db.repositories.user import SqlAlchemyUserRepository, get_user_repository
 from main import app
 from models.conversation_state import ConversationStateDTO
 from redis_store.client import redis_client
+
+# Fixed anon_id returned by the mock anon_repo in endpoint tests
+TEST_ANON_ID: str = "aaaabbbb-cccc-4000-aaaa-bbbbbbbbbbbb"
 
 
 @pytest.fixture
 async def client_async() -> AsyncGenerator[AsyncClient, None]:
     """Async HTTP client wired to the FastAPI app under test.
 
-    Redis, DB lifecycle, and the chat repository dependency are mocked so the
-    test suite does not require live infrastructure. Individual tests that
-    exercise those layers apply their own mocks via patch.
+    Redis, DB lifecycle, the chat repository, and the anonymous user repository
+    dependencies are mocked so the test suite does not require live infrastructure.
+    Individual tests that exercise those layers apply their own mocks via patch.
     """
-    mock_repo: SqlAlchemyChatRepository = AsyncMock(spec=SqlAlchemyChatRepository)
+    mock_repo: AsyncMock = AsyncMock(spec=SqlAlchemyChatRepository)
+    mock_anon_repo: AsyncMock = AsyncMock(spec=SqlAlchemyUserRepository)
+    mock_anon_repo.get_or_create_async.return_value = TEST_ANON_ID
+
     app.dependency_overrides[get_chat_repository] = lambda: mock_repo
+    app.dependency_overrides[get_user_repository] = lambda: mock_anon_repo
     try:
         with (
             patch.object(redis_client, "connect_async", AsyncMock()),
@@ -40,6 +51,7 @@ async def client_async() -> AsyncGenerator[AsyncClient, None]:
                 yield ac
     finally:
         app.dependency_overrides.pop(get_chat_repository, None)
+        app.dependency_overrides.pop(get_user_repository, None)
 
 
 @pytest.fixture
@@ -64,6 +76,13 @@ async def db_engine() -> AsyncGenerator[AsyncEngine, None]:
     try:
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
+        # Stamp Alembic to the current head so that `alembic upgrade head` in the
+        # dev server startup does not try to re-run migrations whose DDL was already
+        # applied by create_all above.
+        alembic_cfg: AlembicConfig = AlembicConfig(
+            str(Path(__file__).parent.parent / "alembic.ini")
+        )
+        alembic_command.stamp(alembic_cfg, "head")
     except (OperationalError, OSError, Exception) as exc:
         await engine.dispose()
         pytest.skip(

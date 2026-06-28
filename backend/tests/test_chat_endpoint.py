@@ -12,6 +12,7 @@ import routers.chat as chat_module
 from exceptions import LLMServiceError, RateLimitError
 from models.conversation_state import ConversationStateDTO
 from redis_store import session_store as session_store_module
+from tests.conftest import TEST_ANON_ID
 
 _SESSION_ID: str = "test-session-001"
 
@@ -80,13 +81,15 @@ async def test_valid_request_returns_200(client_async: AsyncClient) -> None:
 
 
 async def test_response_conforms_to_chat_response_schema(client_async: AsyncClient) -> None:
-    """Response body contains reply, extracted, sessionId, and state; no updatedState."""
+    """Response body contains reply, extracted, sessionId, anonId, and state; no updatedState."""
     with _mock_session(), _mock_llm(reply="Hello!"):
         response = await client_async.post("/api/v1/chat", json=_build_body("Hi"))
     data: dict[str, object] = response.json()["data"]
     assert "reply" in data
     assert "extracted" in data
     assert "sessionId" in data
+    assert "anonId" in data
+    assert data["anonId"] == TEST_ANON_ID
     assert "state" in data
     assert "updatedState" not in data
 

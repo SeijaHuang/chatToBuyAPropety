@@ -3,7 +3,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import CheckConstraint, Index, Text, func
+from sqlalchemy import Index, Text, func
 from sqlalchemy.dialects.postgresql import JSONB, TIMESTAMP, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -15,27 +15,26 @@ class ChatRow(Base):
 
     Stores one row per conversation session. Progressive upserts accumulate
     collected_data as each module (M1–M4) is completed.
+
+    Owner columns (both nullable, can coexist):
+    - anon_id: denormalized copy of users.anon_id; written from P0 onwards; no FK.
+    - user_id: written after P1-B auth lands; enables cross-device history queries.
     """
 
     __tablename__ = "chats"
 
     __table_args__ = (
-        CheckConstraint(
-            "NOT (user_id IS NOT NULL AND anon_id IS NOT NULL)",
-            name="chk_chats_single_owner",
-        ),
         Index("idx_chats_status", "status"),
         Index("idx_chats_updated_at", "updated_at"),
-        Index("idx_chats_user_id", "user_id", postgresql_where="user_id IS NOT NULL"),
         Index("idx_chats_anon_id", "anon_id", postgresql_where="anon_id IS NOT NULL"),
+        Index("idx_chats_user_id", "user_id", postgresql_where="user_id IS NOT NULL"),
     )
 
-    # Identity — column name matches session_id used everywhere else
     session_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
-
-    # Owner — FK constraints added in P1-B
-    user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    # Denormalized copy of users.anon_id — no FK, P0-P1-A primary owner identifier
     anon_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    # Reserved for P1-B: written on login, enables cross-device chat history
+    user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
 
     # Conversation state
     status: Mapped[str] = mapped_column(Text, nullable=False, default="IN_PROGRESS")

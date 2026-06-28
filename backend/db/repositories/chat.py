@@ -6,12 +6,13 @@ from datetime import UTC, datetime
 from typing import Protocol
 
 import structlog
-from sqlalchemy import func
+from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from db.connection import get_session_factory
 from db.models.chat import ChatRow
+from models.chat import ChatSessionDTO
 from models.conversation_state import ConversationStateDTO, EStatus
 
 logger: structlog.BoundLogger = structlog.get_logger()
@@ -20,12 +21,19 @@ logger: structlog.BoundLogger = structlog.get_logger()
 class IChatRepository(Protocol):
     """Persistence contract for the chats table."""
 
-    async def upsert_chat_snapshot_async(self, state: ConversationStateDTO) -> None:
+    async def upsert_chat_snapshot_async(self, state: ConversationStateDTO, anon_id: str) -> None:
         """Write or update the chats row for the given session.
 
         Called after each module completes. Idempotent — repeated calls with
         the same state produce the same row, not duplicate rows.
         Exceptions must be logged and suppressed; must never propagate to the caller.
+        """
+        ...
+
+    async def list_chats_by_anon_async(self, anon_id: str) -> list[ChatSessionDTO]:
+        """Return all session records for an anonymous user, newest first.
+
+        Returns an empty list when the anon_id is unknown or has no persisted chats.
         """
         ...
 
@@ -41,14 +49,14 @@ class SqlAlchemyChatRepository:
     def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
         self._session_factory = session_factory
 
-    async def upsert_chat_snapshot_async(self, state: ConversationStateDTO) -> None:
+    async def upsert_chat_snapshot_async(self, state: ConversationStateDTO, anon_id: str) -> None:
         """Upsert the chats row. Exceptions are logged and suppressed."""
         try:
-            await self._do_upsert_async(state)
+            await self._do_upsert_async(state, anon_id)
         except Exception:
             logger.exception("db_upsert_failed", session_id=state.session_id)
 
-    async def _do_upsert_async(self, state: ConversationStateDTO) -> None:
+    async def _do_upsert_async(self, state: ConversationStateDTO, anon_id: str) -> None:
         """Execute the PostgreSQL upsert statement."""
         collected: dict[str, object] = state.collected_data.model_dump(by_alias=False)
         final_needs: dict[str, object] | None = (
@@ -68,6 +76,7 @@ class SqlAlchemyChatRepository:
             pg_insert(ChatRow)
             .values(
                 session_id=uuid.UUID(state.session_id),
+                anon_id=uuid.UUID(anon_id),
                 status=state.status.value,
                 schema_version="1.1",
                 initial_intent=initial_intent,
@@ -94,6 +103,7 @@ class SqlAlchemyChatRepository:
                         pg_insert(ChatRow).excluded.completed_at,
                         ChatRow.completed_at,
                     ),
+                    # anon_id is intentionally absent — session ownership is immutable
                 },
             )
         )
@@ -101,6 +111,36 @@ class SqlAlchemyChatRepository:
         async with self._session_factory() as session:
             await session.execute(stmt)
             await session.commit()
+
+    async def list_chats_by_anon_async(self, anon_id: str) -> list[ChatSessionDTO]:
+        """Return session records for an anon user, ordered newest first.
+
+        Returns an empty list for unknown anon_id values without raising.
+        """
+        try:
+            anon_uuid: uuid.UUID = uuid.UUID(anon_id)
+        except ValueError:
+            return []
+
+        async with self._session_factory() as session:
+            result = await session.execute(
+                select(ChatRow)
+                .where(ChatRow.anon_id == anon_uuid)
+                .order_by(ChatRow.updated_at.desc())
+            )
+            rows: list[ChatRow] = list(result.scalars().all())
+
+        return [
+            ChatSessionDTO(
+                session_id=str(row.session_id),
+                status=row.status,
+                initial_intent=row.initial_intent,
+                created_at=row.created_at,
+                updated_at=row.updated_at,
+                completed_at=row.completed_at,
+            )
+            for row in rows
+        ]
 
 
 def get_chat_repository() -> SqlAlchemyChatRepository:

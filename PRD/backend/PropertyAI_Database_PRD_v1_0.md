@@ -5,10 +5,10 @@
 | Field           | Value                                   |
 | --------------- | --------------------------------------- |
 | Version         | v1.0                                    |
-| Status          | **Draft — awaiting implementation**     |
+| Status          | **Implemented**                         |
 | Parent Document | PropertyAI_Part1_Technical_PRD_v1_1.md  |
 | Scope           | PostgreSQL + SQLAlchemy ORM + `chats` table |
-| Last Updated    | 22 Jun 2026                             |
+| Last Updated    | 28 Jun 2026                             |
 
 ---
 
@@ -37,12 +37,12 @@
 
 建立 PostgreSQL 持久化层，包含：ORM 定义、连接管理、Repository 接口、以及对话会话的渐进式快照写入。`chats` 表是 Part 1 结构化业务数据的唯一权威存储。
 
-### 1.2 In Scope (P1-A)
+### 1.2 In Scope (P1-A — 已实现)
 
 - SQLAlchemy 2.0 async ORM 模型定义（`chats` 表）
 - `AsyncEngine` + `async_sessionmaker` 连接池生命周期管理
 - `IChatRepository` Protocol + `SqlAlchemyChatRepository` 实现
-- Alembic 迁移（`env.py` async 模式 + `001_create_chats` migration）
+- Alembic 迁移（`env.py` 同步 psycopg2 模式 + `993128e7e195_create_chats` migration）
 - 每模块完成时通过 FastAPI `BackgroundTasks` 触发渐进式 upsert
 - `/health` 端点新增 `postgres` 健康检查
 
@@ -73,64 +73,71 @@
 | `UserNeeds.session_id`            | `session_id` |
 | `chats` 表主键列                  | `session_id` |
 
-### 2.2 ORM：SQLAlchemy 2.0 Async
+### 2.2 ORM：SQLAlchemy 2.0 Async（应用层），Sync（迁移层）
 
-使用 SQLAlchemy 2.0 async ORM（`AsyncSession`）而非原生 asyncpg。理由：
+应用层（`connection.py`、`repositories/chat.py`）使用 SQLAlchemy 2.0 async ORM（`AsyncSession`）。迁移层（`db/alembic/env.py`）使用同步 psycopg2，通过正则将 `DATABASE_URL` 中的 `postgresql+asyncpg` 替换为 `postgresql`，原因：
 
-| 关注点       | ORM 优势                                                               |
-| ------------ | ---------------------------------------------------------------------- |
-| SQL 封装     | 所有 SQL 通过 ORM 语句生成，无裸字符串泄露到业务代码                    |
-| 类型安全     | `Mapped[T]` 标注提供列级类型推断，mypy --strict 全覆盖                  |
-| 迁移管理     | Alembic `autogenerate` 从 ORM 模型自动生成 migration，减少手写 DDL 风险 |
-| 扩展性       | P1-B 增加 `users`、`anonymous_users` 及关联关系只需追加 ORM 模型        |
+| 关注点   | 说明 |
+| -------- | ---- |
+| 迁移稳定性 | Alembic 同步模式更成熟，兼容性更好 |
+| 驱动隔离 | 迁移用 psycopg2，运行时用 asyncpg，两者互不干扰 |
+| 简洁性   | 避免在迁移脚本中引入 `asyncio.run()` 嵌套 |
 
-asyncpg 仍作为底层驱动（`postgresql+asyncpg://`），SQLAlchemy 不替换驱动，只增加映射层。
+asyncpg 仍作为应用层底层驱动（`postgresql+asyncpg://`），SQLAlchemy 不替换驱动，只增加映射层。
 
-### 2.3 Repository 命名：`chat_repository.py`
+### 2.3 Repository 命名：`chat_repository` → `db/repositories/chat.py`
 
-数据库操作全部封装在 `db/chat_repository.py` 中，Protocol 名 `IChatRepository`，实现类名 `SqlAlchemyChatRepository`。文件名与表名 `chats` 对齐；路由层通过 `IChatRepository` Protocol 调用，与 SQLAlchemy 实现解耦，便于测试时替换 mock。
+数据库操作全部封装在 `db/repositories/chat.py` 中，Protocol 名 `IChatRepository`，实现类名 `SqlAlchemyChatRepository`。文件名与表名 `chats` 对齐。
 
-### 2.4 外键延迟设计
+`get_chat_repository()` 是 FastAPI 依赖函数，无需参数——内部直接调用 `get_session_factory()`，比通过 `Depends` 传入 factory 更简洁，且 `get_session_factory()` 本身在 engine 未初始化时会抛出 `RuntimeError`，等同于依赖注入的守卫效果。
 
-`user_id` 和 `anon_id` 在 P1-A 以 `UUID NULL` 列写入 ORM 模型和 DDL，但不添加 `ForeignKey()` 约束（P1-B Alembic migration 补充）。P1-A 阶段所有 chats 的两列均为 `NULL`。
+### 2.4 `anon_id` 设计（已更新）
 
-CHECK 约束确保两列不同时为非 NULL。
+`chats.anon_id` 是 `users.anon_id` 的去规范化副本，无外键约束，靠 `idx_chats_anon_id` 索引支持高效查询。详见 [PropertyAI_Anonymous_User_PRD_v1_0.md](PropertyAI_Anonymous_User_PRD_v1_0.md) §2.3。
+
+`user_id` 列已从 `chats` 表移除——P1-A 无 auth，前端只传 `anon_id`，P1-B 登录实现后再加。
+
+### 2.5 本地开发禁用 SSL
+
+`create_async_engine` 传入 `connect_args={"ssl": False}`，避免本地 Docker postgres（无 SSL 证书）连接失败。生产环境需移除该参数并配置正确的 SSL 证书。
 
 ## 3. Tech Stack
 
 | Layer        | Technology                                             |
 | ------------ | ------------------------------------------------------ |
 | ORM          | SQLAlchemy 2.0 (`sqlalchemy[asyncio]>=2.0`)            |
-| Async driver | asyncpg（已在 `pyproject.toml` 中，DSN 前缀 `postgresql+asyncpg://`） |
+| Async driver | asyncpg（应用层，DSN 前缀 `postgresql+asyncpg://`）     |
+| Sync driver  | psycopg2（Alembic 迁移层专用，DSN 前缀 `postgresql://`） |
 | Migrations   | Alembic (`alembic>=1.13`)                              |
-| Column types | `UUID`, `Text`, `JSONB` (via `sqlalchemy.dialects.postgresql`) |
+| Column types | `UUID`, `Text`, `JSONB`, `TIMESTAMP` (via `sqlalchemy.dialects.postgresql`) |
 
-### 3.1 新增依赖（`pyproject.toml`）
+### 3.1 依赖（`pyproject.toml`）
 
 ```toml
 dependencies = [
-    # 现有依赖不变...
     "sqlalchemy[asyncio]>=2.0.0",
     "alembic>=1.13.0",
+    "asyncpg",      # async driver for application
+    "psycopg2",     # sync driver for Alembic migrations
 ]
 ```
 
-同步更新 `requirements.txt`。`db` 包加入 `tool.setuptools.packages.find.include`。
+同步更新 `requirements.txt`。
 
 ---
 
 ## 4. Schema: `chats` Table
 
-以下为与 ORM 模型对应的逻辑 DDL（Alembic 由 ORM 模型自动生成，无需手写 DDL）：
+以下为与 ORM 模型对应的逻辑 DDL：
 
 ```sql
 CREATE TABLE chats (
     -- Identity（主键列名与 Redis / DTO 保持一致）
     session_id         UUID        PRIMARY KEY,
 
-    -- Owner (FK constraints added in P1-B via Alembic migration)
-    user_id            UUID        NULL,
-    anon_id            UUID        NULL,
+    -- Owner（两列均可为 NULL，也可同时非 NULL，无 FK 约束，靠索引查询）
+    anon_id            UUID        NULL,   -- 浏览器/设备身份，P0 起写入
+    user_id            UUID        NULL,   -- 注册身份，P1-B 登录后写入
 
     -- Conversation state
     status             TEXT        NOT NULL DEFAULT 'IN_PROGRESS',
@@ -145,35 +152,32 @@ CREATE TABLE chats (
     -- Timestamps
     created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    completed_at       TIMESTAMPTZ NULL,
-
-    -- A chat cannot simultaneously belong to a user and an anonymous user
-    CONSTRAINT chk_chats_single_owner CHECK (
-        NOT (user_id IS NOT NULL AND anon_id IS NOT NULL)
-    )
+    completed_at       TIMESTAMPTZ NULL
 );
 
 CREATE INDEX idx_chats_status     ON chats (status);
 CREATE INDEX idx_chats_updated_at ON chats (updated_at DESC);
-CREATE INDEX idx_chats_user_id    ON chats (user_id)  WHERE user_id IS NOT NULL;
 CREATE INDEX idx_chats_anon_id    ON chats (anon_id)  WHERE anon_id IS NOT NULL;
+CREATE INDEX idx_chats_user_id    ON chats (user_id)  WHERE user_id IS NOT NULL;
 ```
+
+> `chk_chats_single_owner` CHECK 约束已通过 migration `2f156e1dbbc7` 删除——单表设计下注册用户同样持有 `anon_id`，P1-B 登录后新对话可同时写入两列。详见 [PropertyAI_Anonymous_User_PRD_v1_0.md](PropertyAI_Anonymous_User_PRD_v1_0.md) §2.5。
 
 ### 4.1 Column Reference
 
 | Column               | SQLAlchemy Type       | Nullable | Description                                                              |
 | -------------------- | --------------------- | -------- | ------------------------------------------------------------------------ |
-| `session_id`         | `UUID` (PK)           | No       | UUID v4 generated by the frontend; equals Redis `session:{session_id}`   |
-| `user_id`            | `UUID`                | Yes      | FK to future `users.user_id` (P1-B); NULL in P1-A                       |
-| `anon_id`            | `UUID`                | Yes      | FK to future `anonymous_users.anon_id` (P1-B); NULL in P1-A             |
+| `session_id`         | `UUID` (PK)           | No       | UUID v4，后端生成；等同于 Redis key `session:{session_id}`               |
+| `anon_id`            | `UUID`                | Yes      | 去规范化的 `users.anon_id`，无 FK；P0 起写入，靠 `idx_chats_anon_id` 查询；可与 `user_id` 同时非 NULL |
+| `user_id`            | `UUID`                | Yes      | 注册用户身份；P1-B 登录后写入，靠 `idx_chats_user_id` 查询；可与 `anon_id` 同时非 NULL |
 | `status`             | `Text`                | No       | `IN_PROGRESS` / `REQUIREMENTS_COMPLETE`                                  |
 | `schema_version`     | `Text`                | No       | Fixed `'1.1'`                                                            |
 | `initial_intent`     | `Text`                | Yes      | Written on M1 completion (e.g. `recommend_suburbs`)                      |
 | `collected_data`     | `JSONB`               | No       | Progressive snapshot of M1–M4 collected fields                           |
 | `final_needs`        | `JSONB`               | Yes      | Full `UserNeeds` written after M4 completion                             |
 | `borrowing_capacity` | `JSONB`               | Yes      | `BorrowingCapacityResult` written after M4 completion (if salary given)  |
-| `created_at`         | `TIMESTAMP WITH TZ`   | No       | Auto-set on INSERT                                                       |
-| `updated_at`         | `TIMESTAMP WITH TZ`   | No       | Updated on every upsert                                                  |
+| `created_at`         | `TIMESTAMP WITH TZ`   | No       | Auto-set on INSERT via `server_default=func.now()`                       |
+| `updated_at`         | `TIMESTAMP WITH TZ`   | No       | Auto-set on INSERT; updated on every upsert via `datetime.now(tz=UTC)`   |
 | `completed_at`       | `TIMESTAMP WITH TZ`   | Yes      | Set when `status` → `REQUIREMENTS_COMPLETE`; used for analytics          |
 
 ---
@@ -229,21 +233,15 @@ class ChatRow(Base):
     __tablename__ = "chats"
 
     __table_args__ = (
-        CheckConstraint(
-            "NOT (user_id IS NOT NULL AND anon_id IS NOT NULL)",
-            name="chk_chats_single_owner",
-        ),
         Index("idx_chats_status", "status"),
         Index("idx_chats_updated_at", "updated_at"),
-        Index("idx_chats_user_id", "user_id", postgresql_where="user_id IS NOT NULL"),
         Index("idx_chats_anon_id", "anon_id", postgresql_where="anon_id IS NOT NULL"),
     )
 
     # Identity — column name matches session_id used everywhere else
     session_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
 
-    # Owner — FK constraints added in P1-B
-    user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    # Owner — denormalized copy of users.anon_id; no FK, query via idx_chats_anon_id
     anon_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
 
     # Conversation state
@@ -252,9 +250,9 @@ class ChatRow(Base):
     initial_intent: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Structured business data
-    collected_data: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
-    final_needs: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
-    borrowing_capacity: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    collected_data: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False, default=dict)
+    final_needs: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True)
+    borrowing_capacity: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True)
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
@@ -263,9 +261,7 @@ class ChatRow(Base):
     updated_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
     )
-    completed_at: Mapped[datetime | None] = mapped_column(
-        TIMESTAMP(timezone=True), nullable=True
-    )
+    completed_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
 ```
 
 ### 5.3 `db/models/__init__.py`
@@ -292,7 +288,7 @@ __all__ = ["Base", "ChatRow"]
 backend/db/connection.py
 ```
 
-### 6.2 Specification
+### 6.2 实现
 
 ```python
 # db/connection.py
@@ -325,6 +321,7 @@ async def create_engine_async() -> None:
         max_overflow=10,
         pool_timeout=30,
         echo=False,
+        connect_args={"ssl": False},  # disabled for local Docker dev; remove in production
     )
     _session_factory = async_sessionmaker(
         bind=_engine,
@@ -359,34 +356,70 @@ async def get_db_session_async() -> AsyncIterator[AsyncSession]:
     Usage:
         session: AsyncSession = Depends(get_db_session_async)
     """
-    factory = get_session_factory()
+    factory: async_sessionmaker[AsyncSession] = get_session_factory()
     async with factory() as session:
         yield session
 ```
+
+> **注意**：`connect_args={"ssl": False}` 仅用于本地 Docker 开发环境（postgres 容器不配置 SSL 证书）。生产环境应移除此参数，并通过 `DATABASE_URL` 或 `connect_args` 配置正确的 SSL 设置。
 
 ### 6.3 FastAPI Lifespan 集成
 
 ```python
 # main.py
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from collections.abc import AsyncIterator
 
 from fastapi import FastAPI
 
 from db.connection import create_engine_async, close_engine_async
-from redis_store.client import connect_async, close_async
+from redis_store.client import redis_client
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    await connect_async()
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+    """Manage Redis and PostgreSQL connection lifecycle for the application."""
+    await redis_client.connect_async()
     await create_engine_async()
     yield
     await close_engine_async()
-    await close_async()
+    await redis_client.close_async()
 
 
-app = FastAPI(lifespan=lifespan)
+app = FastAPI(title="PropertyAI API", version="0.1.0", lifespan=lifespan)
+```
+
+> Redis 通过 `redis_client` 单例（`redis_store/client.py`）管理，调用其实例方法 `connect_async()` / `close_async()`，而非模块级函数。
+
+### 6.4 `/health` 端点
+
+`/health` 端点同时检查 Redis 和 PostgreSQL 连通性，两者均正常返回 `"ok"`，任一异常返回 `"degraded"`：
+
+```python
+@app.get("/health")
+async def health_check_async() -> dict[str, object]:
+    """Return service liveness status including Redis and PostgreSQL connectivity."""
+    redis_ok: bool = await redis_client.ping_async()
+
+    postgres_ok: bool = False
+    try:
+        factory: async_sessionmaker[AsyncSession] = get_session_factory()
+        async with factory() as session:
+            await session.execute(text("SELECT 1"))
+        postgres_ok = True
+    except Exception:
+        pass
+
+    all_ok: bool = redis_ok and postgres_ok
+    status: str = "ok" if all_ok else "degraded"
+    return {
+        "status": status,
+        "version": "0.1.0",
+        "services": {
+            "redis": "ok" if redis_ok else "error",
+            "postgres": "ok" if postgres_ok else "error",
+        },
+    }
 ```
 
 ---
@@ -424,20 +457,21 @@ class IChatRepository(Protocol):
 #### SqlAlchemyChatRepository
 
 ```python
-import json
 import uuid
 from dataclasses import asdict
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+from typing import Protocol
 
 import structlog
 from sqlalchemy import func
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from db.connection import get_session_factory
 from db.models.chat import ChatRow
 from models.conversation_state import ConversationStateDTO, EStatus
 
-logger = structlog.get_logger()
+logger: structlog.BoundLogger = structlog.get_logger()
 
 
 class SqlAlchemyChatRepository:
@@ -459,21 +493,16 @@ class SqlAlchemyChatRepository:
             logger.exception("db_upsert_failed", session_id=state.session_id)
 
     async def _do_upsert_async(self, state: ConversationStateDTO) -> None:
-        collected: dict = json.loads(state.collected_data.model_dump_json(by_alias=False))
-        final_needs: dict | None = (
-            json.loads(state.final_needs.model_dump_json(by_alias=False))
-            if state.final_needs is not None
-            else None
+        """Execute the PostgreSQL upsert statement."""
+        collected: dict[str, object] = state.collected_data.model_dump(by_alias=False)
+        final_needs: dict[str, object] | None = (
+            state.final_needs.model_dump(by_alias=False) if state.final_needs is not None else None
         )
-        borrowing: dict | None = (
-            asdict(state.borrowing_capacity)
-            if state.borrowing_capacity is not None
-            else None
+        borrowing: dict[str, object] | None = (
+            asdict(state.borrowing_capacity) if state.borrowing_capacity is not None else None
         )
         completed_at: datetime | None = (
-            datetime.now(tz=timezone.utc)
-            if state.status == EStatus.REQUIREMENTS_COMPLETE
-            else None
+            datetime.now(tz=UTC) if state.status == EStatus.REQUIREMENTS_COMPLETE else None
         )
         initial_intent: str | None = (
             state.initial_intent.value if state.initial_intent is not None else None
@@ -503,7 +532,7 @@ class SqlAlchemyChatRepository:
                     "collected_data": pg_insert(ChatRow).excluded.collected_data,
                     "final_needs": pg_insert(ChatRow).excluded.final_needs,
                     "borrowing_capacity": pg_insert(ChatRow).excluded.borrowing_capacity,
-                    "updated_at": datetime.now(tz=timezone.utc),
+                    "updated_at": datetime.now(tz=UTC),
                     # COALESCE: once written, completed_at is never overwritten by NULL
                     "completed_at": func.coalesce(
                         pg_insert(ChatRow).excluded.completed_at,
@@ -518,21 +547,17 @@ class SqlAlchemyChatRepository:
             await session.commit()
 ```
 
+> **`model_dump` vs `json.loads(model_dump_json(...))`**：实现直接使用 `model_dump(by_alias=False)` 返回 Python dict，SQLAlchemy 的 JSONB 列类型会处理序列化，比 PRD 原草稿中的 JSON 往返方式更简洁。
+
 #### FastAPI Dependency Provider
 
 ```python
-from fastapi import Depends
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
-
-from db.connection import get_session_factory
-
-
-def get_chat_repository(
-    factory: async_sessionmaker[AsyncSession] = Depends(get_session_factory),
-) -> SqlAlchemyChatRepository:
+def get_chat_repository() -> SqlAlchemyChatRepository:
     """FastAPI dependency — returns a SqlAlchemyChatRepository."""
-    return SqlAlchemyChatRepository(factory)
+    return SqlAlchemyChatRepository(get_session_factory())
 ```
+
+> **简化的依赖注入**：`get_chat_repository()` 不接受参数，内部直接调用 `get_session_factory()`。若 engine 未初始化，`get_session_factory()` 抛出 `RuntimeError`，起到与 `Depends` 相同的守卫效果，同时减少 FastAPI 依赖链的层级。
 
 ### 7.2 `db/repositories/__init__.py`
 
@@ -562,9 +587,7 @@ __all__ = ["IChatRepository", "SqlAlchemyChatRepository", "get_chat_repository"]
 
 ### 8.2 `initial_intent` 的来源
 
-M1 完成时，由 `intent_router.classify_intent_async()` 对当前 turn 的分类结果写入。
-
-**实现方案**：在 `ConversationStateDTO` 上新增 `initial_intent: EUserIntent | None = None` 字段（与 `borrowing_capacity`、`budget_gap` 的处理方式相同，见 Part 1 PRD §17.6）。M1 完成的 turn 结束时，路由层将分类结果写入 `updated_state.initial_intent`，`BackgroundTasks` 从 `state.initial_intent` 读取。
+M1 完成时，由 `intent_router.classify_intent_async()` 对当前 turn 的分类结果写入。`ConversationStateDTO` 上新增 `initial_intent: EUserIntent | None = None` 字段。M1 完成的 turn 结束时，路由层将分类结果写入 `updated_state.initial_intent`，`BackgroundTasks` 从 `state.initial_intent` 读取。
 
 ### 8.3 路由层集成（`routers/chat.py`）
 
@@ -596,71 +619,127 @@ async def chat_async(
 
 ## 9. Migration Strategy (Alembic)
 
-### 9.1 初始化（一次性）
+### 9.1 初始化（一次性，已完成）
 
 ```bash
 # 在 backend/ 目录下运行
-alembic init -t async db/alembic
+alembic init db/alembic
 ```
 
 生成目录：
 
 ```
 backend/
-├── alembic.ini                    Alembic 配置文件（DATABASE_URL 从环境变量读取）
+├── alembic.ini                                     Alembic 配置文件（backend/ 根目录）
 └── db/
     └── alembic/
-        ├── env.py                 async 配置（引入 Base.metadata）
+        ├── env.py                                  同步 psycopg2 配置
         ├── script.py.mako
         └── versions/
-            └── 001_create_chats.py   首个 migration（autogenerate 生成）
+            └── 993128e7e195_create_chats.py        首个 migration（autogenerate 生成）
 ```
 
-### 9.2 `env.py` 异步配置（核心片段）
+### 9.2 `env.py` — 同步 psycopg2 模式
+
+Alembic `env.py` 使用**同步**驱动（psycopg2）而非 async。原因：Alembic 原生支持同步模式，无需 `asyncio.run()` 包装，更稳定。
 
 ```python
 # db/alembic/env.py
-from sqlalchemy.ext.asyncio import async_engine_from_config
-from sqlalchemy.pool import NullPool
+import re
+from logging.config import fileConfig
 
-from db.models import Base
+from alembic import context
+from sqlalchemy import create_engine, pool
+from sqlalchemy.engine import Connection
+
+from config import settings
+from db.models import Base  # noqa: F401 — registers all ORM models with Base.metadata
+
+config = context.config
+
+if config.config_file_name is not None:
+    fileConfig(config.config_file_name)
+
+# Alembic migrations run synchronously via psycopg2; strip the +asyncpg driver suffix
+# so the URL is compatible with the standard psycopg2 dialect.
+_sync_url: str = re.sub(r"postgresql\+asyncpg", "postgresql", settings.database_url)
+config.set_main_option("sqlalchemy.url", _sync_url)
 
 target_metadata = Base.metadata
 
 
-async def run_migrations_online_async() -> None:
-    connectable = async_engine_from_config(
-        config.get_section(config.config_ini_section, {}),
-        prefix="sqlalchemy.",
-        poolclass=NullPool,
+def run_migrations_offline() -> None:
+    """Run migrations in 'offline' mode (generates SQL without connecting)."""
+    url = config.get_main_option("sqlalchemy.url")
+    context.configure(
+        url=url,
+        target_metadata=target_metadata,
+        literal_binds=True,
+        dialect_opts={"paramstyle": "named"},
     )
-    async with connectable.connect() as connection:
-        await connection.run_sync(do_run_migrations)
+    with context.begin_transaction():
+        context.run_migrations()
+
+
+def do_run_migrations(connection: Connection) -> None:
+    context.configure(connection=connection, target_metadata=target_metadata)
+    with context.begin_transaction():
+        context.run_migrations()
+
+
+def run_migrations_online() -> None:
+    """Run migrations in 'online' mode using a synchronous psycopg2 engine."""
+    db_url: str = config.get_main_option("sqlalchemy.url") or _sync_url
+    connectable = create_engine(db_url, poolclass=pool.NullPool)
+    with connectable.connect() as connection:
+        do_run_migrations(connection)
+    connectable.dispose()
+
+
+if context.is_offline_mode():
+    run_migrations_offline()
+else:
+    run_migrations_online()
 ```
 
-### 9.3 生成首个 Migration
+> **与 PRD 草稿的差异**：原草稿规划使用 `async_engine_from_config` 的 async 模式。实现中改为同步 psycopg2，因为同步模式更简单、无 `asyncio` 嵌套风险，且 Alembic 官方推荐在迁移中使用同步连接。
+
+### 9.3 `alembic.ini` 关键配置
+
+```ini
+[alembic]
+script_location = %(here)s/db/alembic
+prepend_sys_path = .
+
+# sqlalchemy.url 保留占位符；env.py 从 settings.database_url 读取真实 URL 并覆盖此值
+sqlalchemy.url = driver://user:pass@localhost/dbname
+```
+
+### 9.4 生成首个 Migration（已完成）
 
 ```bash
 alembic revision --autogenerate -m "create_chats"
 ```
 
-Alembic 从 `ChatRow` 模型自动生成 `001_create_chats.py`，包含 `CREATE TABLE chats`（主键 `session_id`）、4 个索引及 CHECK 约束。review 生成文件后提交至 git。
+生成文件：`db/alembic/versions/993128e7e195_create_chats.py`（revision ID 由 Alembic 自动生成哈希，非顺序编号）。
 
-### 9.4 运行迁移
+### 9.5 运行迁移
 
 ```bash
 # 开发（手动）
-alembic upgrade head
+uv run alembic upgrade head
 
-# 生产（Docker Compose entrypoint 中自动运行，再启动 uvicorn）
-alembic upgrade head && uvicorn main:app --host 0.0.0.0 --port 8000
+# 通过 scripts.py 入口（自动重试，等待 postgres 启动）
+uv run dev   # 内部调用 _migrate() → alembic upgrade head，再启动 uvicorn
 ```
+
+`scripts.py` 中的 `_migrate()` 最多重试 15 次（每次等待 1 秒），等待 Postgres 容器就绪后执行迁移，再启动 uvicorn。
 
 ---
 
 ## 10. Project Structure
 
-新增文件：
+实际文件结构：
 
 ```
 backend/
@@ -678,32 +757,39 @@ backend/
     │   └── chat.py                          IChatRepository Protocol + SqlAlchemyChatRepository
     │                                        + get_chat_repository FastAPI 依赖
     └── alembic/                             Alembic 迁移文件
-        ├── env.py                           async 配置（from db.models import Base）
+        ├── env.py                           同步 psycopg2 配置（from db.models import Base）
+        ├── README
         ├── script.py.mako
         └── versions/
-            └── 001_create_chats.py          首个 migration（autogenerate 生成，review 后提交）
+            └── 993128e7e195_create_chats.py  首个 migration（autogenerate 生成）
 ```
 
-需同步修改的现有文件：
+已修改的现有文件：
 
 | 文件                            | 变更                                                                          |
 | ------------------------------- | ----------------------------------------------------------------------------- |
-| `main.py`                       | lifespan 挂载 `create_engine_async` / `close_engine_async`                    |
+| `main.py`                       | lifespan 挂载 `create_engine_async` / `close_engine_async`；新增 `/health` postgres 检查 |
 | `routers/chat.py`               | 注入 `chat_repo` 依赖，`BackgroundTasks` 调用 `upsert_chat_snapshot_async`    |
-| `models/conversation_state.py`  | 新增 `initial_intent: EUserIntent \| None = None` 字段（参见 §8.2）           |
-| `config.py`                     | 确认 `database_url` 字段（`postgresql+asyncpg://` 格式）                      |
-| `pyproject.toml`                | 新增 `sqlalchemy[asyncio]>=2.0`、`alembic>=1.13`；`db` 加入 packages.find     |
+| `models/conversation_state.py`  | 新增 `initial_intent: EUserIntent \| None = None` 字段                        |
+| `config.py`                     | 包含 `database_url` 字段（`postgresql+asyncpg://` 格式）                      |
+| `pyproject.toml`                | 新增 `sqlalchemy[asyncio]>=2.0`、`alembic>=1.13`、`psycopg2`                 |
 | `requirements.txt`              | 同步更新                                                                      |
 
 ---
 
 ## 11. Environment Variables
 
-| Variable       | Required | Format                                          | Description                               |
-| -------------- | -------- | ----------------------------------------------- | ----------------------------------------- |
-| `DATABASE_URL` | Yes      | `postgresql+asyncpg://user:pass@host:5432/db`   | SQLAlchemy async DSN（asyncpg 驱动前缀）   |
+| Variable        | Required | Format                                          | Description                               |
+| --------------- | -------- | ----------------------------------------------- | ----------------------------------------- |
+| `DATABASE_URL`  | Yes      | `postgresql+asyncpg://user:pass@host:5432/db`   | SQLAlchemy async DSN（asyncpg 驱动前缀）   |
 
-> `DATABASE_URL` 已在 Part 1 PRD §26 中定义。SQLAlchemy async 需要 `postgresql+asyncpg://` 前缀，而非原生 asyncpg 的 `postgresql://`。
+> Alembic `env.py` 通过正则 `re.sub(r"postgresql\+asyncpg", "postgresql", ...)` 将此 URL 转换为 psycopg2 兼容格式（`postgresql://`）后再使用。无需维护两个独立的数据库 URL 环境变量。
+
+**本地开发 `.env` 示例：**
+
+```env
+DATABASE_URL=postgresql+asyncpg://user:password@localhost:5432/propertyai
+```
 
 ---
 
@@ -730,7 +816,7 @@ from db.models import Base
 
 @pytest_asyncio.fixture(scope="session")
 async def db_engine():
-    engine = create_async_engine(settings.database_url)
+    engine = create_async_engine(settings.database_url, connect_args={"ssl": False})
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     yield engine
@@ -781,3 +867,12 @@ test_db_error_is_logged_and_suppressed_not_raised
 | DB-10 | mypy --strict 对 `db/` 全包通过，无类型错误                                                                         |
 
 ---
+
+## 14. Future: users / anonymous_users Tables
+
+P1-B 阶段新增：
+
+- `users` 表（已认证用户）
+- `anonymous_users` 表（未登录用户，通过 cookie/设备指纹追踪）
+- Alembic migration 补充 `chats.user_id` → `users.user_id` 和 `chats.anon_id` → `anonymous_users.anon_id` 的 FK 约束
+- `chats` 表已预留 `user_id UUID NULL` 和 `anon_id UUID NULL` 两列，P1-B 只需加约束，无需改表结构
