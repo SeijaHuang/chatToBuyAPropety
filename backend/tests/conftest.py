@@ -16,8 +16,8 @@ from sqlalchemy.ext.asyncio import (
 
 from config import settings
 from db.models import Base
-from db.repositories.chat import SqlAlchemyChatRepository, get_chat_repository
-from db.repositories.user import SqlAlchemyUserRepository, get_user_repository
+from db.repositories.chat import IChatRepository, get_chat_repository
+from db.repositories.user import IUserRepository, get_user_repository
 from main import app
 from models.conversation_state import ConversationStateDTO
 from redis_store.client import redis_client
@@ -34,8 +34,8 @@ async def client_async() -> AsyncGenerator[AsyncClient, None]:
     dependencies are mocked so the test suite does not require live infrastructure.
     Individual tests that exercise those layers apply their own mocks via patch.
     """
-    mock_repo: AsyncMock = AsyncMock(spec=SqlAlchemyChatRepository)
-    mock_anon_repo: AsyncMock = AsyncMock(spec=SqlAlchemyUserRepository)
+    mock_repo: AsyncMock = AsyncMock(spec=IChatRepository)
+    mock_anon_repo: AsyncMock = AsyncMock(spec=IUserRepository)
     mock_anon_repo.get_or_create_async.return_value = TEST_ANON_ID
 
     app.dependency_overrides[get_chat_repository] = lambda: mock_repo
