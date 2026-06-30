@@ -52,6 +52,28 @@ class BaseLLMClient(ABC):
     async def call_llm_async(self, ...) -> str: ...
 ```
 
+#### Protocol Registration — mandatory when adding a new Protocol
+
+Every new `(Protocol, ConcreteImplementation)` pair **must** be registered in the `PAIRS` table in `backend/scripts/check_protocols.py`. This table is the authoritative list that the `backend protocol compliance` pre-commit hook and the `Protocol compliance check` CI step use to verify completeness.
+
+```python
+# backend/scripts/check_protocols.py
+PAIRS: list[tuple[str, str, str]] = [
+    # ("module_path",        "IProtocolName",  "ConcreteClassName"),
+    ("domain.llm_client",   "ILLMClient",      "OpenRouterClient"),  # existing
+    ("my_module.service",   "IMyService",      "MyServiceImpl"),     # ← add your pair here
+]
+```
+
+**Checklist when introducing a new Protocol:**
+
+1. Define the `I`-prefixed Protocol class in the appropriate module.
+2. Write the concrete implementation class.
+3. Add one line to `PAIRS` in `scripts/check_protocols.py`.
+4. Run `uv run python scripts/check_protocols.py` locally to confirm the check passes before committing.
+
+A PR that defines a new Protocol without a `PAIRS` entry will fail both the pre-commit hook and the CI step.
+
 ### No Magic Strings — Use Enums
 
 Any string value that is reused in more than one place, used as a key/identifier, or represents a domain concept must be defined as an `StrEnum` member. Raw string literals for these cases are forbidden.

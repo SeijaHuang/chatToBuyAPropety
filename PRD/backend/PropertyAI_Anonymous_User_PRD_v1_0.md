@@ -1,14 +1,14 @@
 # PropertyAI — 匿名用户身份系统
 
-## Technical PRD v1.0
+## Technical PRD v1.1
 
-| 字段         | 值                                      |
-| ------------ | --------------------------------------- |
-| Version      | v1.0                                    |
-| Status       | **Implemented**                         |
-| 父文档       | PropertyAI_Database_PRD_v1_0.md         |
-| Scope        | 匿名用户身份追踪、`users` 表、前端 localStorage |
-| Last Updated | 28 Jun 2026                             |
+| 字段         | 值                                                             |
+| ------------ | -------------------------------------------------------------- |
+| Version      | v1.1                                                           |
+| Status       | **v1.0 Implemented · v1.1 Planned**                           |
+| 父文档       | PropertyAI_Database_PRD_v1_0.md                               |
+| Scope        | 匿名用户身份追踪、`users` 表、Cookie 传输（v1.1 新增）         |
+| Last Updated | 30 Jun 2026                                                    |
 
 ---
 
@@ -26,6 +26,7 @@
 10. [测试策略](#10-测试策略)
 11. [验收标准](#11-验收标准)
 12. [未来规划（P1-B）](#12-未来规划p1-b)
+13. [v1.1：HttpOnly Cookie 传输](#13-v11httponly-cookie-传输)
 
 ---
 
@@ -91,15 +92,30 @@
 - 简化测试——不再需要在每个测试前先 INSERT `users` 行
 - `anon_id` 以去规范化（denormalized）方式存储在 `chats` 中，用于直接过滤，无需 JOIN
 
-### 2.4 CORS 约束：`anon_id` 通过 Request Body 传输
+### 2.4 CORS 约束与传输渠道演进
 
-`allow_origins=["*"]` 时，`allow_credentials=True` 不允许同时设置（浏览器安全限制），因此无法使用 Cookie 传递 `anon_id`。替代方案：
+**v1.0（已实现）：** `allow_origins=["*"]` 时浏览器规范禁止同时使用 `allow_credentials=True`，因此无法通过 Cookie 传递 `anon_id`。当时选择：
 
-- `anon_id` 存入前端 `localStorage`
-- 每次 `POST /chat` 时放入 request body（与 `session_id` 相同模式）
-- 后端返回 `resolved_anon_id`，前端收到后存入 localStorage
+- `anon_id` 存入前端 `localStorage`，每次 `POST /chat` 放入 request body
+- 后端返回 `resolved_anon_id`，前端收到后写回 localStorage
 
-P1-B 实现登录后，Cookie 用于 auth token，`anon_id` 依然通过 body 传输（两者不冲突）。
+**v1.1（本次计划）：** 将 CORS `allow_origins` 改为精确白名单后，Cookie 传输成为可能——详见 [§13](#13-v11httponly-cookie-传输)。
+
+### 2.5 v1.1 设计决策：迁移至 HttpOnly Cookie
+
+**放弃的方案：** 继续用 request body + localStorage（v1.0 方案）。
+
+**选择 HttpOnly Cookie 的原因：**
+
+| 关注点 | v1.0（localStorage + body） | v1.1（HttpOnly Cookie） |
+| ------ | --------------------------- | ----------------------- |
+| XSS 防护 | JS 可读 — XSS 可窃取 anon_id | JS 不可读 — HttpOnly 阻止读取 |
+| 传输自动化 | 前端手动读取 / 写入 / 携带 | 浏览器自动携带，无需前端状态管理 |
+| 前端代码量 | store + localStorage + useEffect | 仅需 `withCredentials: true` |
+| P1-B 一致性 | auth token 走 Cookie，anon_id 走 body（两套） | 统一走 Cookie |
+| CORS 要求 | allow_origins=["*"] 可用 | 必须用精确白名单 |
+
+HttpOnly Cookie 在生产环境（同域部署）下是最优解，前端零状态管理，安全性显著提升。
 
 ### 2.5 `chats` 同时保留 `anon_id` 和 `user_id` 两列
 
@@ -598,4 +614,316 @@ CREATE INDEX idx_chats_user_id ON chats (user_id) WHERE user_id IS NOT NULL;
 
 ### 12.4 Cookie 策略
 
-P1-B auth token 使用 `HttpOnly SameSite=Strict` Cookie（XSS 不可读），配合后端收紧 CORS（`allow_origins` 改为白名单）。`anon_id` 继续在 localStorage，不影响 auth 安全性。
+P1-B auth token 使用 `HttpOnly SameSite=Strict` Cookie（XSS 不可读）。CORS 白名单（`allow_origins`）已在 v1.1 完成收紧，P1-B 可直接复用同一基础设施。`anon_id` 在 v1.1 已迁移至 Cookie，两者共存互不干扰。
+
+---
+
+## 13. v1.1：HttpOnly Cookie 传输
+
+> **状态：Planned**  
+> v1.0 使用 localStorage + request body 传递 `anon_id`（§2.4 原因）。v1.1 将其迁移至 HttpOnly Cookie，提升安全性并为 P1-B auth 统一基础设施。
+
+### 13.1 目标
+
+| 目标 | 具体效果 |
+| ---- | -------- |
+| XSS 防护 | `HttpOnly` 使 JS 无法通过 `document.cookie` 读取 `anon_id` |
+| 前端零状态管理 | 移除 `anonId` store、localStorage 逻辑、request body 字段 |
+| P1-B 统一基础设施 | `anon_id` 与未来 auth token 使用同一 Cookie 机制 |
+
+### 13.2 In Scope（v1.1）
+
+- CORS `allow_origins` 由 `["*"]` 改为白名单（开发: `["http://localhost:3000"]`）
+- 后端 `POST /chat`：从 Cookie 读取 `anon_id`，响应设置 `Set-Cookie`
+- 后端 `GET /chats`：从 Cookie 读取 `anon_id`，**移除** `?anon_id=<uuid>` query param
+- 新建 FastAPI Dependency `resolve_anon_id_async` 统一 cookie 读取与用户解析
+- 移除 `ChatRequest.anon_id`、`ChatResponse.anon_id` 字段
+- 前端 Axios 添加 `withCredentials: true`
+- 前端完全移除 `anonId` localStorage、store 状态、`setAnonId` action、`useEffect` 水合
+
+### 13.3 Out of Scope
+
+- Cookie rotation（注册/登录后换发新 cookie）— P1-B
+- CSRF Token（`SameSite=Strict` + 同域已足够防护）
+- 多设备 cookie 同步 — P2
+
+---
+
+### 13.4 Cookie 属性规范
+
+| 属性 | 值 | 理由 |
+| ---- | -- | ---- |
+| Name | `propertyai_anon_id` | 项目命名空间前缀，避免与未来 auth cookie 冲突 |
+| HttpOnly | `true` | JS 不可读，阻止 XSS 窃取 |
+| SameSite | `Strict` | 同域部署，最强 CSRF 防护；localhost 开发同属一个 site |
+| Secure | `settings.cookie_secure`（prod=True，dev=False） | dev 无 HTTPS，通过 env var 控制 |
+| Path | `/api/v1` | 限定 Cookie 仅发往后端 API 路由，不污染其他路径 |
+| Max-Age | `31536000`（1 年） | 长期匿名身份；每次成功请求自动续期 |
+
+---
+
+### 13.5 后端变更
+
+#### 13.5.1 `config.py` — 新增配置字段
+
+```python
+class Settings(BaseSettings):
+    # ... 现有字段 ...
+    allow_origins_list: list[str] = ["http://localhost:3000"]
+    cookie_secure: bool = True   # .env 中开发环境设为 False
+```
+
+#### 13.5.2 `main.py` — CORS 白名单
+
+```python
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.allow_origins_list,  # 替换原 ["*"]
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+```
+
+#### 13.5.3 统一 Cookie 依赖：`dependencies/anon_id.py`（新建）
+
+> **设计意图**：所有需要 `anon_id` 的 endpoint 注入同一个 Dependency，避免各 endpoint 重复读 Cookie 字段名和调用 `get_or_create_async`。
+
+```python
+"""FastAPI dependency — resolves anon_id from HttpOnly cookie."""
+
+from typing import Annotated
+from fastapi import Cookie, Depends
+from db.repositories.user import IUserRepository, get_user_repository
+
+
+async def resolve_anon_id_async(
+    propertyai_anon_id: Annotated[str | None, Cookie()] = None,
+    anon_repo: Annotated[IUserRepository, Depends(get_user_repository)] = ...,
+) -> str:
+    """Read anon_id from HttpOnly cookie and resolve to a DB-backed identity.
+
+    On first request (no cookie): creates a new user row and returns the new anon_id.
+    On subsequent requests: refreshes updated_at and returns the existing anon_id.
+    On malformed cookie value: treats as absent, creates fresh identity.
+
+    Returns:
+        A non-None str guaranteed to correspond to an existing users row.
+    """
+    return await anon_repo.get_or_create_async(propertyai_anon_id)
+```
+
+路由注入方式：
+
+```python
+resolved_anon_id: Annotated[str, Depends(resolve_anon_id_async)]
+```
+
+#### 13.5.4 `routers/chat.py` — `POST /chat` 变更
+
+```python
+from fastapi import Response
+from dependencies.anon_id import resolve_anon_id_async
+from config import settings
+
+@router.post("/chat", tags=["chat"])
+async def chat_async(
+    request: ChatRequest,
+    response: Response,                   # 新增：用于 Set-Cookie
+    background_tasks: BackgroundTasks,
+    llm_client: Annotated[ILLMClient, Depends(lambda: _default_llm_client)],
+    chat_repo: Annotated[SqlAlchemyChatRepository, Depends(get_chat_repository)],
+    resolved_anon_id: Annotated[str, Depends(resolve_anon_id_async)],  # 替换 anon_repo 注入
+) -> SuccessResponse[ChatResponse]:
+    # 1. 设置 / 续期 Cookie（每次成功请求都续期 Max-Age）
+    response.set_cookie(
+        key="propertyai_anon_id",
+        value=resolved_anon_id,
+        httponly=True,
+        samesite="strict",
+        secure=settings.cookie_secure,
+        path="/api/v1",
+        max_age=31_536_000,
+    )
+
+    # 2. 原有 anon_repo.get_or_create_async 调用行删除
+    # resolved_anon_id 已由 Dependency 注入
+
+    # ... 其余逻辑不变 ...
+
+    return SuccessResponse[ChatResponse](
+        data=ChatResponse(
+            reply=reply,
+            extracted=extracted,
+            session_id=state.session_id,
+            # anon_id 字段已移除 — cookie 通过 Set-Cookie header 下发
+            state=snapshot,
+            routing=routing,
+        )
+    )
+```
+
+#### 13.5.5 `routers/chat.py` — `GET /chats` 变更
+
+**原 API：** `GET /api/v1/chats?anon_id=<uuid>`（query param）  
+**新 API：** `GET /api/v1/chats`（从 Cookie 读取，URL 不暴露 UUID）
+
+```python
+@router.get("/chats", tags=["chat"])
+async def list_chats_async(
+    chat_repo: Annotated[SqlAlchemyChatRepository, Depends(get_chat_repository)],
+    resolved_anon_id: Annotated[str, Depends(resolve_anon_id_async)],
+) -> SuccessResponse[list[ChatSessionDTO]]:
+    """Return all chat sessions for the current anonymous user.
+
+    anon_id is read from the HttpOnly cookie; no query parameter required.
+    Returns an empty list when no sessions exist — avoids leaking enumeration info.
+    """
+    sessions: list[ChatSessionDTO] = await chat_repo.list_chats_by_anon_async(resolved_anon_id)
+    logger.info("list_chats_response", count=len(sessions))
+    return SuccessResponse[list[ChatSessionDTO]](data=sessions)
+```
+
+> **注意**：`resolve_anon_id_async` 在 Cookie 缺失时会为该请求创建新用户并返回新 `anon_id`。对于 `GET /chats`，这会导致返回空列表而非 400 错误，符合「防枚举」原则（§6.2 验收标准 AU-5 精神）。如果业务上更希望无 Cookie 时返回 400，可使用一个"仅读取不创建"的变体 Dependency（见 §13.6）。
+
+#### 13.5.6 `models/chat.py` — 字段变更
+
+```python
+# 移除：
+class ChatRequest(PropertyAIBaseModel):
+    anon_id: str | None  # ← 删除此字段
+
+# 移除：
+class ChatResponse(PropertyAIBaseModel):
+    anon_id: str         # ← 删除此字段
+```
+
+---
+
+### 13.6 可选：`GET /chats` 严格模式 Dependency
+
+如需在无 Cookie 时返回 400（而非创建新用户），可额外定义一个读取专用 Dependency：
+
+```python
+async def require_anon_id_cookie_async(
+    propertyai_anon_id: Annotated[str | None, Cookie()] = None,
+) -> str:
+    """Require anon_id cookie; raise 400 if absent or malformed."""
+    if propertyai_anon_id is None:
+        raise BadRequestError("propertyai_anon_id cookie is required.")
+    try:
+        uuid.UUID(propertyai_anon_id)
+    except ValueError:
+        raise BadRequestError(f"Invalid anon_id cookie value: '{propertyai_anon_id}'.")
+    return propertyai_anon_id
+```
+
+`GET /chats` 可在 §13.5.5 的 `resolve_anon_id_async` 位置换用此 Dependency，按产品决策选择。
+
+---
+
+### 13.7 前端变更
+
+#### 13.7.1 `lib/request.ts` — withCredentials
+
+```typescript
+const instance = axios.create({
+  baseURL: process.env.NEXT_PUBLIC_API_BASE_URL,
+  withCredentials: true,   // 新增：每个请求自动携带 Cookie
+  timeout: 30_000,
+  // ... 其余配置不变 ...
+})
+```
+
+#### 13.7.2 移除 `anonId` 相关代码
+
+| 文件 | 变更 |
+| ---- | ---- |
+| `constants/storageKeys.ts` | 删除 `ANON_ID: 'propertyai.anonId'` |
+| `stores/conversationStore.ts` | 删除 `anonId: string \| null` 状态字段、`setAnonId(anonId: string): void` action 及 `localStorage.setItem` 调用 |
+| `services/chat.ts` | `postChat` 签名移除 `anonId: string \| null` 参数；body 不再发送 `anonId` |
+| `hooks/useChat.ts` | 删除 `anonId` 水合 `useEffect`；删除 `store.anonId ?? localStorage.getItem(...)` 读取；删除 `store.setAnonId(response.data.anonId)` |
+| `types/api.d.ts` | `ChatResponse` 接口删除 `anonId: string` 字段 |
+
+#### 13.7.3 `services/chat.ts` 变更示例
+
+```typescript
+// Before
+export function postChat(
+  message: string,
+  sessionId: string | null,
+  anonId: string | null,
+): Promise<APIResponse<ChatResponse>> {
+  return request.post<ChatResponse>(ENDPOINTS.CHAT, { message, sessionId, anonId })
+}
+
+// After
+export function postChat(
+  message: string,
+  sessionId: string | null,
+): Promise<APIResponse<ChatResponse>> {
+  return request.post<ChatResponse>(ENDPOINTS.CHAT, { message, sessionId })
+}
+```
+
+#### 13.7.4 `hooks/useChat.ts` 变更要点
+
+```typescript
+// 删除：anonId 水合 useEffect
+// 删除：const anonId = store.anonId ?? localStorage.getItem(STORAGE_KEY.ANON_ID)
+// 删除：store.setAnonId(response.data.anonId)
+
+// Before
+const response = await postChat(content, sessionId, anonId)
+// After
+const response = await postChat(content, sessionId)
+```
+
+---
+
+### 13.8 项目结构新增文件
+
+```
+backend/
+└── routers/
+    └── deps.py    ← 新建：resolve_anon_id_async / require_anon_id_cookie_async
+```
+
+---
+
+### 13.9 测试策略变更
+
+#### 13.9.1 后端
+
+| 测试文件 | 变更 |
+| -------- | ---- |
+| `conftest.py` | `mock_anon_repo` 不变；`client_async` 改用 `AsyncClient(cookies={"propertyai_anon_id": "..."})` 传 cookie |
+| `test_chat_endpoint.py` | 断言 response 含 `Set-Cookie: propertyai_anon_id=...` header；不再断言 `body.anonId`；新增无 Cookie 场景（首次创建） |
+| `test_anon_id_dependency.py`（新建） | `resolve_anon_id_async` 单元测试：cookie 存在命中、不存在创建、非法 UUID 处理 |
+| `test_chat_repository.py` | 不变 |
+
+#### 13.9.2 前端
+
+| 测试文件 | 变更 |
+| -------- | ---- |
+| `__tests__/msw/handlers.ts` | mock response 移除 `anonId` 字段 |
+| `__tests__/hooks/useChat.test.ts` | 删除 localStorage `anonId` 相关断言；`postChat` mock 移除第三个参数 |
+| `__tests__/stores/conversationStore.test.ts` | 删除 `setAnonId` / `anonId` 相关测试 case |
+
+---
+
+### 13.10 验收标准
+
+| ID | 标准 |
+| -- | ---- |
+| CK-1 | 首次 `POST /chat`（无 Cookie）：response header 含 `Set-Cookie: propertyai_anon_id=<uuid>; HttpOnly; SameSite=Strict; Path=/api/v1` |
+| CK-2 | 第二次 `POST /chat`（浏览器自动携带 Cookie）：`users.updated_at` 刷新，Set-Cookie 续期 Max-Age |
+| CK-3 | `GET /api/v1/chats`（Cookie 自动携带，无 query param）：返回该用户历史对话列表 |
+| CK-4 | `GET /api/v1/chats`（无 Cookie，使用严格模式 Dependency）：返回 HTTP 400 `BadRequestError` |
+| CK-5 | XSS 验证：DevTools Console 中 `document.cookie` 不含 `propertyai_anon_id`（HttpOnly 生效） |
+| CK-6 | `ChatRequest` body 不含 `anon_id` 字段；`ChatResponse` body 不含 `anon_id` 字段 |
+| CK-7 | 前端 `localStorage` 不写入 / 读取 `propertyai.anonId` |
+| CK-8 | Axios 每次请求自动携带 Cookie（DevTools Network 可见 `Cookie: propertyai_anon_id=...`） |
+| CK-9 | `mypy --strict .` 通过，含新建 `dependencies/anon_id.py` |
+| CK-10 | `pytest` 全部通过，覆盖率 ≥ 80%，含 `test_anon_id_dependency.py` |
+| CK-11 | `pnpm test:run` 全部通过 |
