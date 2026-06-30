@@ -84,6 +84,6 @@ class SqlAlchemyUserRepository:
         return str(new_anon_id)
 
 
-def get_user_repository() -> SqlAlchemyUserRepository:
+def get_user_repository() -> IUserRepository:
     """FastAPI dependency — returns a SqlAlchemyUserRepository."""
     return SqlAlchemyUserRepository(get_session_factory())

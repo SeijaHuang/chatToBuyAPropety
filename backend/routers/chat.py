@@ -11,7 +11,8 @@ from pydantic import ValidationError
 from config import settings
 from conversation.intent_router import classify_intent
 from conversation.state_machine import merge_extracted_fields
-from db.repositories.chat import SqlAlchemyChatRepository, get_chat_repository
+from db.repositories.chat import IChatRepository, get_chat_repository
+from db.repositories.user import IUserRepository, get_user_repository
 from domain.borrowing_capacity import estimate_borrowing_capacity_async
 from domain.budget_gap_detector import detect_budget_gap_async
 from domain.llm_client import ILLMClient, OpenRouterClient
@@ -57,8 +58,8 @@ async def chat_async(
     response: Response,
     background_tasks: BackgroundTasks,
     llm_client: Annotated[ILLMClient, Depends(lambda: _default_llm_client)],
-    chat_repo: Annotated[SqlAlchemyChatRepository, Depends(get_chat_repository)],
-    resolved_anon_id: Annotated[str, Depends(resolve_anon_id_async)],
+    chat_repo: Annotated[IChatRepository, Depends(get_chat_repository)],
+    anon_repo: Annotated[IUserRepository, Depends(get_user_repository)],
 ) -> SuccessResponse[ChatResponse]:
     """Handle a single conversation turn and return the assistant reply.
 
@@ -232,7 +233,7 @@ async def get_session_async(
 @router.get("/chats", tags=["chat"])
 async def list_chats_async(
     resolved_anon_id: Annotated[str, Depends(require_anon_id_cookie_async)],
-    chat_repo: Annotated[SqlAlchemyChatRepository, Depends(get_chat_repository)],
+    chat_repo: Annotated[IChatRepository, Depends(get_chat_repository)],
 ) -> SuccessResponse[list[ChatSessionDTO]]:
     """Return all chat sessions for an anonymous user, ordered newest first.
 
