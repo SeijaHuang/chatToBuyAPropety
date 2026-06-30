@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from config import settings
 from db.connection import close_engine_async, create_engine_async, get_session_factory
 from error_handlers import register_exception_handlers
 from redis_store.client import redis_client
@@ -38,7 +39,7 @@ register_exception_handlers(app)
 # Development only — restrict origins before deploying to production
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=settings.allow_origins_list,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

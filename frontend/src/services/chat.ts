@@ -5,9 +5,8 @@ import type { APIResponse, ChatResponse, ConversationStateDTO } from '@/types'
 export function postChat(
   message: string,
   sessionId: string | null,
-  anonId: string | null,
 ): Promise<APIResponse<ChatResponse>> {
-  return request.post<ChatResponse>(ENDPOINTS.CHAT, { message, sessionId, anonId })
+  return request.post<ChatResponse>(ENDPOINTS.CHAT, { message, sessionId })
 }
 
 export function getSession(sessionId: string): Promise<APIResponse<ConversationStateDTO>> {

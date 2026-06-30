@@ -32,7 +32,6 @@ export interface ChatResponse {
   reply: string
   extracted: Record<string, unknown>
   sessionId: string
-  anonId: string
   state: ConversationSnapshotDTO
   routing: RoutingPayload | null
 }

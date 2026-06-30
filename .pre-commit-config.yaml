@@ -24,6 +24,14 @@ repos:
         pass_filenames: false
         always_run: true
 
+      - id: protocol-compliance
+        name: backend protocol compliance
+        entry: uv run --directory backend python scripts/check_protocols.py
+        language: system
+        types: [python]
+        files: ^backend/
+        pass_filenames: false
+
       - id: frontend-typecheck
         name: frontend type-check
         entry: pnpm --dir frontend type-check

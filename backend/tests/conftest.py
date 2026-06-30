@@ -17,10 +17,10 @@ from sqlalchemy.ext.asyncio import (
 from config import settings
 from db.models import Base
 from db.repositories.chat import SqlAlchemyChatRepository, get_chat_repository
-from db.repositories.user import SqlAlchemyUserRepository, get_user_repository
 from main import app
 from models.conversation_state import ConversationStateDTO
 from redis_store.client import redis_client
+from routers.deps import require_anon_id_cookie_async, resolve_anon_id_async
 
 # Fixed anon_id returned by the mock anon_repo in endpoint tests
 TEST_ANON_ID: str = "aaaabbbb-cccc-4000-aaaa-bbbbbbbbbbbb"
@@ -30,16 +30,16 @@ TEST_ANON_ID: str = "aaaabbbb-cccc-4000-aaaa-bbbbbbbbbbbb"
 async def client_async() -> AsyncGenerator[AsyncClient, None]:
     """Async HTTP client wired to the FastAPI app under test.
 
-    Redis, DB lifecycle, the chat repository, and the anonymous user repository
+    Redis, DB lifecycle, the chat repository, and the anonymous user identity
     dependencies are mocked so the test suite does not require live infrastructure.
     Individual tests that exercise those layers apply their own mocks via patch.
     """
     mock_repo: AsyncMock = AsyncMock(spec=SqlAlchemyChatRepository)
-    mock_anon_repo: AsyncMock = AsyncMock(spec=SqlAlchemyUserRepository)
-    mock_anon_repo.get_or_create_async.return_value = TEST_ANON_ID
+    mock_repo.list_chats_by_anon_async.return_value = []
 
     app.dependency_overrides[get_chat_repository] = lambda: mock_repo
-    app.dependency_overrides[get_user_repository] = lambda: mock_anon_repo
+    app.dependency_overrides[resolve_anon_id_async] = lambda: TEST_ANON_ID
+    app.dependency_overrides[require_anon_id_cookie_async] = lambda: TEST_ANON_ID
     try:
         with (
             patch.object(redis_client, "connect_async", AsyncMock()),
@@ -51,7 +51,8 @@ async def client_async() -> AsyncGenerator[AsyncClient, None]:
                 yield ac
     finally:
         app.dependency_overrides.pop(get_chat_repository, None)
-        app.dependency_overrides.pop(get_user_repository, None)
+        app.dependency_overrides.pop(resolve_anon_id_async, None)
+        app.dependency_overrides.pop(require_anon_id_cookie_async, None)
 
 
 @pytest.fixture

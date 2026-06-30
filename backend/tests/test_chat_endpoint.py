@@ -11,8 +11,8 @@ from httpx import AsyncClient
 import routers.chat as chat_module
 from exceptions import LLMServiceError, RateLimitError
 from models.conversation_state import ConversationStateDTO
+from models.financial import BorrowingCapacityResult
 from redis_store import session_store as session_store_module
-from tests.conftest import TEST_ANON_ID
 
 _SESSION_ID: str = "test-session-001"
 
@@ -81,17 +81,17 @@ async def test_valid_request_returns_200(client_async: AsyncClient) -> None:
 
 
 async def test_response_conforms_to_chat_response_schema(client_async: AsyncClient) -> None:
-    """Response body contains reply, extracted, sessionId, anonId, and state; no updatedState."""
+    """Response body contains reply, extracted, sessionId, and state; anonId moved to cookie."""
     with _mock_session(), _mock_llm(reply="Hello!"):
         response = await client_async.post("/api/v1/chat", json=_build_body("Hi"))
     data: dict[str, object] = response.json()["data"]
     assert "reply" in data
     assert "extracted" in data
     assert "sessionId" in data
-    assert "anonId" in data
-    assert data["anonId"] == TEST_ANON_ID
+    assert "anonId" not in data
     assert "state" in data
     assert "updatedState" not in data
+    assert "propertyai_anon_id" in response.cookies
 
 
 async def test_no_tool_call_returns_empty_extracted(client_async: AsyncClient) -> None:
@@ -297,3 +297,52 @@ async def test_tool_call_parse_failure_returns_empty_extracted(client_async: Asy
         response = await client_async.post("/api/v1/chat", json=_build_body("Hi"))
     assert response.status_code == 200
     assert response.json()["data"]["extracted"] == {}
+
+
+# ---------------------------------------------------------------------------
+# Borrowing capacity and suburb fallback
+# ---------------------------------------------------------------------------
+
+
+async def test_borrowing_capacity_computed_when_salary_extracted(client_async: AsyncClient) -> None:
+    """When pre_tax_salary is extracted, estimate_borrowing_capacity_async is called."""
+    extracted: dict[str, object] = {"pre_tax_salary": 100_000}
+    mock_result: BorrowingCapacityResult = BorrowingCapacityResult(
+        estimated_capacity=560_000,
+        monthly_repayment=2_333,
+        based_on_salary=100_000,
+        is_joint=False,
+        annual_rate=6.30,
+        loan_term_years=30,
+        rate_source="standard variable rate",
+        disclaimer="This is an estimate only.",
+    )
+    with (
+        _mock_session(),
+        _mock_llm(extracted=extracted, reply="Got your salary!"),
+        patch(
+            "routers.chat.estimate_borrowing_capacity_async", AsyncMock(return_value=mock_result)
+        ),
+    ):
+        response = await client_async.post("/api/v1/chat", json=_build_body("I earn 100k"))
+    assert response.status_code == 200
+
+
+async def test_commute_destination_used_as_fallback_suburb(client_async: AsyncClient) -> None:
+    """When preferred_suburbs is empty but commute_destination is set, it fills gap_suburbs."""
+    extracted: dict[str, object] = {"commute_destination": "CBD"}
+    with _mock_session(), _mock_llm(extracted=extracted, reply="Got your commute."):
+        response = await client_async.post("/api/v1/chat", json=_build_body("I commute to CBD"))
+    assert response.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# GET /chats
+# ---------------------------------------------------------------------------
+
+
+async def test_list_chats_returns_empty_list_for_valid_anon_id(client_async: AsyncClient) -> None:
+    """GET /chats returns an empty list when the anon user has no persisted sessions."""
+    response = await client_async.get("/api/v1/chats")
+    assert response.status_code == 200
+    assert response.json()["data"] == []
