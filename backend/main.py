@@ -47,7 +47,7 @@ app.add_middleware(
 app.include_router(chat_router, prefix="/api/v1")
 
 
-@app.get("/health")
+@app.get("/health", tags=["health"])
 async def health_check_async() -> dict[str, object]:
     """Return service liveness status including Redis and PostgreSQL connectivity."""
     redis_ok: bool = await redis_client.ping_async()

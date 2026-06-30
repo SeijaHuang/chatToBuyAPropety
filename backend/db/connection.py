@@ -2,6 +2,8 @@
 
 from collections.abc import AsyncIterator
 
+import structlog
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -10,6 +12,8 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from config import settings
+
+logger = structlog.get_logger()
 
 _engine: AsyncEngine | None = None
 _session_factory: async_sessionmaker[AsyncSession] | None = None
@@ -34,6 +38,9 @@ async def create_engine_async() -> None:
         expire_on_commit=False,
         class_=AsyncSession,
     )
+    async with _session_factory() as session:
+        await session.execute(text("SELECT 1"))
+    logger.info("postgres_connected", url=settings.database_url)
 
 
 async def close_engine_async() -> None:

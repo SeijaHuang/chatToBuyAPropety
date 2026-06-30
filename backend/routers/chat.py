@@ -51,7 +51,7 @@ logger = structlog.get_logger()
 _default_llm_client: ILLMClient = OpenRouterClient()
 
 
-@router.post("/chat")
+@router.post("/chat", tags=["chat"])
 async def chat_async(
     request: ChatRequest,
     background_tasks: BackgroundTasks,
@@ -199,7 +199,7 @@ async def chat_async(
     )
 
 
-@router.get("/chat/{session_id}")
+@router.get("/chat/{session_id}", tags=["chat"])
 async def get_session_async(
     session_id: str,
 ) -> SuccessResponse[ConversationStateDTO]:
@@ -220,7 +220,7 @@ async def get_session_async(
     return SuccessResponse[ConversationStateDTO](data=state)
 
 
-@router.get("/chats")
+@router.get("/chats", tags=["chat"])
 async def list_chats_async(
     anon_id: Annotated[str, Query(description="Anonymous user UUID from localStorage")],
     chat_repo: Annotated[SqlAlchemyChatRepository, Depends(get_chat_repository)],
@@ -251,7 +251,7 @@ async def list_chats_async(
     return SuccessResponse[list[ChatSessionDTO]](data=sessions)
 
 
-@router.post("/chat/summary")
+@router.post("/chat/summary", tags=["chat"])
 async def chat_summary_async(
     request: SummaryRequest,
     llm_client: Annotated[ILLMClient, Depends(lambda: _default_llm_client)],
