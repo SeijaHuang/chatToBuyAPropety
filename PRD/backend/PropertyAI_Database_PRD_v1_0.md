@@ -43,7 +43,8 @@
 - `AsyncEngine` + `async_sessionmaker` 连接池生命周期管理
 - `IChatRepository` Protocol + `SqlAlchemyChatRepository` 实现
 - Alembic 迁移（`env.py` 同步 psycopg2 模式 + `993128e7e195_create_chats` migration）
-- 每模块完成时通过 FastAPI `BackgroundTasks` 触发渐进式 upsert
+- 第一条消息发送时触发初始 upsert（确保 chat history 可见，即使尚未完成任何模块）
+- 每模块完成时通过 FastAPI `BackgroundTasks` 继续渐进式 upsert
 - `/health` 端点新增 `postgres` 健康检查
 
 ### 1.3 Out of Scope
@@ -574,16 +575,22 @@ __all__ = ["IChatRepository", "SqlAlchemyChatRepository", "get_chat_repository"]
 
 ## 8. Write Rules — Progressive Snapshot
 
-每模块完成时触发一次 upsert，通过 FastAPI `BackgroundTasks` 异步执行，不阻塞 `/chat` 响应。
+有两类触发时机，均通过 FastAPI `BackgroundTasks` 异步执行，不阻塞 `/chat` 响应：
+
+1. **新 session 第一条消息发送时** — 写入 minimal row，确保 `GET /chats` 能立即返回该会话（chat history 可见性保证）
+2. **每模块完成时** — 渐进式 upsert，累积 collected_data
 
 ### 8.1 触发时机与写入内容
 
-| 触发时机 | 写入字段                                                         | `initial_intent`      | `final_needs` | `completed_at` |
-| -------- | ---------------------------------------------------------------- | --------------------- | ------------- | -------------- |
-| M1 完成  | `collected_data`（含 m1 快照）                                    | 写入                  | NULL          | NULL           |
-| M2 完成  | `collected_data`（含 m1+m2 快照）                                | 已有，COALESCE 保留   | NULL          | NULL           |
-| M3 完成  | `collected_data`（含 m1+m2+m3 快照）                             | 已有，COALESCE 保留   | NULL          | NULL           |
-| M4 完成  | `collected_data`（完整）+ `final_needs` + `borrowing_capacity`   | 已有，COALESCE 保留   | 写入          | 写入当前时间   |
+| 触发时机              | 写入字段                                                          | `initial_intent`      | `final_needs` | `completed_at` |
+| --------------------- | ----------------------------------------------------------------- | --------------------- | ------------- | -------------- |
+| **第一条消息（新 session）** | `session_id`、`anon_id`、`status=IN_PROGRESS`               | NULL                  | NULL          | NULL           |
+| M1 完成               | `collected_data`（含 m1 快照）                                    | 写入                  | NULL          | NULL           |
+| M2 完成               | `collected_data`（含 m1+m2 快照）                                 | 已有，COALESCE 保留   | NULL          | NULL           |
+| M3 完成               | `collected_data`（含 m1+m2+m3 快照）                              | 已有，COALESCE 保留   | NULL          | NULL           |
+| M4 完成               | `collected_data`（完整）+ `final_needs` + `borrowing_capacity`    | 已有，COALESCE 保留   | 写入          | 写入当前时间   |
+
+> **为什么在第一条消息时写入：** Redis 有 7 天 TTL，超期且从未完成任何模块的 session 会彻底丢失；DB 则是持久存储。第一条消息触发 minimal upsert 后，`GET /chats` 的查询（`WHERE anon_id = ?`）可以立即看到该会话，无需先查 Redis 再合并。
 
 ### 8.2 `initial_intent` 的来源
 
@@ -598,6 +605,8 @@ async def chat_async(
     chat_repo: SqlAlchemyChatRepository = Depends(get_chat_repository),
 ) -> ChatResponse:
     ...
+    is_new_session: bool = state_was_just_created  # True when Redis had no prior state
+
     prev_completion = state.completion_status.model_copy()
     updated_state = merge_extracted_fields(state, extracted)
 
@@ -606,14 +615,14 @@ async def chat_async(
         and not getattr(prev_completion, m)
         for m in ("M1", "M2", "M3", "M4")
     )
-    if newly_completed:
+    if is_new_session or newly_completed:
         background_tasks.add_task(
-            chat_repo.upsert_chat_snapshot_async, updated_state
+            chat_repo.upsert_chat_snapshot_async, updated_state, resolved_anon_id
         )
     ...
 ```
 
-> `BackgroundTasks` 由 FastAPI 生命周期托管，进程退出前确保任务完成，比 `asyncio.create_task` 更安全。
+> `BackgroundTasks` 由 FastAPI 生命周期托管，进程退出前确保任务完成，比 `asyncio.create_task` 更安全。新 session 和模块完成都走同一个 `upsert_chat_snapshot_async`，幂等性由 `ON CONFLICT DO UPDATE` 保证，无需分两条路径。
 
 ---
 
@@ -856,13 +865,13 @@ test_db_error_is_logged_and_suppressed_not_raised
 | ID    | Criterion                                                                                                          |
 | ----- | ------------------------------------------------------------------------------------------------------------------ |
 | DB-1  | `alembic upgrade head` 幂等执行，`chats` 表（主键 `session_id`）及 4 个索引存在                                     |
-| DB-2  | M1 完成后，`chats` 中存在对应行，`collected_data` 含 m1 字段，`initial_intent` 非 NULL                               |
-| DB-3  | M2 完成后 upsert，`collected_data` 包含 m1+m2 数据，行数仍为 1                                                      |
-| DB-4  | M4 完成后，`final_needs` 非 NULL，`status = REQUIREMENTS_COMPLETE`，`completed_at` 非 NULL                         |
-| DB-5  | 同一 `session_id` 多次 upsert 幂等：`initial_intent` 和 `completed_at` 不被后续 NULL 覆盖                            |
-| DB-6  | `conversation_history` 和 `budget_gap` 不出现在 `chats` 表任何列中                                                  |
-| DB-7  | 数据库不可用时，`BackgroundTasks` 内部异常被 `logger.exception` 记录后静默吞噬，`/chat` 主请求正常返回 `ChatResponse` |
-| DB-8  | `chk_chats_single_owner` 约束阻止 `user_id` 和 `anon_id` 同时非 NULL                                               |
+| DB-2  | 第一条消息发送后（无论是否完成任何模块），`chats` 中存在对应行，`status = IN_PROGRESS`，`collected_data = {}`         |
+| DB-3  | M1 完成后 upsert，`collected_data` 含 m1 字段，`initial_intent` 非 NULL，行数仍为 1                                  |
+| DB-4  | M2 完成后 upsert，`collected_data` 包含 m1+m2 数据，行数仍为 1                                                      |
+| DB-5  | M4 完成后，`final_needs` 非 NULL，`status = REQUIREMENTS_COMPLETE`，`completed_at` 非 NULL                         |
+| DB-6  | 同一 `session_id` 多次 upsert 幂等：`initial_intent` 和 `completed_at` 不被后续 NULL 覆盖                            |
+| DB-7  | `conversation_history` 和 `budget_gap` 不出现在 `chats` 表任何列中                                                  |
+| DB-8  | 数据库不可用时，`BackgroundTasks` 内部异常被 `logger.exception` 记录后静默吞噬，`/chat` 主请求正常返回 `ChatResponse` |
 | DB-9  | `GET /health` 新增 `postgres` 检查项，数据库不可达时返回 `"degraded"`（不阻止服务启动）                               |
 | DB-10 | mypy --strict 对 `db/` 全包通过，无类型错误                                                                         |
 
