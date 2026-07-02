@@ -60,8 +60,8 @@ pnpm type-check   # tsc --noEmit
 
 | File                                                                           | Contents                                                                                          |
 | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------- |
-| [docs/part1-p0-implementation.md](docs/part1-p0-implementation.md)             | Part 1 P0 story completion, E2E criteria, architectural decisions, test coverage                  |
-| [docs/frontend-implementation.md](docs/frontend-implementation.md)             | Full frontend source map, data flow, state persistence, component hierarchy, coverage targets     |
+| [docs/backend-implementation.md](docs/backend-implementation.md)               | **Backend feature index** — full source map, request/data flow, session & identity persistence model, exception hierarchy, coverage targets, PRD deviations. Read this before adding or changing any backend feature |
+| [docs/frontend-implementation.md](docs/frontend-implementation.md)             | **Frontend feature index** — full source map, data flow, state persistence, component hierarchy, coverage targets. Read this before adding or changing any frontend feature |
 | [PRD/PropertyAI_PRD_v1_1.md](PRD/PropertyAI_PRD_v1_1.md)                      | Authoritative PRD v1.1 — P0 stories S-A→S-H, P1 stories §20–26, data models, error handling spec |
 
 ---
@@ -74,7 +74,7 @@ pnpm type-check   # tsc --noEmit
 | API framework      | FastAPI                                       |
 | Data validation    | Pydantic v2                                   |
 | LLM gateway        | OpenRouter API                                |
-| Session store      | Redis (P1 — not active in P0)                 |
+| Session store      | Redis — full conversation state, sliding 7-day TTL (active) |
 | Database           | PostgreSQL (JSONB for semi-structured fields) |
 | Dependency manager | uv + `pyproject.toml`                         |
 | Formatter + Linter | Ruff (line-length 100)                        |
@@ -127,197 +127,9 @@ docker-compose up -d redis postgres
 
 Every source file and its single responsibility. Read this before adding code to an existing file or deciding where new code belongs.
 
-```
-frontend/
-├── src/
-│   ├── app/
-│   │   ├── layout.tsx             Root layout — loads Plus Jakarta Sans via next/font, injects
-│   │   │                          --font-plus-jakarta-sans CSS variable into <html>
-│   │   └── (main)/
-│   │       ├── layout.tsx         Route-group layout — wraps all (main) pages in <LayoutShell>
-│   │       ├── page.tsx           Landing/home page — hero ChatInput; first send generates uuid
-│   │       │                      sessionId and navigates to /chat/:id?q=…
-│   │       └── chat/
-│   │           └── [sessionId]/
-│   │               └── page.tsx   Chat session page — renders <ChatSession sessionId initialMessage>
-│   │
-│   ├── styles/
-│   │   └── globals.css            Tailwind CSS v4 design system — @theme tokens (colors,
-│   │                              typography, spacing, radius, shadows, blur), :root glass/glow
-│   │                              vars, @layer base (body, type scale, scrollbar, Material Symbols),
-│   │                              @layer utilities (glass-panel, glass-ai)
-│   │
-│   ├── constants/                 App-wide as-const value objects; never use magic strings elsewhere
-│   │   ├── index.ts               Barrel — re-exports all constants
-│   │   ├── conversation.ts        MESSAGE_ROLE, MODULE_ID, SESSION_STATUS, SUBMODEL_KEY
-│   │   ├── routing.ts             USER_INTENT, EXECUTION_MODE, TRIGGER_SOURCE
-│   │   ├── ui.ts                  COMPONENT_SIZE, COMPONENT_VARIANT, COMPONENT_COLOR
-│   │   ├── storageKeys.ts         STORAGE_KEY — sessionStorage key prefixes
-│   │   │                          (CONVERSATION_STATE_PREFIX, ROUTING_PAYLOAD_PREFIX)
-│   │   ├── endpoints.ts           ENDPOINTS — API path constants (CHAT, CHAT_SUMMARY, HEALTH)
-│   │   └── errorCodes.ts          ERROR_CODE / ERROR_MESSAGE — normalised error identifiers
-│   │
-│   ├── lib/
-│   │   ├── request.ts             Axios instance (baseURL, timeout, headers) + request interceptor
-│   │   │                          + normalizeError helper + exported request.post / request.get;
-│   │   │                          do not import this directly from components or hooks
-│   │   ├── utils.ts               cn() (clsx + tailwind-merge), createInitialState(),
-│   │   │                          formatAUD() and other pure utility functions
-│   │   └── tv.ts                  Custom tv() via createTV() — extends twMerge config to classify
-│   │                              @theme text-size tokens (text-label-lg, text-body-md…) as
-│   │                              font-size so they don't conflict with text-primary color class
-│   │
-│   ├── services/                  Domain-level API calls — one file per backend resource
-│   │   ├── index.ts               Barrel — re-exports public surface of all service files
-│   │   ├── chat.ts                postChat(message, sessionId) → POST api/v1/chat
-│   │   └── summary.ts             postChatSummary(collectedData, sessionId, intent?)
-│   │                              → POST api/v1/chat/summary
-│   │
-│   ├── stores/                    Zustand stores — one file per domain concern
-│   │   ├── index.ts               Barrel — re-exports useConversationStore, useUIStore
-│   │   ├── conversationStore.ts   useConversationStore — sessionId, state (ConversationStateDTO),
-│   │   │                          messages (UIMessage[]), routing, isLoading; actions: initSession,
-│   │   │                          setUpdatedState (full replacement + sessionStorage sync + card
-│   │   │                          injection), addUserMessage, addAssistantMessage,
-│   │   │                          setAssistantLoading, setLoading, setRouting,
-│   │   │                          restoreFromStorage, clearSession
-│   │   └── uiStore.ts             useUIStore — sidebarCollapsed, activeModal;
-│   │                              actions: toggleSidebar, setSidebarCollapsed, openModal, closeModal
-│   │
-│   ├── hooks/                     React hooks — one responsibility each
-│   │   ├── index.ts               Barrel — re-exports useChat, useSession
-│   │   ├── useChat.ts             sendMessage, isLoading, errorMessage, clearError;
-│   │   │                          orchestrates store mutations and postChat call;
-│   │   │                          maps API error codes to user-facing messages
-│   │   └── useSession.ts          useSession(sessionId) → { isRestored };
-│   │                              on mount: attempts restoreFromStorage, falls back to initSession
-│   │
-│   ├── components/                UI and feature components
-│   │   ├── index.ts               Barrel — re-exports domain components
-│   │   ├── shared/                Generic UI atoms — no store reads, no hooks, no side effects
-│   │   │   ├── index.ts           Barrel — Button, Chip, AIBadge, Skeleton*, MaterialSymbol, TypingIndicator
-│   │   │   ├── Button.tsx         Multi-variant button (primary/secondary/ghost/danger) with
-│   │   │   │                      optional icon and loading spinner
-│   │   │   ├── Chip.tsx           Label chip with optional icon and remove button
-│   │   │   ├── AIBadge.tsx        Glass badge with AI icon; sizes sm | md
-│   │   │   ├── Skeleton.tsx       SkeletonText and SkeletonMessage loading placeholders
-│   │   │   ├── MaterialSymbol.tsx Thin wrapper for Material Symbols icon font
-│   │   │   └── TypingIndicator.tsx Three-dot animated typing indicator
-│   │   ├── layout/                App chrome — container components that read from UIStore
-│   │   │   ├── index.ts           Barrel
-│   │   │   ├── LayoutShell.tsx    Root layout container — composes SideNavBar + TopNavBar +
-│   │   │   │                      main slot + BottomNavBar; applies sidebar offset transition
-│   │   │   ├── TopNavBar.tsx      Top application bar — branding and top-level actions
-│   │   │   ├── SideNavBar.tsx     Collapsible side navigation; receives collapsed +
-│   │   │   │                      onToggleCollapse + activePath as props
-│   │   │   └── BottomNavBar.tsx   Mobile bottom navigation bar — shown below md breakpoint
-│   │   ├── ChatSession/           Top-level chat container — owns useSession + useChat;
-│   │   │                          renders message list, fixed ChatInput footer, error alert,
-│   │   │                          and post-completion CTA; auto-scrolls; fires initialMessage
-│   │   ├── ChatInput/             Textarea + send button; fires onSend(trimmedMessage)
-│   │   ├── ChatMessage/           Renders user / assistant message bubble; embeds result cards
-│   │   ├── ModuleProgress/        Sticky step-progress bar (M1→M4); ModuleStep is internal
-│   │   ├── BorrowingCapacityCard/ Displays BorrowingCapacityResult; disclaimer always rendered
-│   │   └── BudgetGapCard/         Displays BudgetGapResult; returns null when has_gap is false
-│   │
-│   ├── stories/                   Ladle stories — mirrors component structure
-│   │   ├── shared/                Stories for src/components/shared/* (one file per component)
-│   │   ├── BorrowingCapacityCard.stories.tsx
-│   │   ├── BudgetGapCard.stories.tsx
-│   │   ├── ChatInput.stories.tsx
-│   │   ├── ChatMessage.stories.tsx
-│   │   └── ModuleProgress.stories.tsx
-│   │
-│   └── types/                     All type files end with .d.ts — mirrors backend models/ layout
-│       ├── index.d.ts             Barrel — re-exports public surface of all type files
-│       ├── conversation.d.ts      Domain enums (MODULE_ID, SESSION_STATUS, SUBMODEL_KEY, MESSAGE_ROLE),
-│       │                          M1–M4 sub-model interfaces, CollectedData, ConversationStateDTO, UIMessage
-│       ├── financial.d.ts         BorrowingCapacityResult, BudgetGapResult
-│       │                          (mirrors backend models/financial.py — fields in snake_case because
-│       │                          backend uses @dataclass, not PropertyAIBaseModel)
-│       ├── user_needs.d.ts        UserNeeds interface (mirrors backend models/user_needs.py)
-│       ├── routing.d.ts           USER_INTENT, EXECUTION_MODE, TRIGGER_SOURCE as const objects,
-│       │                          derived union types, RoutingPayload interface
-│       ├── ui.d.ts                ComponentSize, ComponentVariant, ComponentColor
-│       │                          (derived from constants/ui.ts via typeof)
-│       ├── api.d.ts               HTTP contract: APIResponse<TData>, ChatResponse, SummaryResponse,
-│       │                          ErrorDetail, ErrorResponse, SuccessResponse
-│       ├── global.d.ts            Ambient global type declarations
-│       └── index.d.ts             Barrel — re-exports public surface of all type files
-```
+**Frontend** — the full `frontend/src/` tree, one-line file responsibilities, data flow, and state persistence live exclusively in [docs/frontend-implementation.md](docs/frontend-implementation.md). Read it before adding code to an existing frontend file or deciding where new frontend code belongs; do not re-duplicate the tree here.
 
-```
-backend/
-├── main.py                        FastAPI app factory — CORS middleware, router mount, /health
-├── config.py                      pydantic-settings Settings class — single source of env vars
-├── exceptions.py                  Typed exception hierarchy (PropertyAIException, LLMServiceError, …)
-├── error_handlers.py              structlog configuration + FastAPI exception handler registration
-│                                  (PropertyAIException → error envelope, RequestValidationError → 422)
-├── scripts.py                     [project.scripts] entry points — test, lint, format_code,
-│                                  typecheck, dev (thin wrappers around pytest/ruff/mypy/uvicorn)
-├── pyproject.toml                 Canonical dependency + tool config (ruff, mypy, pytest)
-├── requirements.txt               pip mirror of pyproject.toml — keep in sync manually
-│
-├── models/
-│   ├── base.py                    PropertyAIBaseModel — shared Pydantic base with camelCase
-│   │                              alias_generator; all public DTOs inherit from this class
-│   ├── conversation_state.py      Enums (EModule, EStatus, ESubmodel, ESubmodelLabel),
-│   │                              M1–M4 sub-models, CollectedData, CompletionStatus,
-│   │                              ConversationStateDTO — the core conversation domain
-│   ├── chat.py                    Chat API contract: ChatRequest, ChatResponse, RoutingPayload
-│   │                              (v1.1: RoutingPayload now embeds UserNeeds, execution_mode,
-│   │                              agents_hint, trigger_source, triggered_at)
-│   ├── summary.py                 Summary API contract: SummaryRequest, SummaryResponse
-│   ├── financial.py               Internal frozen dataclasses: BorrowingCapacityResult,
-│   │                              BudgetGapResult, and suggested-action string constants
-│   └── user_needs.py              Part 1 → Part 2 output contract: UserNeeds
-│                                  (session_id, generated_at, schema_version, collected, initial_intent)
-│
-├── conversation/
-│   ├── state_machine.py           Module progression — merges extracted fields, advances module,
-│                                  recalculates completion, owns null-safety invariant
-│   └── intent_router.py           Classifies each user message into a routing intent
-│                                  (recommend_suburbs / list_properties / property_detail / open_ended_query)
-│
-├── prompts/
-│   ├── system_prompt_builder.py   SOLE public interface — four build_* functions that assemble
-│   │                              prompt strings; no prompt literals outside this package
-│   └── sections/                  Internal sub-package (do not import outside prompts/)
-│       ├── role.py                ROLE_DEFINITION — static assistant role block
-│       ├── guardrails.py          GUARDRAIL_RULES — six compliance guardrail rules
-│       ├── context.py             OWNER_OCCUPIER_CONTEXT, INVESTMENT_CONTEXT — M1 intent blocks
-│       ├── instructions.py        EXTRACTION_INSTRUCTION, QUESTION_TASK_INSTRUCTION
-│       ├── state.py               build_state_section, build_completed_list,
-│       │                          build_collected_summary, build_missing_fields
-│       └── financial.py           build_borrowing_capacity_section
-│
-├── domain/
-│   ├── llm_client.py              OpenRouter async wrapper — implements ILLMClient Protocol,
-│   │                              chat_with_tools_async (tool-calling) and complete_async (plain)
-│   ├── borrowing_capacity.py      S-G: estimates borrowing capacity from salary data (28% DTI,
-│   │                              ~25yr loan); returns BorrowingCapacityResult with disclaimer
-│   ├── budget_gap_detector.py     S-H: compares budget_max against Domain API median price;
-│   │                              returns BudgetGapResult and injects warning into system prompt
-│   └── user_needs_builder.py      PRD §12: assembles UserNeeds snapshot for Part 1 → Part 2 handoff
-│
-├── tools/
-│   └── extraction_schema.py       OpenAI-format tool definition that instructs the LLM to
-│                                  return structured CollectedData fields
-│
-├── routers/
-│   └── chat.py                    FastAPI route handlers — POST /chat and POST /chat/summary
-│
-└── tests/
-    ├── conftest.py                 Shared fixtures: client_async (AsyncClient), sample_state
-    ├── test_extraction_schema.py   S-A unit tests
-    ├── test_state_machine.py       S-B unit tests
-    ├── test_system_prompt.py       S-C unit tests
-    ├── test_chat_endpoint.py       S-D integration tests
-    ├── test_intent_router.py       S-E unit tests
-    ├── test_summary.py             S-F integration tests
-    ├── test_borrowing_capacity.py  S-G unit tests
-    └── test_budget_gap_detector.py S-H unit tests
-```
+**Backend** — the full `backend/` tree, one-line file responsibilities, request/data flow, and the session & identity persistence model live exclusively in [docs/backend-implementation.md](docs/backend-implementation.md). Read it before adding code to an existing backend file or deciding where new backend code belongs; do not re-duplicate the tree here.
 
 ---
 
@@ -327,27 +139,7 @@ PropertyAI guides users through four sequential conversation modules (M1→M4), 
 
 ### Request Flow
 
-```
-POST /api/v1/chat
-    │
-    ├── routers/chat.py
-    │       1. Append user message to conversationHistory
-    │       ── Round 1: Extraction ──────────────────────────────────────
-    │       2. build_extraction_prompt(state)  →  prompts/system_prompt_builder.py
-    │       3. chat_with_tools_async()         →  domain/llm_client.py  → extracted dict
-    │       4. Merge extracted fields, advance module  →  conversation/state_machine.py
-    │       ── Round 2: Question Generation ──────────────────────────────
-    │       5. build_question_prompt(updated_state)  →  prompts/system_prompt_builder.py
-    │       6. complete_async()               →  domain/llm_client.py  → reply str
-    │       7. Append reply to conversationHistory
-    │       8. Classify intent  →  conversation/intent_router.py
-    │       9. Return ChatResponse (reply + extracted + updated_state + routing)
-    │
-POST /api/v1/chat/summary
-    │
-    └── routers/chat.py
-            Validates non-empty data, builds summary prompt, calls LLM plain completion
-```
+`POST /api/v1/chat` loads/creates session state from Redis (not from the request body), runs the two-round LLM architecture, persists back to Redis, and best-effort-upserts a history snapshot to Postgres. `GET /api/v1/chat/{session_id}` restores a session; `GET /api/v1/chats` lists a user's session history; `POST /api/v1/chat/summary` is unchanged (stateless). The full step-by-step processing order, endpoint list, and the Redis/Postgres/cookie persistence model live in [docs/backend-implementation.md](docs/backend-implementation.md) — do not re-duplicate the flow diagram here.
 
 ### Module Progression
 
