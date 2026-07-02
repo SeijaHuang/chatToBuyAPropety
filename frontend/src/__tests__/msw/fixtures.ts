@@ -1,5 +1,5 @@
 import type { BorrowingCapacityResult, BudgetGapResult } from '@/types/financial'
-import type { ChatResponse, SummaryResponse } from '@/types/api'
+import type { ChatResponse, ChatSessionDTO, SummaryResponse } from '@/types/api'
 import type { CollectedData, ConversationStateDTO, ConversationSnapshotDTO } from '@/types/conversation'
 import type { RoutingPayload } from '@/types/routing'
 import { SUBMODEL_KEY, MODULE_ID, SESSION_STATUS } from '@/constants/conversation'
@@ -138,3 +138,22 @@ export const mockConversationState: ConversationStateDTO = {
   borrowingCapacity: null,
   budgetGap: null,
 }
+
+export const mockChatSessions: ChatSessionDTO[] = [
+  {
+    sessionId: 'session-001',
+    status: 'IN_PROGRESS',
+    initialIntent: USER_INTENT.LIST_PROPERTIES,
+    createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+    updatedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+    completedAt: null,
+  },
+  {
+    sessionId: 'session-002',
+    status: 'IN_PROGRESS',
+    initialIntent: null,
+    createdAt: new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString(),
+    updatedAt: new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString(),
+    completedAt: null,
+  },
+]

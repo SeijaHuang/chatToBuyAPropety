@@ -1,2 +1,2 @@
-export { postChat } from './chat'
+export { postChat, getSession, getChats } from './chat'
 export { postChatSummary } from './summary'

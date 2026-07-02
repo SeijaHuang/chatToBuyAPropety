@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest'
-import { formatAUD, createInitialState } from '@/lib/utils'
+import { describe, it, expect, afterEach, vi } from 'vitest'
+import { formatAUD, createInitialState, formatRelativeTime } from '@/lib/utils'
 import { SESSION_STATUS, MODULE_ID } from '@/constants'
 
 describe('utils', () => {
@@ -112,6 +112,55 @@ describe('utils', () => {
       const a = createInitialState('same-id')
       const b = createInitialState('same-id')
       expect(a).not.toBe(b)
+    })
+  })
+
+  describe('formatRelativeTime', () => {
+    const NOW = new Date('2026-07-02T12:00:00.000Z').getTime()
+
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
+    function freeze(ms: number): void {
+      vi.useFakeTimers()
+      vi.setSystemTime(NOW + ms)
+    }
+
+    it('returns "just now" for timestamps less than 60 seconds ago', () => {
+      freeze(0)
+      const iso = new Date(NOW - 30 * 1000).toISOString()
+      expect(formatRelativeTime(iso)).toBe('just now')
+    })
+
+    it('returns minutes string for timestamps 1–59 minutes ago', () => {
+      freeze(0)
+      const iso = new Date(NOW - 5 * 60 * 1000).toISOString()
+      expect(formatRelativeTime(iso)).toMatch(/5 minutes ago/)
+    })
+
+    it('returns hours string for timestamps 1–23 hours ago', () => {
+      freeze(0)
+      const iso = new Date(NOW - 3 * 60 * 60 * 1000).toISOString()
+      expect(formatRelativeTime(iso)).toMatch(/3 hours ago/)
+    })
+
+    it('returns "yesterday" for timestamps exactly 1 day ago', () => {
+      freeze(0)
+      const iso = new Date(NOW - 24 * 60 * 60 * 1000).toISOString()
+      expect(formatRelativeTime(iso)).toMatch(/yesterday/i)
+    })
+
+    it('returns days string for timestamps 2–6 days ago', () => {
+      freeze(0)
+      const iso = new Date(NOW - 3 * 24 * 60 * 60 * 1000).toISOString()
+      expect(formatRelativeTime(iso)).toMatch(/3 days ago/)
+    })
+
+    it('returns weeks string for timestamps 7+ days ago', () => {
+      freeze(0)
+      const iso = new Date(NOW - 14 * 24 * 60 * 60 * 1000).toISOString()
+      expect(formatRelativeTime(iso)).toMatch(/2 weeks ago/)
     })
   })
 })

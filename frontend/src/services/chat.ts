@@ -1,6 +1,6 @@
 import { request } from '@/lib/request'
 import { ENDPOINTS } from '@/constants/endpoints'
-import type { APIResponse, ChatResponse, ConversationStateDTO } from '@/types'
+import type { APIResponse, ChatResponse, ChatSessionDTO, ConversationStateDTO } from '@/types'
 
 export function postChat(
   message: string,
@@ -11,4 +11,8 @@ export function postChat(
 
 export function getSession(sessionId: string): Promise<APIResponse<ConversationStateDTO>> {
   return request.get<ConversationStateDTO>(`${ENDPOINTS.CHAT}/${sessionId}`)
+}
+
+export function getChats(): Promise<APIResponse<ChatSessionDTO[]>> {
+  return request.get<ChatSessionDTO[]>(ENDPOINTS.CHATS)
 }

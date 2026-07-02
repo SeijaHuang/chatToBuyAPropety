@@ -1,5 +1,5 @@
 import type { ConversationSnapshotDTO } from './conversation'
-import type { RoutingPayload } from './routing'
+import type { RoutingPayload, EUserIntent } from './routing'
 import type { UserNeeds } from './user_needs'
 
 // --- Error envelope ---
@@ -39,4 +39,13 @@ export interface ChatResponse {
 export interface SummaryResponse {
   summaryText: string
   structured: UserNeeds
+}
+
+export interface ChatSessionDTO {
+  sessionId: string
+  status: string
+  initialIntent: EUserIntent | null
+  createdAt: string
+  updatedAt: string
+  completedAt: string | null
 }

@@ -1,6 +1,6 @@
 import { http, HttpResponse } from 'msw'
 import { ENDPOINTS } from '@/constants/endpoints'
-import { mockChatResponse, mockSummaryResponse, mockConversationState } from './fixtures'
+import { mockChatResponse, mockChatSessions, mockSummaryResponse, mockConversationState } from './fixtures'
 
 const BASE_URL = 'http://localhost:8000'
 
@@ -15,5 +15,9 @@ export const handlers = [
 
   http.get(`${BASE_URL}/${ENDPOINTS.CHAT}/:sessionId`, () =>
     HttpResponse.json({ ok: true, data: mockConversationState }),
+  ),
+
+  http.get(`${BASE_URL}/${ENDPOINTS.CHATS}`, () =>
+    HttpResponse.json({ ok: true, data: mockChatSessions }),
   ),
 ]

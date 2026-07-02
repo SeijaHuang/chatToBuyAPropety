@@ -18,6 +18,28 @@ export function formatAUD(amount: number): string {
   return formatter.format(amount)
 }
 
+/** Formats an ISO 8601 timestamp as a human-readable relative time string.
+ *  formatRelativeTime('...') → 'just now' / '5 minutes ago' / 'yesterday' / '3 days ago' */
+export function formatRelativeTime(iso: string): string {
+  const diffMs: number = Date.now() - new Date(iso).getTime()
+  const diffSec: number = Math.floor(diffMs / 1000)
+
+  if (diffSec < 60) return 'just now'
+
+  const rtf: Intl.RelativeTimeFormat = new Intl.RelativeTimeFormat('en', { numeric: 'auto' })
+  const diffMin: number = Math.floor(diffSec / 60)
+  if (diffMin < 60) return rtf.format(-diffMin, 'minute')
+
+  const diffHour: number = Math.floor(diffMin / 60)
+  if (diffHour < 24) return rtf.format(-diffHour, 'hour')
+
+  const diffDay: number = Math.floor(diffHour / 24)
+  if (diffDay < 7) return rtf.format(-diffDay, 'day')
+
+  const diffWeek: number = Math.floor(diffDay / 7)
+  return rtf.format(-diffWeek, 'week')
+}
+
 /** Returns a fresh ConversationStateDTO with all fields null and status IN_PROGRESS. */
 export function createInitialState(sessionId: string): ConversationStateDTO {
   const m1: M1PropertyNeeds = {
