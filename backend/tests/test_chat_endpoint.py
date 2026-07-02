@@ -346,3 +346,39 @@ async def test_list_chats_returns_empty_list_for_valid_anon_id(client_async: Asy
     response = await client_async.get("/api/v1/chats")
     assert response.status_code == 200
     assert response.json()["data"] == []
+
+
+# ---------------------------------------------------------------------------
+# DB upsert trigger — new session vs. subsequent message
+# ---------------------------------------------------------------------------
+
+
+async def test_first_message_on_new_session_triggers_db_upsert(client_async: AsyncClient) -> None:
+    """A new session's first message schedules a DB upsert even before any module completes."""
+    from db.repositories.chat import get_chat_repository
+    from main import app
+
+    mock_repo: AsyncMock = app.dependency_overrides[get_chat_repository]()
+    mock_repo.upsert_chat_snapshot_async.reset_mock()
+
+    with _mock_session(), _mock_llm():
+        response = await client_async.post("/api/v1/chat", json=_build_body("Hi"))
+    assert response.status_code == 200
+    mock_repo.upsert_chat_snapshot_async.assert_called_once()
+
+
+async def test_subsequent_message_without_module_completion_does_not_trigger_db_upsert(
+    client_async: AsyncClient,
+) -> None:
+    """Sending a message to an existing session without completing a module skips DB upsert."""
+    from db.repositories.chat import get_chat_repository
+    from main import app
+
+    mock_repo: AsyncMock = app.dependency_overrides[get_chat_repository]()
+    mock_repo.upsert_chat_snapshot_async.reset_mock()
+
+    existing: ConversationStateDTO = ConversationStateDTO(session_id=_SESSION_ID)
+    with _mock_session(initial=existing), _mock_llm():
+        response = await client_async.post("/api/v1/chat", json=_build_body("Hi"))
+    assert response.status_code == 200
+    mock_repo.upsert_chat_snapshot_async.assert_not_called()

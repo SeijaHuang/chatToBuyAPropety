@@ -76,7 +76,8 @@ async def chat_async(
       7. Append assistant reply to conversation history.
       8. Persist updated state back to Redis.
       9. Classify intent for downstream routing.
-      10. Schedule DB upsert via BackgroundTasks if any module newly completed.
+      10. Schedule DB upsert via BackgroundTasks if this is a new session (first message)
+          or if any module newly completed.
       11. Set HttpOnly cookie and return ChatResponse.
 
     Args:
@@ -92,9 +93,11 @@ async def chat_async(
     """
 
     session_id: str = request.session_id if request.session_id else str(uuid4())
-    state: ConversationStateDTO | None = await session_store.load_session_async(session_id)
-    if state is None:
-        state = ConversationStateDTO(session_id=session_id)
+    _loaded: ConversationStateDTO | None = await session_store.load_session_async(session_id)
+    is_new_session: bool = _loaded is None
+    state: ConversationStateDTO = (
+        _loaded if _loaded is not None else ConversationStateDTO(session_id=session_id)
+    )
 
     log: structlog.BoundLogger = logger.bind(
         session_id=state.session_id,
@@ -181,7 +184,7 @@ async def chat_async(
     newly_completed: bool = any(
         state.completion_status[m] and not prev_completion[m] for m in ESubmodel
     )
-    if newly_completed:
+    if is_new_session or newly_completed:
         background_tasks.add_task(chat_repo.upsert_chat_snapshot_async, state, resolved_anon_id)
         log.info("db_upsert_scheduled", session_id=state.session_id)
 
