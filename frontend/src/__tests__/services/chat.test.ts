@@ -10,7 +10,7 @@ const TEST_SESSION_ID = 'test-session'
 
 describe('postChat', () => {
   it('test_post_chat_returns_ok_true_on_success', async () => {
-    const result = await postChat('hello', TEST_SESSION_ID, null)
+    const result = await postChat('hello', TEST_SESSION_ID)
     expect(result.ok).toBe(true)
     if (result.ok) {
       expect(result.data.reply).toBe('mock assistant reply')
@@ -25,7 +25,7 @@ describe('postChat', () => {
         return HttpResponse.json({ ok: true, data: { reply: 'ok', extracted: {}, sessionId: TEST_SESSION_ID, state: null, routing: null } })
       })
     )
-    await postChat('hello', TEST_SESSION_ID, null)
+    await postChat('hello', TEST_SESSION_ID)
     expect(capturedBody.sessionId).toBe(TEST_SESSION_ID)
     expect(capturedBody.message).toBe('hello')
   })
@@ -38,7 +38,7 @@ describe('postChat', () => {
         return HttpResponse.json({ ok: true, data: { reply: 'ok', extracted: {}, sessionId: 'new-id', state: null, routing: null } })
       })
     )
-    await postChat('hello', null, null)
+    await postChat('hello', null)
     expect(capturedBody.sessionId).toBeNull()
     expect(capturedBody.message).toBe('hello')
   })
@@ -52,7 +52,7 @@ describe('postChat', () => {
         )
       )
     )
-    const result = await postChat('hello', TEST_SESSION_ID, null)
+    const result = await postChat('hello', TEST_SESSION_ID)
     expect(result.ok).toBe(false)
     if (!result.ok) {
       expect(result.error.code).toBe('LLM_SERVICE_UNAVAILABLE')
@@ -63,7 +63,7 @@ describe('postChat', () => {
     server.use(
       http.post(`${BASE_URL}/${ENDPOINTS.CHAT}`, () => HttpResponse.error())
     )
-    const result = await postChat('hello', TEST_SESSION_ID, null)
+    const result = await postChat('hello', TEST_SESSION_ID)
     expect(result.ok).toBe(false)
     if (!result.ok) {
       expect(result.error.code).toBe(ERROR_CODE.NETWORK)

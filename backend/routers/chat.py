@@ -1,23 +1,22 @@
 """Chat router — exposes /chat, /chat/summary, /session, and /chats endpoints."""
 
 import json
-import uuid
 from typing import Annotated
 from uuid import uuid4
 
 import structlog
-from fastapi import APIRouter, BackgroundTasks, Depends, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, Response
 from pydantic import ValidationError
 
+from config import settings
 from conversation.intent_router import classify_intent
 from conversation.state_machine import merge_extracted_fields
 from db.repositories.chat import SqlAlchemyChatRepository, get_chat_repository
-from db.repositories.user import SqlAlchemyUserRepository, get_user_repository
 from domain.borrowing_capacity import estimate_borrowing_capacity_async
 from domain.budget_gap_detector import detect_budget_gap_async
 from domain.llm_client import ILLMClient, OpenRouterClient
 from domain.user_needs_builder import build_user_needs
-from exceptions import BadRequestError, SessionNotFoundError, SummaryValidationError
+from exceptions import SessionNotFoundError, SummaryValidationError
 from models.base import SuccessResponse
 from models.chat import (
     ChatRequest,
@@ -43,6 +42,7 @@ from prompts.system_prompt_builder import (
     build_summary_prompt,
 )
 from redis_store.session_store import session_store
+from routers.deps import require_anon_id_cookie_async, resolve_anon_id_async
 from tools.extraction_schema import EXTRACT_REQUIREMENTS_TOOL
 
 router = APIRouter()
@@ -54,10 +54,11 @@ _default_llm_client: ILLMClient = OpenRouterClient()
 @router.post("/chat", tags=["chat"])
 async def chat_async(
     request: ChatRequest,
+    response: Response,
     background_tasks: BackgroundTasks,
     llm_client: Annotated[ILLMClient, Depends(lambda: _default_llm_client)],
     chat_repo: Annotated[SqlAlchemyChatRepository, Depends(get_chat_repository)],
-    anon_repo: Annotated[SqlAlchemyUserRepository, Depends(get_user_repository)],
+    resolved_anon_id: Annotated[str, Depends(resolve_anon_id_async)],
 ) -> SuccessResponse[ChatResponse]:
     """Handle a single conversation turn and return the assistant reply.
 
@@ -66,8 +67,7 @@ async def chat_async(
     automatically (PRD §21.3.1).
 
     Processing order:
-      1. Resolve anon_id — find existing or create new anonymous user identity.
-         resolved_anon_id is always a valid DB-backed str; request.anon_id may be None.
+      1. resolved_anon_id is injected by the Cookie dependency; always a valid DB-backed str.
       2. Load state from Redis; auto-create if absent.
       3. Append user message to conversation history.
       4. Round 1 — Extraction: call LLM with extraction tool to pull structured fields.
@@ -76,27 +76,28 @@ async def chat_async(
       7. Append assistant reply to conversation history.
       8. Persist updated state back to Redis.
       9. Classify intent for downstream routing.
-      10. Schedule DB upsert via BackgroundTasks if any module newly completed.
-      11. Return ChatResponse (including resolved anon_id for frontend localStorage).
+      10. Schedule DB upsert via BackgroundTasks if this is a new session (first message)
+          or if any module newly completed.
+      11. Set HttpOnly cookie and return ChatResponse.
 
     Args:
-        request: Inbound payload containing session_id, anon_id, and user message.
+        request: Inbound payload containing session_id and user message.
+        response: FastAPI Response object used to set the anon_id cookie.
         background_tasks: FastAPI background task queue for async DB writes.
         llm_client: LLM client injected via FastAPI Depends (mockable in tests).
         chat_repo: Chat repository injected via FastAPI Depends.
-        anon_repo: Anonymous user repository injected via FastAPI Depends.
+        resolved_anon_id: Anonymous user identity resolved from HttpOnly cookie.
 
     Returns:
-        ChatResponse with reply, extracted fields, resolved anon_id, and optional routing.
+        ChatResponse with reply, extracted fields, and optional routing.
     """
-    # resolved_anon_id is guaranteed to be a non-None str backed by an existing DB row,
-    # satisfying both ChatResponse.anon_id: str and the chats.anon_id FK constraint.
-    resolved_anon_id: str = await anon_repo.get_or_create_async(request.anon_id)
 
     session_id: str = request.session_id if request.session_id else str(uuid4())
-    state: ConversationStateDTO | None = await session_store.load_session_async(session_id)
-    if state is None:
-        state = ConversationStateDTO(session_id=session_id)
+    _loaded: ConversationStateDTO | None = await session_store.load_session_async(session_id)
+    is_new_session: bool = _loaded is None
+    state: ConversationStateDTO = (
+        _loaded if _loaded is not None else ConversationStateDTO(session_id=session_id)
+    )
 
     log: structlog.BoundLogger = logger.bind(
         session_id=state.session_id,
@@ -183,16 +184,24 @@ async def chat_async(
     newly_completed: bool = any(
         state.completion_status[m] and not prev_completion[m] for m in ESubmodel
     )
-    if newly_completed:
+    if is_new_session or newly_completed:
         background_tasks.add_task(chat_repo.upsert_chat_snapshot_async, state, resolved_anon_id)
         log.info("db_upsert_scheduled", session_id=state.session_id)
 
+    response.set_cookie(
+        key="propertyai_anon_id",
+        value=resolved_anon_id,
+        httponly=True,
+        samesite="strict",
+        secure=settings.cookie_secure,
+        path="/api/v1",
+        max_age=settings.cookie_max_age,
+    )
     return SuccessResponse[ChatResponse](
         data=ChatResponse(
             reply=reply,
             extracted=extracted,
             session_id=state.session_id,
-            anon_id=resolved_anon_id,
             state=snapshot,
             routing=routing,
         )
@@ -222,7 +231,7 @@ async def get_session_async(
 
 @router.get("/chats", tags=["chat"])
 async def list_chats_async(
-    anon_id: Annotated[str, Query(description="Anonymous user UUID from localStorage")],
+    resolved_anon_id: Annotated[str, Depends(require_anon_id_cookie_async)],
     chat_repo: Annotated[SqlAlchemyChatRepository, Depends(get_chat_repository)],
 ) -> SuccessResponse[list[ChatSessionDTO]]:
     """Return all chat sessions for an anonymous user, ordered newest first.
@@ -231,23 +240,21 @@ async def list_chats_async(
     Does not 404 on an unknown anon_id — returning an empty list avoids leaking
     information about whether a given anon_id has ever been seen.
 
+    The anon_id is read from the propertyai_anon_id HttpOnly cookie; a missing or
+    invalid cookie yields a 400 error without creating a new identity.
+
     Args:
-        anon_id: UUID string identifying the anonymous user (from localStorage).
+        resolved_anon_id: UUID string from HttpOnly cookie, validated by dependency.
         chat_repo: Chat repository injected via FastAPI Depends.
 
     Returns:
         List of ChatSessionDTO ordered by updated_at descending.
 
     Raises:
-        BadRequestError: When anon_id is not a valid UUID string.
+        BadRequestError: When the cookie is absent or its value is not a valid UUID.
     """
-    try:
-        uuid.UUID(anon_id)
-    except ValueError:
-        raise BadRequestError(f"Invalid anon_id: '{anon_id}' is not a valid UUID.")
-
-    sessions: list[ChatSessionDTO] = await chat_repo.list_chats_by_anon_async(anon_id)
-    logger.info("list_chats_response", anon_id=anon_id, count=len(sessions))
+    sessions: list[ChatSessionDTO] = await chat_repo.list_chats_by_anon_async(resolved_anon_id)
+    logger.info("list_chats_response", anon_id=resolved_anon_id, count=len(sessions))
     return SuccessResponse[list[ChatSessionDTO]](data=sessions)
 
 

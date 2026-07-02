@@ -11,18 +11,16 @@ import type {
   BudgetGapResult,
   MessageRole,
 } from '@/types'
-import { MESSAGE_ROLE, STORAGE_KEY } from '@/constants'
+import { MESSAGE_ROLE } from '@/constants'
 
 interface ConversationStore {
   sessionId: string | null
-  anonId: string | null
   state: ConversationSnapshotDTO | null
   messages: UIMessage[]
   routing: RoutingPayload | null
   isLoading: boolean
 
   initSession(sessionId: string): void
-  setAnonId(anonId: string): void
   setUpdatedState(newState: ConversationSnapshotDTO): void
   setSessionFromResponse(sessionId: string, newState: ConversationSnapshotDTO): void
   restoreSession(fullState: ConversationStateDTO): void
@@ -67,7 +65,6 @@ function injectCardMessages(
 
 export const useConversationStore = create<ConversationStore>((set, get) => ({
   sessionId: null,
-  anonId: null,
   state: null,
   messages: [],
   routing: null,
@@ -75,11 +72,6 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
 
   initSession(sessionId: string): void {
     set({ sessionId, state: null, messages: [], routing: null, isLoading: false })
-  },
-
-  setAnonId(anonId: string): void {
-    localStorage.setItem(STORAGE_KEY.ANON_ID, anonId)
-    set({ anonId })
   },
 
   setUpdatedState(newState: ConversationSnapshotDTO): void {

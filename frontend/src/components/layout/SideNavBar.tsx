@@ -4,9 +4,9 @@ import React from 'react'
 import { useRouter } from 'next/navigation'
 import { tv } from '@/lib/tv'
 import { cn } from '@/lib/utils'
-import { MaterialSymbol } from '@/components/shared'
-import { Button } from '@/components/shared'
+import { MaterialSymbol, Button } from '@/components/shared'
 import { useConversationStore } from '@/stores'
+import { ChatHistoryList } from './ChatHistoryList'
 
 const sidebar = tv({
   base: 'hidden md:flex flex-col h-screen fixed top-0 left-0 bg-surface-container-low border-r border-outline-variant transition-all duration-300 ease-in-out overflow-hidden',
@@ -105,12 +105,8 @@ export function SideNavBar({
         </Button>
       </nav>
 
-      {/* Session history — P2 feature, requires server-side session listing */}
-      {!collapsed && (
-        <div className={cn('flex flex-col', 'mt-md px-sm', 'flex-1 overflow-y-auto')}>
-          <p className="text-label-md text-outline px-sm mb-xs">Recent</p>
-        </div>
-      )}
+      {/* Chat History */}
+      {!collapsed && <ChatHistoryList activePath={activePath} />}
     </aside>
   )
 }

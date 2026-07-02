@@ -31,6 +31,7 @@ export type {
   APIResponse,
   ChatResponse,
   SummaryResponse,
+  ChatSessionDTO,
 } from './api'
 
 export type { ComponentSize, ComponentVariant, ComponentColor } from './ui'
