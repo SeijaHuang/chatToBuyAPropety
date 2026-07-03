@@ -43,7 +43,7 @@ from prompts.system_prompt_builder import (
     build_summary_prompt,
 )
 from redis_store.session_store import session_store
-from routers.deps import require_anon_id_cookie_async, resolve_anon_id_async
+from routers.deps import require_anon_id_cookie_async
 from tools.extraction_schema import EXTRACT_REQUIREMENTS_TOOL
 
 router = APIRouter()
@@ -60,6 +60,7 @@ async def chat_async(
     llm_client: Annotated[ILLMClient, Depends(lambda: _default_llm_client)],
     chat_repo: Annotated[IChatRepository, Depends(get_chat_repository)],
     anon_repo: Annotated[IUserRepository, Depends(get_user_repository)],
+    resolved_anon_id: Annotated[str, Depends(require_anon_id_cookie_async)],
 ) -> SuccessResponse[ChatResponse]:
     """Handle a single conversation turn and return the assistant reply.
 

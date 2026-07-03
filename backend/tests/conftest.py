@@ -40,6 +40,7 @@ async def client_async() -> AsyncGenerator[AsyncClient, None]:
     mock_anon_repo.get_or_create_async.return_value = TEST_ANON_ID
 
     app.dependency_overrides[get_chat_repository] = lambda: mock_repo
+    app.dependency_overrides[get_user_repository] = lambda: mock_anon_repo
     app.dependency_overrides[resolve_anon_id_async] = lambda: TEST_ANON_ID
     app.dependency_overrides[require_anon_id_cookie_async] = lambda: TEST_ANON_ID
     try:
