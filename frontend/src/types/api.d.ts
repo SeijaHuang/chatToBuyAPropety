@@ -49,3 +49,9 @@ export interface ChatSessionDTO {
   updatedAt: string
   completedAt: string | null
 }
+
+export interface SessionRestoreResponse {
+  resumeMessage: string | null
+  state: ConversationSnapshotDTO
+  conversationHistory: Array<{ role: string; content: string }>
+}

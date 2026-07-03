@@ -2,7 +2,7 @@
 
 import json
 from typing import Annotated
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import structlog
 from fastapi import APIRouter, BackgroundTasks, Depends, Response
@@ -10,14 +10,17 @@ from pydantic import ValidationError
 
 from config import settings
 from conversation.intent_router import classify_intent
-from conversation.state_machine import merge_extracted_fields
+from conversation.state_machine import (
+    get_current_module,
+    merge_extracted_fields,
+    recalculate_completion,
+)
 from db.repositories.chat import IChatRepository, get_chat_repository
-from db.repositories.user import IUserRepository, get_user_repository
 from domain.borrowing_capacity import estimate_borrowing_capacity_async
 from domain.budget_gap_detector import detect_budget_gap_async
 from domain.llm_client import ILLMClient, OpenRouterClient
 from domain.user_needs_builder import build_user_needs
-from exceptions import SessionNotFoundError, SummaryValidationError
+from exceptions import BadRequestError, SessionNotFoundError, SummaryValidationError
 from models.base import SuccessResponse
 from models.chat import (
     ChatRequest,
@@ -25,6 +28,7 @@ from models.chat import (
     ChatSessionDTO,
     ConversationSnapshotDTO,
     RoutingPayload,
+    SessionRestoreResponse,
 )
 from models.conversation_state import (
     CollectedData,
@@ -40,10 +44,11 @@ from models.user_needs import UserNeeds
 from prompts.system_prompt_builder import (
     build_extraction_prompt,
     build_question_prompt,
+    build_session_restore_prompt,
     build_summary_prompt,
 )
 from redis_store.session_store import session_store
-from routers.deps import require_anon_id_cookie_async
+from routers.deps import require_anon_id_cookie_async, resolve_anon_id_async
 from tools.extraction_schema import EXTRACT_REQUIREMENTS_TOOL
 
 router = APIRouter()
@@ -59,8 +64,7 @@ async def chat_async(
     background_tasks: BackgroundTasks,
     llm_client: Annotated[ILLMClient, Depends(lambda: _default_llm_client)],
     chat_repo: Annotated[IChatRepository, Depends(get_chat_repository)],
-    anon_repo: Annotated[IUserRepository, Depends(get_user_repository)],
-    resolved_anon_id: Annotated[str, Depends(require_anon_id_cookie_async)],
+    resolved_anon_id: Annotated[str, Depends(resolve_anon_id_async)],
 ) -> SuccessResponse[ChatResponse]:
     """Handle a single conversation turn and return the assistant reply.
 
@@ -213,22 +217,100 @@ async def chat_async(
 @router.get("/chat/{session_id}", tags=["chat"])
 async def get_session_async(
     session_id: str,
-) -> SuccessResponse[ConversationStateDTO]:
-    """Return the current conversation state for a session.
+    chat_repo: Annotated[IChatRepository, Depends(get_chat_repository)],
+    llm_client: Annotated[ILLMClient, Depends(lambda: _default_llm_client)],
+) -> SuccessResponse[SessionRestoreResponse]:
+    """Return the conversation state for a session, with DB fallback when Redis has expired.
+
+    Processing order:
+      1. Validate session_id is a well-formed UUID.
+      2. Try Redis — on hit return immediately with resume_message=None.
+      3. On Redis miss, query the DB via get_chat_snapshot_async.
+      4. If DB also misses, raise SessionNotFoundError.
+      5. Reconstruct ConversationStateDTO from the DB row (no conversation_history).
+      6. Re-derive completion_status and current_module from collected_data.
+      7. Call LLM to generate a welcome-back message.
+      8. Append the welcome message as the first assistant turn in conversation_history.
+      9. Re-seed Redis so subsequent calls are cache-hits.
+      10. Return SessionRestoreResponse with resume_message and state snapshot.
 
     Args:
         session_id: UUID v4 session identifier.
+        chat_repo: Chat repository injected via FastAPI Depends.
+        llm_client: LLM client injected via FastAPI Depends (mockable in tests).
 
     Returns:
-        The stored ConversationStateDTO wrapped in SuccessResponse.
+        SessionRestoreResponse with state snapshot and optional welcome-back message.
 
     Raises:
-        SessionNotFoundError: When the session is absent or has expired from Redis.
+        BadRequestError: When session_id is not a valid UUID string.
+        SessionNotFoundError: When the session is absent from both Redis and DB.
+        LLMServiceError: When the LLM call fails during DB restore (state not re-seeded).
     """
-    state: ConversationStateDTO | None = await session_store.load_session_async(session_id)
-    if state is None:
+    try:
+        UUID(session_id)
+    except ValueError:
+        raise BadRequestError(f"Invalid session_id: '{session_id}' is not a valid UUID.")
+
+    redis_state: ConversationStateDTO | None = await session_store.load_session_async(session_id)
+    if redis_state is not None:
+        snapshot: ConversationSnapshotDTO = ConversationSnapshotDTO(
+            session_id=redis_state.session_id,
+            current_module=redis_state.current_module,
+            status=redis_state.status,
+            completion_status=redis_state.completion_status,
+            collected_data=redis_state.collected_data,
+            borrowing_capacity=redis_state.borrowing_capacity,
+            budget_gap=redis_state.budget_gap,
+        )
+        return SuccessResponse[SessionRestoreResponse](
+            data=SessionRestoreResponse(
+                resume_message=None,
+                state=snapshot,
+                conversation_history=redis_state.conversation_history,
+            )
+        )
+
+    log: structlog.BoundLogger = logger.bind(session_id=session_id)
+
+    db_state: ConversationStateDTO | None = await chat_repo.get_chat_snapshot_async(session_id)
+    if db_state is None:
         raise SessionNotFoundError(session_id)
-    return SuccessResponse[ConversationStateDTO](data=state)
+
+    log.info("session_restore_from_db")
+
+    db_state.completion_status = recalculate_completion(db_state.collected_data)
+    db_state.current_module = get_current_module(db_state.completion_status)
+
+    restore_prompt: str = build_session_restore_prompt(db_state)
+    resume_message: str = await llm_client.complete_async(
+        restore_prompt, "Please write a welcome-back message."
+    )
+    log.info("session_restore_message_generated")
+
+    db_state.conversation_history.append({"role": "assistant", "content": resume_message})
+
+    try:
+        await session_store.save_session_async(db_state)
+    except Exception:
+        log.warning("redis_reseed_failed")
+
+    db_snapshot: ConversationSnapshotDTO = ConversationSnapshotDTO(
+        session_id=db_state.session_id,
+        current_module=db_state.current_module,
+        status=db_state.status,
+        completion_status=db_state.completion_status,
+        collected_data=db_state.collected_data,
+        borrowing_capacity=db_state.borrowing_capacity,
+        budget_gap=db_state.budget_gap,
+    )
+    return SuccessResponse[SessionRestoreResponse](
+        data=SessionRestoreResponse(
+            resume_message=resume_message,
+            state=db_snapshot,
+            conversation_history=[],
+        )
+    )
 
 
 @router.get("/chats", tags=["chat"])

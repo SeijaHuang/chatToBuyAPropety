@@ -1,5 +1,10 @@
 import type { BorrowingCapacityResult, BudgetGapResult } from '@/types/financial'
-import type { ChatResponse, ChatSessionDTO, SummaryResponse } from '@/types/api'
+import type {
+  ChatResponse,
+  ChatSessionDTO,
+  SessionRestoreResponse,
+  SummaryResponse,
+} from '@/types/api'
 import type { CollectedData, ConversationStateDTO, ConversationSnapshotDTO } from '@/types/conversation'
 import type { RoutingPayload } from '@/types/routing'
 import { SUBMODEL_KEY, MODULE_ID, SESSION_STATUS } from '@/constants/conversation'
@@ -137,6 +142,12 @@ export const mockConversationState: ConversationStateDTO = {
   finalNeeds: null,
   borrowingCapacity: null,
   budgetGap: null,
+}
+
+export const mockSessionRestoreResponse: SessionRestoreResponse = {
+  resumeMessage: null,
+  state: mockSnapshot,
+  conversationHistory: [],
 }
 
 export const mockChatSessions: ChatSessionDTO[] = [

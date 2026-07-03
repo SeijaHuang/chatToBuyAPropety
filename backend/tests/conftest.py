@@ -36,6 +36,7 @@ async def client_async() -> AsyncGenerator[AsyncClient, None]:
     Individual tests that exercise those layers apply their own mocks via patch.
     """
     mock_repo: AsyncMock = AsyncMock(spec=IChatRepository)
+    mock_repo.get_chat_snapshot_async.return_value = None
     mock_anon_repo: AsyncMock = AsyncMock(spec=IUserRepository)
     mock_anon_repo.get_or_create_async.return_value = TEST_ANON_ID
 

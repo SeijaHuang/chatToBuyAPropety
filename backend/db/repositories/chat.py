@@ -3,7 +3,7 @@
 import uuid
 from dataclasses import asdict
 from datetime import UTC, datetime
-from typing import Protocol
+from typing import Protocol, TypedDict, cast
 
 import structlog
 from sqlalchemy import func, select
@@ -13,9 +13,23 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from db.connection import get_session_factory
 from db.models.chat import ChatRow
 from models.chat import ChatSessionDTO
-from models.conversation_state import ConversationStateDTO, EStatus
+from models.conversation_state import CollectedData, ConversationStateDTO, EStatus, EUserIntent
+from models.financial import BorrowingCapacityResult
 
 logger: structlog.BoundLogger = structlog.get_logger()
+
+
+class _BorrowingCapacityFields(TypedDict):
+    """Mirrors BorrowingCapacityResult fields — used to cast JSONB dict before unpacking."""
+
+    estimated_capacity: int
+    monthly_repayment: int
+    based_on_salary: int
+    is_joint: bool
+    annual_rate: float
+    loan_term_years: int
+    rate_source: str
+    disclaimer: str
 
 
 class IChatRepository(Protocol):
@@ -34,6 +48,17 @@ class IChatRepository(Protocol):
         """Return all session records for an anonymous user, newest first.
 
         Returns an empty list when the anon_id is unknown or has no persisted chats.
+        """
+        ...
+
+    async def get_chat_snapshot_async(self, session_id: str) -> ConversationStateDTO | None:
+        """Return a partially-constructed ConversationStateDTO from the DB row, or None.
+
+        Used by the session-restore path when Redis misses. Returns None for an
+        invalid UUID or when the session is not found.
+
+        Note: completion_status and current_module are left at defaults.
+        Caller must call recalculate_completion() before using the returned state.
         """
         ...
 
@@ -85,6 +110,43 @@ class SqlAlchemyChatRepository:
             )
             for row in rows
         ]
+
+    async def get_chat_snapshot_async(self, session_id: str) -> ConversationStateDTO | None:
+        """Return a partially-constructed ConversationStateDTO from the DB, or None.
+
+        Deserialises collected_data and borrowing_capacity from JSONB into domain
+        objects. completion_status and current_module are left at defaults — caller
+        must call recalculate_completion() before using the returned state.
+        """
+        try:
+            session_uuid: uuid.UUID = uuid.UUID(session_id)
+        except ValueError:
+            return None
+
+        async with self._session_factory() as session:
+            result = await session.execute(
+                select(ChatRow).where(ChatRow.session_id == session_uuid)
+            )
+            row: ChatRow | None = result.scalar_one_or_none()
+
+        if row is None:
+            return None
+
+        collected_data: CollectedData = CollectedData.model_validate(row.collected_data)
+        borrowing_capacity: BorrowingCapacityResult | None = (
+            BorrowingCapacityResult(**cast(_BorrowingCapacityFields, row.borrowing_capacity))
+            if row.borrowing_capacity is not None
+            else None
+        )
+        return ConversationStateDTO(
+            session_id=str(row.session_id),
+            status=EStatus(row.status),
+            initial_intent=EUserIntent(row.initial_intent)
+            if row.initial_intent is not None
+            else None,
+            collected_data=collected_data,
+            borrowing_capacity=borrowing_capacity,
+        )
 
     async def _do_upsert_async(self, state: ConversationStateDTO, anon_id: str) -> None:
         """Execute the PostgreSQL upsert statement."""

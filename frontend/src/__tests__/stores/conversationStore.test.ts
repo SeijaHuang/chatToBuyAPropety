@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { useConversationStore } from '@/stores/conversationStore'
 import { SESSION_STATUS, MODULE_ID } from '@/constants'
-import type { ConversationSnapshotDTO, ConversationStateDTO, RoutingPayload, BorrowingCapacityResult, BudgetGapResult } from '@/types'
+import type { ConversationSnapshotDTO, RoutingPayload, BorrowingCapacityResult, BudgetGapResult, SessionRestoreResponse } from '@/types'
 import { createInitialState } from '@/lib/utils'
 
 vi.mock('uuid', () => ({ v4: () => 'test-id' }))
@@ -19,9 +19,6 @@ function makeSnapshot(sessionId: string): ConversationSnapshotDTO {
   return snapshot
 }
 
-function makeDTO(sessionId: string): ConversationStateDTO {
-  return createInitialState(sessionId)
-}
 
 const mockBorrowingCapacity: BorrowingCapacityResult = {
   estimated_capacity: 800000,
@@ -139,32 +136,72 @@ describe('conversationStore', () => {
   })
 
   describe('restoreSession', () => {
-    it('sets sessionId from the full state', () => {
-      const dto: ConversationStateDTO = makeDTO('s1')
-      useConversationStore.getState().restoreSession(dto)
+    it('sets sessionId from response.state.sessionId', () => {
+      const response: SessionRestoreResponse = { resumeMessage: null, conversationHistory: [], state: makeSnapshot('s1') }
+      useConversationStore.getState().restoreSession(response)
       expect(useConversationStore.getState().sessionId).toBe('s1')
     })
 
     it('state does not include conversationHistory', () => {
-      const dto: ConversationStateDTO = makeDTO('s1')
-      useConversationStore.getState().restoreSession(dto)
+      const response: SessionRestoreResponse = { resumeMessage: null, conversationHistory: [], state: makeSnapshot('s1') }
+      useConversationStore.getState().restoreSession(response)
       const state = useConversationStore.getState().state
       expect(state).not.toBeNull()
       expect('conversationHistory' in (state ?? {})).toBe(false)
     })
 
-    it('rebuilds messages from conversationHistory', () => {
-      const dto: ConversationStateDTO = { ...makeDTO('s1'), conversationHistory: [{ role: 'user', content: 'hello' }] }
-      useConversationStore.getState().restoreSession(dto)
+    it('adds resumeMessage as an assistant message when conversationHistory is empty', () => {
+      const response: SessionRestoreResponse = { resumeMessage: 'Welcome back!', conversationHistory: [], state: makeSnapshot('s1') }
+      useConversationStore.getState().restoreSession(response)
       const msgs = useConversationStore.getState().messages
       expect(msgs).toHaveLength(1)
-      expect(msgs[0].content).toBe('hello')
+      expect(msgs[0].content).toBe('Welcome back!')
+      expect(msgs[0].role).toBe('assistant')
+    })
+
+    it('starts with no messages when resumeMessage is null and conversationHistory is empty', () => {
+      const response: SessionRestoreResponse = { resumeMessage: null, conversationHistory: [], state: makeSnapshot('s1') }
+      useConversationStore.getState().restoreSession(response)
+      expect(useConversationStore.getState().messages).toHaveLength(0)
+    })
+
+    it('restores conversation history messages when conversationHistory is non-empty', () => {
+      const response: SessionRestoreResponse = {
+        resumeMessage: null,
+        conversationHistory: [
+          { role: 'user', content: 'Hello' },
+          { role: 'assistant', content: 'Hi there!' },
+        ],
+        state: makeSnapshot('s1'),
+      }
+      useConversationStore.getState().restoreSession(response)
+      const msgs = useConversationStore.getState().messages
+      expect(msgs).toHaveLength(2)
       expect(msgs[0].role).toBe('user')
+      expect(msgs[0].content).toBe('Hello')
+      expect(msgs[1].role).toBe('assistant')
+      expect(msgs[1].content).toBe('Hi there!')
+    })
+
+    it('ignores resumeMessage when conversationHistory is non-empty', () => {
+      const response: SessionRestoreResponse = {
+        resumeMessage: 'Welcome back!',
+        conversationHistory: [{ role: 'user', content: 'Hello' }],
+        state: makeSnapshot('s1'),
+      }
+      useConversationStore.getState().restoreSession(response)
+      const msgs = useConversationStore.getState().messages
+      expect(msgs).toHaveLength(1)
+      expect(msgs[0].content).toBe('Hello')
     })
 
     it('appends borrowingCapacity card if present in restored state', () => {
-      const dto: ConversationStateDTO = { ...makeDTO('s1'), borrowingCapacity: mockBorrowingCapacity }
-      useConversationStore.getState().restoreSession(dto)
+      const response: SessionRestoreResponse = {
+        resumeMessage: null,
+        conversationHistory: [],
+        state: { ...makeSnapshot('s1'), borrowingCapacity: mockBorrowingCapacity },
+      }
+      useConversationStore.getState().restoreSession(response)
       const msgs = useConversationStore.getState().messages
       const cardMsg = msgs.find((m) => m.borrowingCapacity !== undefined)
       expect(cardMsg).toBeDefined()
@@ -172,8 +209,12 @@ describe('conversationStore', () => {
     })
 
     it('appends budgetGap card if has_gap is true in restored state', () => {
-      const dto: ConversationStateDTO = { ...makeDTO('s1'), budgetGap: mockBudgetGap }
-      useConversationStore.getState().restoreSession(dto)
+      const response: SessionRestoreResponse = {
+        resumeMessage: null,
+        conversationHistory: [],
+        state: { ...makeSnapshot('s1'), budgetGap: mockBudgetGap },
+      }
+      useConversationStore.getState().restoreSession(response)
       const msgs = useConversationStore.getState().messages
       const cardMsg = msgs.find((m) => m.budgetGap !== undefined)
       expect(cardMsg).toBeDefined()
