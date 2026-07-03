@@ -24,7 +24,7 @@
 | Method | Path | Purpose |
 |---|---|---|
 | `POST` | `/api/v1/chat` | Process one conversation turn — create or continue a session |
-| `GET` | `/api/v1/chat/{session_id}` | Restore full session state (page reload / revisit) |
+| `GET` | `/api/v1/chat/{session_id}` | Restore session state (page reload / revisit) — Redis hit, or Postgres fallback with an LLM-generated welcome-back message |
 | `GET` | `/api/v1/chats` | List the current anonymous user's chat sessions (sidebar history) |
 | `POST` | `/api/v1/chat/summary` | Generate a natural-language requirements summary |
 | `GET` | `/health` | Liveness — checks both Redis and Postgres connectivity |
@@ -66,9 +66,21 @@ Two separate stores serve two separate purposes — do not conflate them:
 | **Redis** (`redis_store/session_store.py`) | Full `ConversationStateDTO`, including `conversation_history` | Every turn, synchronously, before the response is sent | The live conversation — what `GET /chat/{session_id}` restores |
 | **PostgreSQL `chats` table** (`db/repositories/chat.py`) | A lightweight progressive snapshot (`status`, `initial_intent`, `collected_data` JSONB, `final_needs` JSONB, `borrowing_capacity` JSONB, timestamps) | Best-effort, via `BackgroundTasks`, only on session creation or module completion | The sidebar history list (`GET /chats`) — never read back into a live turn |
 
-Key: `session:{session_id}` → JSON (`ConversationStateDTO.model_dump_json`). TTL is **sliding** — every `save_session_async` call resets it to `redis_session_ttl` (default 604800s / 7 days). `GET /chat/{session_id}` raises `SessionNotFoundError` (404) when the key is absent or has expired — there is no Postgres fallback for restoring a live session.
+Key: `session:{session_id}` → JSON (`ConversationStateDTO.model_dump_json`). TTL is **sliding** — every `save_session_async` call resets it to `redis_session_ttl` (default 604800s / 7 days).
 
 Upserts use `INSERT ... ON CONFLICT (session_id) DO UPDATE`, with `COALESCE` guards so `initial_intent` and `completed_at` are never overwritten back to `NULL` once set. `SqlAlchemyChatRepository.upsert_chat_snapshot_async` catches and logs all exceptions internally — a Postgres outage must never fail or block the chat turn, since the write happens after the HTTP response has already been prepared.
+
+### Session restore — Redis miss falls back to Postgres
+
+`GET /chat/{session_id}` (`routers/chat.py::get_session_async`) no longer 404s the moment the Redis key has expired. On a Redis hit it returns immediately (`resume_message: null`, full `conversation_history`). On a Redis miss it queries `chat_repo.get_chat_snapshot_async(session_id)` for the lightweight Postgres snapshot; a Postgres miss too is still a genuine `SessionNotFoundError` (404). On a Postgres hit:
+
+1. `collected_data` / `borrowing_capacity` are deserialised from JSONB back into domain objects.
+2. `conversation/state_machine.py::recalculate_completion()` and `get_current_module()` re-derive `completion_status` / `current_module` from `collected_data` — neither is persisted to Postgres, so both must be recomputed rather than trusted from storage.
+3. `prompts/system_prompt_builder.py::build_session_restore_prompt()` (distinct from `build_question_prompt` / `build_summary_prompt`) builds a prompt instructing the LLM to write a short, jargon-free welcome-back message; `llm_client.complete_async()` generates it.
+4. The generated message is appended to `conversation_history` as the first assistant turn, then `save_session_async()` re-seeds Redis so the next request is a cache hit again. A re-seed failure is logged and swallowed — the response has already been prepared, and the Postgres row is untouched either way.
+5. The endpoint returns `SessionRestoreResponse { resume_message, state, conversation_history }` — `resume_message` is `null` on a Redis hit and the generated string on a Postgres restore; the frontend distinguishes the two cases by that field alone, since the rest of the response shape is identical.
+
+If the LLM call itself fails during a Postgres restore, `LLMServiceError` (503) is raised and Redis is deliberately **not** re-seeded, so the next request retries the same restore path rather than caching a half-finished state.
 
 ### Anonymous identity
 
@@ -124,7 +136,9 @@ backend/
 │   ├── chat.py                    ChatRequest (session_id | null, message), ChatResponse,
 │   │                              ConversationSnapshotDTO (ChatResponse.state — omits
 │   │                              conversation_history), ChatSessionDTO (one GET /chats row),
-│   │                              RoutingPayload, EExecutionMode, ETriggerSource
+│   │                              SessionRestoreResponse (GET /chat/{id} response — resume_message,
+│   │                              state, conversation_history), RoutingPayload, EExecutionMode,
+│   │                              ETriggerSource
 │   ├── summary.py                 Summary API contract: SummaryRequest, SummaryResponse
 │   ├── financial.py               Internal frozen dataclasses: BorrowingCapacityResult,
 │   │                              BudgetGapResult, and suggested-action string constants
@@ -151,7 +165,8 @@ backend/
 │       │                          get_or_create_async (resolve-or-create anon identity)
 │       └── chat.py                  IChatRepository / SqlAlchemyChatRepository —
 │                                  upsert_chat_snapshot_async (ON CONFLICT DO UPDATE, COALESCE
-│                                  guards), list_chats_by_anon_async
+│                                  guards), list_chats_by_anon_async, get_chat_snapshot_async
+│                                  (session-restore Postgres fallback, §"Session restore" above)
 │
 ├── redis_store/                    Redis-backed persistence — session state + price cache
 │   ├── client.py                   RedisClient — low-level connection pool, get_async/setex_async/
@@ -164,19 +179,25 @@ backend/
 ├── conversation/
 │   ├── state_machine.py            MODULE_COMPLETION_RULES registry — merges extracted fields,
 │                                  advances module, recalculates completion, owns null-safety
-│                                  invariant (a non-None value is never overwritten by None)
+│                                  invariant (a non-None value is never overwritten by None);
+│                                  recalculate_completion() + get_current_module() are also called
+│                                  standalone by the session-restore path (completion_status and
+│                                  current_module are never persisted, so both are always re-derived)
 │   └── intent_router.py            Classifies each user message into a routing intent
 │                                  (recommend_suburbs / list_properties / property_detail /
 │                                  compare_properties / open_ended_query)
 │
 ├── prompts/
-│   ├── system_prompt_builder.py    SOLE public interface — four build_* functions that assemble
-│   │                              prompt strings; no prompt literals outside this package
+│   ├── system_prompt_builder.py    SOLE public interface — build_extraction_prompt,
+│   │                              build_question_prompt, build_system_prompt, build_summary_prompt,
+│   │                              build_session_restore_prompt (Postgres-restore welcome message);
+│   │                              no prompt literals outside this package
 │   └── sections/                   Internal sub-package (do not import outside prompts/)
 │       ├── role.py                  ROLE_DEFINITION — static assistant role block
 │       ├── guardrails.py            GUARDRAIL_RULES — six compliance guardrail rules
 │       ├── context.py               OWNER_OCCUPIER_CONTEXT, INVESTMENT_CONTEXT — M1 intent blocks
-│       ├── instructions.py          EXTRACTION_INSTRUCTION, QUESTION_TASK_INSTRUCTION
+│       ├── instructions.py          EXTRACTION_INSTRUCTION, QUESTION_TASK_INSTRUCTION,
+│       │                          SESSION_RESTORE_INSTRUCTION
 │       ├── state.py                 build_state_section, build_completed_list,
 │       │                          build_collected_summary, build_missing_fields
 │       └── financial.py             build_borrowing_capacity_section
@@ -197,8 +218,9 @@ backend/
 │                                  return structured CollectedData fields
 │
 ├── routers/
-│   ├── chat.py                      FastAPI route handlers — POST /chat, GET /chat/{session_id},
-│   │                              GET /chats, POST /chat/summary; all endpoints tagged "chat"
+│   ├── chat.py                      FastAPI route handlers — POST /chat, GET /chat/{session_id}
+│   │                              (Redis-or-Postgres session restore, see above), GET /chats,
+│   │                              POST /chat/summary; all endpoints tagged "chat"
 │   └── deps.py                      Cookie-based identity dependencies —
 │                                  resolve_anon_id_async (auto-create), require_anon_id_cookie_async
 │                                  (400 if missing/invalid, no auto-create)
@@ -256,7 +278,13 @@ POST /api/v1/chat  { sessionId: string | null, message: string }
     │       14. Return ChatResponse (reply + extracted + sessionId + ConversationSnapshotDTO + routing)
     │
 GET /api/v1/chat/{session_id}
-    └── load_session_async → 200 full ConversationStateDTO, or 404 SessionNotFoundError
+    ├── load_session_async → Redis hit → 200 SessionRestoreResponse (resume_message: null)
+    └── Redis miss → db/repositories/chat.py::get_chat_snapshot_async
+            ├── Postgres miss → 404 SessionNotFoundError
+            └── Postgres hit → recalculate_completion + get_current_module
+                    → build_session_restore_prompt → complete_async → resume_message
+                    → save_session_async (re-seeds Redis)
+                    → 200 SessionRestoreResponse (resume_message: <generated text>)
 
 GET /api/v1/chats
     └── routers/deps.py::require_anon_id_cookie_async (400 if cookie missing/invalid)
@@ -305,6 +333,7 @@ A single handler in `error_handlers.py` converts every `PropertyAIException` sub
 | 3 | Postgres upsert only fires on new-session or module-completion turns, never on every turn | `routers/chat.py::chat_async` |
 | 4 | `initial_intent` and `completed_at` are `COALESCE`-guarded — never overwritten back to `NULL` once set | `db/repositories/chat.py` |
 | 5 | `resolve_anon_id_async` never fails (auto-creates); `require_anon_id_cookie_async` never auto-creates (400s instead) — do not swap these between endpoints | `routers/deps.py` |
+| 5b | Session restore only re-seeds Redis after the LLM welcome-back call succeeds; a failed LLM call leaves Redis empty so the next request retries the Postgres restore path instead of caching a half-built state | `routers/chat.py::get_session_async` |
 | 6 | Null-safety — a non-`None` value in `CollectedData` is never overwritten by `None` | `conversation/state_machine.py` |
 | 7 | Prompt locality — all LLM prompt strings live exclusively in `prompts/system_prompt_builder.py` | `prompts/` |
 | 8 | Error envelope — all 4xx/5xx responses use `{"error": {"code", "message", "details"}}` | `error_handlers.py` |

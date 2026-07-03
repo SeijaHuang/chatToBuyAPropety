@@ -59,7 +59,7 @@ Session state is no longer mirrored to `sessionStorage`. The database is the sin
 |---|---|---|
 | Continue an existing session | `POST api/v1/chat` (`sessionId` set) | Backend upserts the turn; response `state` (a `ConversationSnapshotDTO`) fully replaces the store's `state` |
 | Start a new session | `POST api/v1/chat` (`sessionId: null`) | Backend creates the anonymous user (via cookie) + session row, returns a fresh `sessionId` |
-| Reload / revisit a session URL | `GET api/v1/chat/:sessionId` (`useSession`) | `200` → `restoreSession(fullState)` splits `conversationHistory` into `UIMessage[]` and replays any collected cards; `404`/error → falls back to `initSession` (blank local state, no backend write) |
+| Reload / revisit a session URL | `GET api/v1/chat/:sessionId` (`useSession`) | `200` → `restoreSession(response)`: if `conversationHistory` is non-empty (Redis hit) splits it into `UIMessage[]`; if empty and `resumeMessage` is non-null (Postgres fallback restore — Redis key had expired) renders that single string as the first assistant message instead; either way replays any collected cards. `404`/error → falls back to `initSession` (blank local state, no backend write) |
 | Populate the sidebar | `GET api/v1/chats` (`useChatHistory`) | Returns up to 10 `ChatSessionDTO` summaries for the current anonymous identity (cookie-scoped) |
 
 Anonymous identity is carried by an httpOnly cookie; `axiosClient` sets `withCredentials: true` so every request includes it. `constants/storageKeys.ts` (`CONVERSATION_STATE_PREFIX`, `ROUTING_PAYLOAD_PREFIX`) is legacy from the pre-DB implementation and is currently unused — do not add new sessionStorage writes without revisiting this.
@@ -125,9 +125,10 @@ frontend/src/
 │   │                             setUpdatedState (full replacement, no storage side effect),
 │   │                             setSessionFromResponse (promotes a "new" session to its real ID +
 │   │                             state once the backend responds), restoreSession (hydrates from a
-│   │                             full ConversationStateDTO fetched via GET, splitting
-│   │                             conversationHistory into messages + replaying cards),
-│   │                             addUserMessage, addAssistantMessage, setAssistantLoading,
+│   │                             SessionRestoreResponse fetched via GET: splits conversationHistory
+│   │                             into messages on a Redis hit, or renders resumeMessage as the sole
+│   │                             assistant message on a Postgres fallback restore; replays cards
+│   │                             either way), addUserMessage, addAssistantMessage, setAssistantLoading,
 │   │                             setLoading, setRouting, clearSession
 │   └── uiStore.ts                useUIStore — sidebarCollapsed, activeModal;
 │                                 actions: toggleSidebar, setSidebarCollapsed, openModal, closeModal
@@ -199,7 +200,9 @@ frontend/src/
 │   ├── api.d.ts                   HTTP contract: APIResponse<TData>, ChatResponse (now includes
 │   │                              sessionId), SummaryResponse, ChatSessionDTO (sidebar list item:
 │   │                              sessionId, status, initialIntent, createdAt, updatedAt,
-│   │                              completedAt), ErrorDetail, ErrorResponse, SuccessResponse
+│   │                              completedAt), SessionRestoreResponse (GET /chat/:sessionId
+│   │                              response — resumeMessage, state, conversationHistory),
+│   │                              ErrorDetail, ErrorResponse, SuccessResponse
 │   ├── financial.d.ts             BorrowingCapacityResult, BudgetGapResult
 │   │                              (snake_case — backend @dataclass bypasses camelCase alias)
 │   ├── user_needs.d.ts            UserNeeds interface (mirrors backend models/user_needs.py)
@@ -284,9 +287,11 @@ ChatSession mounts with sessionId
     │
     └── sessionId !== 'new'  → useSession(sessionId, enabled: true)
             └── GET api/v1/chat/:sessionId
-                    ├── [200] restoreSession(fullState)
-                    │           — splits conversationHistory into UIMessage[]
-                    │           — replays borrowingCapacity / budgetGap cards
+                    ├── [200] restoreSession(response)
+                    │           — conversationHistory non-empty (Redis hit): splits into UIMessage[]
+                    │           — conversationHistory empty + resumeMessage non-null (Postgres
+                    │             fallback restore): renders resumeMessage as the sole assistant message
+                    │           — replays borrowingCapacity / budgetGap cards either way
                     └── [404 / error] initSession(sessionId) — blank local state, no backend write
 ```
 
