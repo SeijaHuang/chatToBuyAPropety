@@ -403,7 +403,8 @@ async def test_borrowing_capacity_computed_when_salary_extracted(client_async: A
         _mock_session(),
         _mock_llm(extracted=extracted, reply="Got your salary!"),
         patch(
-            "routers.chat.estimate_borrowing_capacity_async", AsyncMock(return_value=mock_result)
+            "services.chats.chat_service.estimate_borrowing_capacity_async",
+            AsyncMock(return_value=mock_result),
         ),
     ):
         response = await client_async.post("/api/v1/chat", json=_build_body("I earn 100k"))
