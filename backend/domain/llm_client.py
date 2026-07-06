@@ -184,3 +184,6 @@ class OpenRouterClient(ILLMClient):
             completion_tokens=usage.completion_tokens if usage else None,
         )
         return response.choices[0].message.content or ""
+
+
+llm_client: OpenRouterClient = OpenRouterClient()

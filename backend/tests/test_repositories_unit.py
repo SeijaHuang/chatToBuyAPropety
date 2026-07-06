@@ -9,6 +9,8 @@ import uuid
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
 from db.repositories.chat import SqlAlchemyChatRepository
 from db.repositories.user import SqlAlchemyUserRepository
 from models.conversation_state import ConversationStateDTO, EStatus, EUserIntent
@@ -61,7 +63,7 @@ class TestSqlAlchemyUserRepository:
         session.execute = AsyncMock(side_effect=[select_result, update_result])
         repo: SqlAlchemyUserRepository = SqlAlchemyUserRepository(factory)
 
-        result: str = await repo.get_or_create_async(TEST_ANON_ID)
+        result: str = await repo.get_or_create_async(anon_uuid)
 
         assert result == TEST_ANON_ID
 
@@ -73,16 +75,7 @@ class TestSqlAlchemyUserRepository:
         session.execute = AsyncMock(side_effect=[select_result, insert_result])
         repo: SqlAlchemyUserRepository = SqlAlchemyUserRepository(factory)
 
-        result: str = await repo.get_or_create_async(str(uuid.uuid4()))
-
-        assert uuid.UUID(result)
-
-    async def test_get_or_create_with_malformed_uuid_creates_new_user(self) -> None:
-        factory, session = _make_session_factory()
-        session.execute = AsyncMock()
-        repo: SqlAlchemyUserRepository = SqlAlchemyUserRepository(factory)
-
-        result: str = await repo.get_or_create_async("not-a-valid-uuid")
+        result: str = await repo.get_or_create_async(uuid.uuid4())
 
         assert uuid.UUID(result)
 
@@ -186,13 +179,13 @@ class TestSqlAlchemyChatRepository:
 
         session.execute.assert_awaited_once()
 
-    async def test_list_chats_returns_empty_for_malformed_anon_id(self) -> None:
+    async def test_list_chats_raises_for_malformed_anon_id(self) -> None:
+        """Malformed anon_id is a caller contract violation — repo does not validate input."""
         factory, _ = _make_session_factory()
         repo: SqlAlchemyChatRepository = SqlAlchemyChatRepository(factory)
 
-        result = await repo.list_chats_by_anon_async("not-a-uuid")
-
-        assert result == []
+        with pytest.raises(ValueError):
+            await repo.list_chats_by_anon_async("not-a-uuid")
 
     async def test_list_chats_returns_empty_when_no_rows(self) -> None:
         factory, session = _make_session_factory()

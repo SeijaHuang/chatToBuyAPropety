@@ -7,7 +7,7 @@ import pytest
 
 from db.repositories.chat import IChatRepository
 from domain.llm_client import ILLMClient
-from exceptions import SummaryValidationError
+from exceptions import BadRequestError, SessionNotFoundError, SummaryValidationError
 from models.conversation_state import (
     CollectedData,
     ConversationStateDTO,
@@ -42,51 +42,65 @@ def mock_llm_client() -> AsyncMock:
     return llm
 
 
+@pytest.fixture
+def service(
+    mock_session_store: AsyncMock, mock_chat_repo: AsyncMock, mock_llm_client: AsyncMock
+) -> ChatService:
+    """ChatService wired to its constructor-injected dependencies for these unit tests."""
+    return ChatService(
+        chat_repo=mock_chat_repo,
+        session_store=mock_session_store,
+        llm_client=mock_llm_client,
+    )
+
+
 # ---------------------------------------------------------------------------
 # process_turn_async
 # ---------------------------------------------------------------------------
 
 
+_TEST_ANON_ID: str = "test-anon-id"
+
+
 async def test_process_turn_generates_session_id_when_none_given(
-    mock_session_store: AsyncMock, mock_chat_repo: AsyncMock, mock_llm_client: AsyncMock
+    mock_session_store: AsyncMock, mock_chat_repo: AsyncMock, service: ChatService
 ) -> None:
     """A None session_id causes ChatService to generate a fresh UUID v4."""
     mock_session_store.load_session_async.return_value = None
-    service = ChatService(session_store=mock_session_store)
 
     result: ChatTurnResult = await service.process_turn_async(
-        session_id=None, message="Hi", llm_client=mock_llm_client
+        session_id=None, message="Hi", anon_id=_TEST_ANON_ID
     )
 
     assert result.state.session_id != ""
     assert result.should_persist is True
+    mock_chat_repo.upsert_chat_snapshot_async.assert_awaited_once_with(result.state, _TEST_ANON_ID)
 
 
 async def test_process_turn_marks_should_persist_false_for_continuing_incomplete_session(
-    mock_session_store: AsyncMock, mock_llm_client: AsyncMock
+    mock_session_store: AsyncMock, mock_chat_repo: AsyncMock, service: ChatService
 ) -> None:
     """An existing session with no module newly completed does not request persistence."""
     existing: ConversationStateDTO = ConversationStateDTO(session_id="existing-session")
     mock_session_store.load_session_async.return_value = existing
-    service = ChatService(session_store=mock_session_store)
 
     result: ChatTurnResult = await service.process_turn_async(
-        session_id="existing-session", message="Hi", llm_client=mock_llm_client
+        session_id="existing-session", message="Hi", anon_id=_TEST_ANON_ID
     )
 
     assert result.should_persist is False
     assert result.reply == "Next question?"
+    mock_chat_repo.upsert_chat_snapshot_async.assert_not_awaited()
 
 
 async def test_process_turn_appends_user_and_assistant_messages(
-    mock_session_store: AsyncMock, mock_llm_client: AsyncMock
+    mock_session_store: AsyncMock, service: ChatService
 ) -> None:
     """Both the user message and the assistant reply are appended to conversation_history."""
     mock_session_store.load_session_async.return_value = None
-    service = ChatService(session_store=mock_session_store)
 
     result: ChatTurnResult = await service.process_turn_async(
-        session_id="s1", message="Hello", llm_client=mock_llm_client
+        session_id="s1", message="Hello", anon_id=_TEST_ANON_ID
     )
 
     assert result.state.conversation_history[0] == {"role": "user", "content": "Hello"}
@@ -101,54 +115,60 @@ async def test_process_turn_appends_user_and_assistant_messages(
 # restore_session_async
 # ---------------------------------------------------------------------------
 
+_VALID_SESSION_ID: str = "11111111-1111-4111-a111-111111111111"
+
+
+async def test_restore_session_raises_bad_request_for_invalid_uuid(
+    service: ChatService,
+) -> None:
+    """A non-UUID session_id raises BadRequestError before touching Redis or Postgres."""
+    with pytest.raises(BadRequestError):
+        await service.restore_session_async(session_id="not-a-uuid")
+
 
 async def test_restore_session_returns_redis_hit_without_calling_llm(
-    mock_session_store: AsyncMock, mock_chat_repo: AsyncMock, mock_llm_client: AsyncMock
+    mock_session_store: AsyncMock,
+    mock_chat_repo: AsyncMock,
+    mock_llm_client: AsyncMock,
+    service: ChatService,
 ) -> None:
     """A Redis hit short-circuits before any Postgres or LLM call."""
-    existing: ConversationStateDTO = ConversationStateDTO(session_id="s1")
+    existing: ConversationStateDTO = ConversationStateDTO(session_id=_VALID_SESSION_ID)
     mock_session_store.load_session_async.return_value = existing
-    service = ChatService(session_store=mock_session_store)
 
-    result: SessionRestoreResult | None = await service.restore_session_async(
-        session_id="s1", chat_repo=mock_chat_repo, llm_client=mock_llm_client
-    )
+    result: SessionRestoreResult = await service.restore_session_async(session_id=_VALID_SESSION_ID)
 
-    assert result is not None
     assert result.resume_message is None
     mock_chat_repo.get_chat_snapshot_async.assert_not_awaited()
     mock_llm_client.complete_async.assert_not_awaited()
 
 
-async def test_restore_session_returns_none_when_neither_store_has_it(
-    mock_session_store: AsyncMock, mock_chat_repo: AsyncMock, mock_llm_client: AsyncMock
+async def test_restore_session_raises_not_found_when_neither_store_has_it(
+    mock_session_store: AsyncMock, mock_chat_repo: AsyncMock, service: ChatService
 ) -> None:
-    """Redis miss + Postgres miss returns None so the router can raise SessionNotFoundError."""
+    """Redis miss + Postgres miss raises SessionNotFoundError."""
     mock_session_store.load_session_async.return_value = None
     mock_chat_repo.get_chat_snapshot_async.return_value = None
-    service = ChatService(session_store=mock_session_store)
 
-    result: SessionRestoreResult | None = await service.restore_session_async(
-        session_id="missing", chat_repo=mock_chat_repo, llm_client=mock_llm_client
-    )
-
-    assert result is None
+    with pytest.raises(SessionNotFoundError):
+        await service.restore_session_async(session_id=_VALID_SESSION_ID)
 
 
 async def test_restore_session_db_fallback_generates_resume_message(
-    mock_session_store: AsyncMock, mock_chat_repo: AsyncMock, mock_llm_client: AsyncMock
+    mock_session_store: AsyncMock,
+    mock_chat_repo: AsyncMock,
+    mock_llm_client: AsyncMock,
+    service: ChatService,
 ) -> None:
     """Redis miss + Postgres hit calls the LLM and returns a non-null resume_message."""
     mock_session_store.load_session_async.return_value = None
-    mock_chat_repo.get_chat_snapshot_async.return_value = ConversationStateDTO(session_id="s1")
-    mock_llm_client.complete_async.return_value = "Welcome back!"
-    service = ChatService(session_store=mock_session_store)
-
-    result: SessionRestoreResult | None = await service.restore_session_async(
-        session_id="s1", chat_repo=mock_chat_repo, llm_client=mock_llm_client
+    mock_chat_repo.get_chat_snapshot_async.return_value = ConversationStateDTO(
+        session_id=_VALID_SESSION_ID
     )
+    mock_llm_client.complete_async.return_value = "Welcome back!"
 
-    assert result is not None
+    result: SessionRestoreResult = await service.restore_session_async(session_id=_VALID_SESSION_ID)
+
     assert result.resume_message == "Welcome back!"
     assert result.conversation_history == []
     assert result.state.conversation_history[0]["content"] == "Welcome back!"
@@ -156,20 +176,21 @@ async def test_restore_session_db_fallback_generates_resume_message(
 
 
 async def test_restore_session_survives_redis_reseed_failure(
-    mock_session_store: AsyncMock, mock_chat_repo: AsyncMock, mock_llm_client: AsyncMock
+    mock_session_store: AsyncMock,
+    mock_chat_repo: AsyncMock,
+    mock_llm_client: AsyncMock,
+    service: ChatService,
 ) -> None:
     """A Redis re-seed failure is swallowed — the restore result is still returned."""
     mock_session_store.load_session_async.return_value = None
-    mock_chat_repo.get_chat_snapshot_async.return_value = ConversationStateDTO(session_id="s1")
+    mock_chat_repo.get_chat_snapshot_async.return_value = ConversationStateDTO(
+        session_id=_VALID_SESSION_ID
+    )
     mock_session_store.save_session_async.side_effect = Exception("Redis down")
     mock_llm_client.complete_async.return_value = "Welcome back!"
-    service = ChatService(session_store=mock_session_store)
 
-    result: SessionRestoreResult | None = await service.restore_session_async(
-        session_id="s1", chat_repo=mock_chat_repo, llm_client=mock_llm_client
-    )
+    result: SessionRestoreResult = await service.restore_session_async(session_id=_VALID_SESSION_ID)
 
-    assert result is not None
     assert result.resume_message == "Welcome back!"
 
 
@@ -179,27 +200,23 @@ async def test_restore_session_survives_redis_reseed_failure(
 
 
 async def test_generate_summary_raises_when_all_fields_none(
-    mock_session_store: AsyncMock, mock_llm_client: AsyncMock
+    mock_llm_client: AsyncMock, service: ChatService
 ) -> None:
     """An all-None CollectedData raises SummaryValidationError before calling the LLM."""
-    service = ChatService(session_store=mock_session_store)
-
     with pytest.raises(SummaryValidationError):
         await service.generate_summary_async(
             collected_data=CollectedData(),
             session_id="s1",
             initial_intent=EUserIntent.OPEN_ENDED_QUERY,
-            llm_client=mock_llm_client,
         )
     mock_llm_client.complete_async.assert_not_awaited()
 
 
 async def test_generate_summary_returns_summary_and_user_needs(
-    mock_session_store: AsyncMock, mock_llm_client: AsyncMock
+    mock_llm_client: AsyncMock, service: ChatService
 ) -> None:
     """Non-empty CollectedData produces a SummaryResult with the LLM's reply and UserNeeds."""
     mock_llm_client.complete_async.return_value = "You're looking for a 3-bedroom house."
-    service = ChatService(session_store=mock_session_store)
     data: CollectedData = CollectedData(
         m1=M1PropertyNeeds(property_type=EPropertyType.HOUSE, min_bedrooms=3)
     )
@@ -208,7 +225,6 @@ async def test_generate_summary_returns_summary_and_user_needs(
         collected_data=data,
         session_id="s1",
         initial_intent=EUserIntent.OPEN_ENDED_QUERY,
-        llm_client=mock_llm_client,
     )
 
     assert result.summary_text == "You're looking for a 3-bedroom house."

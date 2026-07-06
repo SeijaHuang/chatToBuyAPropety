@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, patch
 
 from httpx import AsyncClient
 
-import routers.chat as chat_module
+import domain.llm_client as llm_client_module
 from exceptions import LLMServiceError, RateLimitError
 from models.conversation_state import ConversationStateDTO
 from models.financial import BorrowingCapacityResult
@@ -37,8 +37,8 @@ def _mock_llm(
     tools_mock = AsyncMock(return_value=extracted if extracted is not None else {})
     complete_mock = AsyncMock(return_value=reply)
     with (
-        patch.object(chat_module._default_llm_client, "chat_with_tools_async", tools_mock),
-        patch.object(chat_module._default_llm_client, "complete_async", complete_mock),
+        patch.object(llm_client_module.llm_client, "chat_with_tools_async", tools_mock),
+        patch.object(llm_client_module.llm_client, "complete_async", complete_mock),
     ):
         yield tools_mock, complete_mock
 
@@ -255,7 +255,7 @@ async def test_get_session_db_restore_returns_resume_message(client_async: Async
     complete_mock: AsyncMock = AsyncMock(return_value="Welcome back!")
     with (
         _mock_session(),
-        patch.object(chat_module._default_llm_client, "complete_async", complete_mock),
+        patch.object(llm_client_module.llm_client, "complete_async", complete_mock),
     ):
         response = await client_async.get(f"/api/v1/chat/{_VALID_SESSION_UUID}")
 
@@ -277,7 +277,7 @@ async def test_get_session_db_restore_reseeds_redis(client_async: AsyncClient) -
     complete_mock: AsyncMock = AsyncMock(return_value="Welcome back!")
     with (
         _mock_session() as store,
-        patch.object(chat_module._default_llm_client, "complete_async", complete_mock),
+        patch.object(llm_client_module.llm_client, "complete_async", complete_mock),
     ):
         response = await client_async.get(f"/api/v1/chat/{_VALID_SESSION_UUID}")
 
@@ -305,7 +305,7 @@ async def test_get_session_db_restore_survives_redis_reseed_failure(
             "save_session_async",
             AsyncMock(side_effect=Exception("Redis down")),
         ),
-        patch.object(chat_module._default_llm_client, "complete_async", complete_mock),
+        patch.object(llm_client_module.llm_client, "complete_async", complete_mock),
     ):
         response = await client_async.get(f"/api/v1/chat/{_VALID_SESSION_UUID}")
 
@@ -348,7 +348,7 @@ async def test_llm_failure_returns_503(client_async: AsyncClient) -> None:
     tools_mock: AsyncMock = AsyncMock(side_effect=LLMServiceError("OpenRouter unavailable"))
     with (
         _mock_session(),
-        patch.object(chat_module._default_llm_client, "chat_with_tools_async", tools_mock),
+        patch.object(llm_client_module.llm_client, "chat_with_tools_async", tools_mock),
     ):
         response = await client_async.post("/api/v1/chat", json=_build_body("Hi"))
     assert response.status_code == 503
@@ -360,7 +360,7 @@ async def test_rate_limit_returns_429(client_async: AsyncClient) -> None:
     tools_mock: AsyncMock = AsyncMock(side_effect=RateLimitError())
     with (
         _mock_session(),
-        patch.object(chat_module._default_llm_client, "chat_with_tools_async", tools_mock),
+        patch.object(llm_client_module.llm_client, "chat_with_tools_async", tools_mock),
     ):
         response = await client_async.post("/api/v1/chat", json=_build_body("Hi"))
     assert response.status_code == 429
@@ -373,8 +373,8 @@ async def test_tool_call_parse_failure_returns_empty_extracted(client_async: Asy
     complete_mock: AsyncMock = AsyncMock(return_value="What are your needs?")
     with (
         _mock_session(),
-        patch.object(chat_module._default_llm_client, "chat_with_tools_async", tools_mock),
-        patch.object(chat_module._default_llm_client, "complete_async", complete_mock),
+        patch.object(llm_client_module.llm_client, "chat_with_tools_async", tools_mock),
+        patch.object(llm_client_module.llm_client, "complete_async", complete_mock),
     ):
         response = await client_async.post("/api/v1/chat", json=_build_body("Hi"))
     assert response.status_code == 200

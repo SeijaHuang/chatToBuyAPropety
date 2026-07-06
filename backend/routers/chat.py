@@ -1,15 +1,12 @@
 """Chat router — exposes /chat, /chat/summary, /session, and /chats endpoints."""
 
 from typing import Annotated
-from uuid import UUID
 
 import structlog
-from fastapi import APIRouter, BackgroundTasks, Depends, Response
+from fastapi import APIRouter, Depends, Response
 
 from config import settings
 from db.repositories.chat import IChatRepository, get_chat_repository
-from domain.llm_client import ILLMClient, OpenRouterClient
-from exceptions import BadRequestError, SessionNotFoundError
 from models.base import SuccessResponse
 from models.chat import (
     ChatRequest,
@@ -32,8 +29,6 @@ from services.chats.chat_service import (
 router = APIRouter()
 logger = structlog.get_logger()
 
-_default_llm_client: ILLMClient = OpenRouterClient()
-
 
 def _snapshot_from_state(state: ConversationStateDTO) -> ConversationSnapshotDTO:
     """Build the response-shaping snapshot DTO from a full ConversationStateDTO."""
@@ -52,28 +47,17 @@ def _snapshot_from_state(state: ConversationStateDTO) -> ConversationSnapshotDTO
 async def chat_async(
     request: ChatRequest,
     response: Response,
-    background_tasks: BackgroundTasks,
-    llm_client: Annotated[ILLMClient, Depends(lambda: _default_llm_client)],
-    chat_repo: Annotated[IChatRepository, Depends(get_chat_repository)],
     resolved_anon_id: Annotated[str, Depends(resolve_anon_id_async)],
     chat_service: Annotated[IChatService, Depends(get_chat_service)],
 ) -> SuccessResponse[ChatResponse]:
     """Handle a single conversation turn and return the assistant reply.
 
-    All turn-processing logic (session load/create, both LLM rounds, field
-    merging, financial recompute, intent classification) lives in
-    services.chats.chat_service.ChatService. This handler only resolves
-    dependencies, schedules the background DB upsert, sets the identity
-    cookie, and shapes the HTTP response.
-
     Args:
         request: Inbound payload containing session_id and user message.
         response: FastAPI Response object used to set the anon_id cookie.
-        background_tasks: FastAPI background task queue for async DB writes.
-        llm_client: LLM client injected via FastAPI Depends (mockable in tests).
-        chat_repo: Chat repository injected via FastAPI Depends.
         resolved_anon_id: Anonymous user identity resolved from HttpOnly cookie.
-        chat_service: Chat orchestration service injected via FastAPI Depends.
+        chat_service: Chat orchestration service injected via FastAPI Depends
+            (already wired to its own LLM client and chat repository).
 
     Returns:
         ChatResponse with reply, extracted fields, and optional routing.
@@ -81,13 +65,8 @@ async def chat_async(
     result: ChatTurnResult = await chat_service.process_turn_async(
         session_id=request.session_id,
         message=request.message,
-        llm_client=llm_client,
+        anon_id=resolved_anon_id,
     )
-
-    if result.should_persist:
-        background_tasks.add_task(
-            chat_repo.upsert_chat_snapshot_async, result.state, resolved_anon_id
-        )
 
     response.set_cookie(
         key="propertyai_anon_id",
@@ -112,22 +91,14 @@ async def chat_async(
 @router.get("/chat/{session_id}", tags=["chat"])
 async def get_session_async(
     session_id: str,
-    llm_client: Annotated[ILLMClient, Depends(lambda: _default_llm_client)],
-    chat_repo: Annotated[IChatRepository, Depends(get_chat_repository)],
     chat_service: Annotated[IChatService, Depends(get_chat_service)],
 ) -> SuccessResponse[SessionRestoreResponse]:
     """Return the conversation state for a session, with DB fallback when Redis has expired.
 
-    Session-resolution strategy (Redis hit, Postgres fallback with an
-    LLM-generated welcome message, or neither) lives entirely in
-    services.chats.chat_service.ChatService.restore_session_async. This handler
-    only validates the path parameter and shapes the HTTP response.
-
     Args:
         session_id: UUID v4 session identifier.
-        llm_client: LLM client injected via FastAPI Depends (mockable in tests).
-        chat_repo: Chat repository injected via FastAPI Depends.
-        chat_service: Chat orchestration service injected via FastAPI Depends.
+        chat_service: Chat orchestration service injected via FastAPI Depends
+            (already wired to its own LLM client and chat repository).
 
     Returns:
         SessionRestoreResponse with state snapshot and optional welcome-back message.
@@ -137,18 +108,9 @@ async def get_session_async(
         SessionNotFoundError: When the session is absent from both Redis and DB.
         LLMServiceError: When the LLM call fails during DB restore (state not re-seeded).
     """
-    try:
-        UUID(session_id)
-    except ValueError:
-        raise BadRequestError(f"Invalid session_id: '{session_id}' is not a valid UUID.")
-
-    result: SessionRestoreResult | None = await chat_service.restore_session_async(
+    result: SessionRestoreResult = await chat_service.restore_session_async(
         session_id=session_id,
-        chat_repo=chat_repo,
-        llm_client=llm_client,
     )
-    if result is None:
-        raise SessionNotFoundError(session_id)
 
     return SuccessResponse[SessionRestoreResponse](
         data=SessionRestoreResponse(
@@ -191,7 +153,6 @@ async def list_chats_async(
 @router.post("/chat/summary", tags=["chat"])
 async def chat_summary_async(
     request: SummaryRequest,
-    llm_client: Annotated[ILLMClient, Depends(lambda: _default_llm_client)],
     chat_service: Annotated[IChatService, Depends(get_chat_service)],
 ) -> SuccessResponse[SummaryResponse]:
     """Return a natural-language summary of all collected property requirements.
@@ -201,8 +162,8 @@ async def chat_summary_async(
 
     Args:
         request: Inbound payload carrying the CollectedData to summarise.
-        llm_client: LLM client injected via FastAPI Depends (mockable in tests).
-        chat_service: Chat orchestration service injected via FastAPI Depends.
+        chat_service: Chat orchestration service injected via FastAPI Depends
+            (already wired to its own LLM client).
 
     Returns:
         SummaryResponse with summary_text and the original structured data.
@@ -214,7 +175,6 @@ async def chat_summary_async(
         collected_data=request.collected_data,
         session_id=request.session_id,
         initial_intent=request.initial_intent,
-        llm_client=llm_client,
     )
     return SuccessResponse[SummaryResponse](
         data=SummaryResponse(summary_text=result.summary_text, structured=result.user_needs)

@@ -10,10 +10,11 @@ layer — it owns no business rule of its own.
 
 import json
 from dataclasses import dataclass
-from typing import Protocol
-from uuid import uuid4
+from typing import Annotated, Protocol
+from uuid import UUID, uuid4
 
 import structlog
+from fastapi import Depends
 from pydantic import ValidationError
 
 from conversation.intent_router import classify_intent
@@ -22,12 +23,13 @@ from conversation.state_machine import (
     merge_extracted_fields,
     recalculate_completion,
 )
-from db.repositories.chat import IChatRepository
+from db.repositories.chat import IChatRepository, get_chat_repository
 from domain.borrowing_capacity import estimate_borrowing_capacity_async
 from domain.budget_gap_detector import detect_budget_gap_async
 from domain.llm_client import ILLMClient
+from domain.llm_client import llm_client as _default_llm_client
 from domain.user_needs_builder import build_user_needs
-from exceptions import SummaryValidationError
+from exceptions import BadRequestError, SessionNotFoundError, SummaryValidationError
 from models.chat import RoutingPayload
 from models.conversation_state import (
     CollectedData,
@@ -61,8 +63,8 @@ class ChatTurnResult:
         extracted: Fields extracted by Round 1 (empty dict on tool-call parse failure).
         state: Fully updated conversation state after this turn (already persisted).
         routing: Populated when the turn completes requirements or matches a keyword.
-        should_persist: True when the caller should schedule a Postgres upsert —
-            true for a brand-new session or when any module newly completed this turn.
+        should_persist: True when a Postgres upsert was performed this turn — true
+            for a brand-new session or when any module newly completed this turn.
     """
 
     reply: str
@@ -111,38 +113,36 @@ class IChatService(Protocol):
         self,
         session_id: str | None,
         message: str,
-        llm_client: ILLMClient,
+        anon_id: str,
     ) -> ChatTurnResult:
         """Process one conversation turn end to end.
 
         Args:
             session_id: Existing session UUID, or None to create a new session.
             message: The user's message text for this turn.
-            llm_client: LLM client used for both extraction and reply generation.
+            anon_id: Anonymous user identity, used for the Postgres upsert.
 
         Returns:
-            ChatTurnResult describing the reply, updated state, and whether the
-            caller (router) should schedule a background Postgres upsert.
+            ChatTurnResult describing the reply, updated state, and whether a
+            Postgres upsert was performed this turn.
         """
         ...
 
     async def restore_session_async(
         self,
         session_id: str,
-        chat_repo: IChatRepository,
-        llm_client: ILLMClient,
-    ) -> SessionRestoreResult | None:
+    ) -> SessionRestoreResult:
         """Resolve session state from Redis, falling back to Postgres on a miss.
 
         Args:
-            session_id: UUID v4 session identifier, already validated by the caller.
-            chat_repo: Repository queried only on a Redis miss.
-            llm_client: LLM client used to generate the welcome-back message on a
-                Postgres-fallback restore.
+            session_id: Session identifier, in principle a UUID v4 string.
 
         Returns:
-            SessionRestoreResult on a Redis or Postgres hit; None when neither
-            store has the session (caller raises SessionNotFoundError).
+            SessionRestoreResult on a Redis or Postgres hit.
+
+        Raises:
+            BadRequestError: When session_id is not a valid UUID string.
+            SessionNotFoundError: When neither store has the session.
         """
         ...
 
@@ -151,7 +151,6 @@ class IChatService(Protocol):
         collected_data: CollectedData,
         session_id: str,
         initial_intent: EUserIntent,
-        llm_client: ILLMClient,
     ) -> SummaryResult:
         """Generate a natural-language requirements summary.
 
@@ -159,7 +158,6 @@ class IChatService(Protocol):
             collected_data: Accumulated field values from the conversation.
             session_id: Session identifier for the UserNeeds handoff snapshot.
             initial_intent: Intent classified at M1 completion.
-            llm_client: LLM client used for the summary completion call.
 
         Returns:
             SummaryResult with the generated text and UserNeeds snapshot.
@@ -170,17 +168,28 @@ class IChatService(Protocol):
         ...
 
 
-class ChatService:
-    """Default IChatService implementation, backed by the Redis session store."""
+class ChatService(IChatService):
+    """Default IChatService implementation, backed by the Redis session store.
 
-    def __init__(self, session_store: ISessionStore = _default_session_store) -> None:
+    chat_repo has no import-time default because it wraps a session factory that
+    only exists after FastAPI lifespan startup — callers must always supply it.
+    """
+
+    def __init__(
+        self,
+        chat_repo: IChatRepository,
+        session_store: ISessionStore = _default_session_store,
+        llm_client: ILLMClient = _default_llm_client,
+    ) -> None:
+        self._chat_repo = chat_repo
         self._session_store = session_store
+        self._llm_client = llm_client
 
     async def process_turn_async(
         self,
         session_id: str | None,
         message: str,
-        llm_client: ILLMClient,
+        anon_id: str,
     ) -> ChatTurnResult:
         """Process one conversation turn end to end (see IChatService)."""
         resolved_session_id: str = session_id if session_id else str(uuid4())
@@ -206,7 +215,7 @@ class ChatService:
         extraction_prompt: str = build_extraction_prompt(state)
         extracted: dict[str, object]
         try:
-            extracted = await llm_client.chat_with_tools_async(
+            extracted = await self._llm_client.chat_with_tools_async(
                 extraction_prompt,
                 state.conversation_history,
                 [EXTRACT_REQUIREMENTS_TOOL],
@@ -248,7 +257,7 @@ class ChatService:
             )
 
         question_prompt: str = build_question_prompt(state)
-        reply: str = await llm_client.complete_async(question_prompt, message)
+        reply: str = await self._llm_client.complete_async(question_prompt, message)
 
         state.conversation_history.append({"role": "assistant", "content": reply})
 
@@ -265,13 +274,13 @@ class ChatService:
                 routing.intent if routing is not None else EUserIntent.OPEN_ENDED_QUERY
             )
 
-        # Caller schedules a background upsert whenever any module newly completes
+        # Persist to Postgres whenever a new session starts or any module newly completes
         newly_completed: bool = any(
             state.completion_status[m] and not prev_completion[m] for m in ESubmodel
         )
         should_persist: bool = is_new_session or newly_completed
         if should_persist:
-            log.info("db_upsert_scheduled", session_id=state.session_id)
+            await self._chat_repo.upsert_chat_snapshot_async(state, anon_id)
 
         return ChatTurnResult(
             reply=reply,
@@ -284,10 +293,13 @@ class ChatService:
     async def restore_session_async(
         self,
         session_id: str,
-        chat_repo: IChatRepository,
-        llm_client: ILLMClient,
-    ) -> SessionRestoreResult | None:
+    ) -> SessionRestoreResult:
         """Resolve session state from Redis, falling back to Postgres (see IChatService)."""
+        try:
+            UUID(session_id)
+        except ValueError:
+            raise BadRequestError(f"Invalid session_id: '{session_id}' is not a valid UUID.")
+
         redis_state: ConversationStateDTO | None = await self._session_store.load_session_async(
             session_id
         )
@@ -300,9 +312,11 @@ class ChatService:
 
         log: structlog.BoundLogger = logger.bind(session_id=session_id)
 
-        db_state: ConversationStateDTO | None = await chat_repo.get_chat_snapshot_async(session_id)
+        db_state: ConversationStateDTO | None = await self._chat_repo.get_chat_snapshot_async(
+            session_id
+        )
         if db_state is None:
-            return None
+            raise SessionNotFoundError(session_id)
 
         log.info("session_restore_from_db")
 
@@ -310,7 +324,7 @@ class ChatService:
         db_state.current_module = get_current_module(db_state.completion_status)
 
         restore_prompt: str = build_session_restore_prompt(db_state)
-        resume_message: str = await llm_client.complete_async(
+        resume_message: str = await self._llm_client.complete_async(
             restore_prompt, "Please write a welcome-back message."
         )
         log.info("session_restore_message_generated")
@@ -333,7 +347,6 @@ class ChatService:
         collected_data: CollectedData,
         session_id: str,
         initial_intent: EUserIntent,
-        llm_client: ILLMClient,
     ) -> SummaryResult:
         """Generate a natural-language requirements summary (see IChatService)."""
         all_none: bool = all(
@@ -347,7 +360,7 @@ class ChatService:
 
         logger.info("summary_request_received")
         system_prompt: str = build_summary_prompt(collected_data)
-        reply: str = await llm_client.complete_async(
+        reply: str = await self._llm_client.complete_async(
             system_prompt, "Please generate the requirements summary."
         )
         logger.info("summary_generated", summary_length=len(reply))
@@ -355,6 +368,8 @@ class ChatService:
         return SummaryResult(summary_text=reply, user_needs=user_needs)
 
 
-def get_chat_service() -> IChatService:
-    """FastAPI dependency — returns a ChatService."""
-    return ChatService()
+def get_chat_service(
+    chat_repo: Annotated[IChatRepository, Depends(get_chat_repository)],
+) -> IChatService:
+    """FastAPI dependency — returns a ChatService wired to its own chat repository."""
+    return ChatService(chat_repo=chat_repo)

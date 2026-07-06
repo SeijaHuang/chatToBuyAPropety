@@ -29,7 +29,13 @@ async def resolve_anon_id_async(
     Returns:
         A non-None str guaranteed to correspond to an existing users row.
     """
-    return await anon_repo.get_or_create_async(propertyai_anon_id)
+    parsed_anon_id: uuid.UUID | None = None
+    if propertyai_anon_id is not None:
+        try:
+            parsed_anon_id = uuid.UUID(propertyai_anon_id)
+        except ValueError:
+            logger.warning("anon_id_parse_failed", raw_anon_id=propertyai_anon_id)
+    return await anon_repo.get_or_create_async(parsed_anon_id)
 
 
 async def require_anon_id_cookie_async(

@@ -17,7 +17,7 @@ logger: structlog.BoundLogger = structlog.get_logger()
 class IUserRepository(Protocol):
     """Persistence contract for the users table."""
 
-    async def get_or_create_async(self, anon_id: str | None) -> str:
+    async def get_or_create_async(self, anon_id: uuid.UUID | None) -> str:
         """Resolve or create a user identity by anon_id.
 
         When anon_id is None or not found in the database, inserts a new user
@@ -29,30 +29,25 @@ class IUserRepository(Protocol):
         ...
 
 
-class SqlAlchemyUserRepository:
+class SqlAlchemyUserRepository(IUserRepository):
     """SQLAlchemy-backed implementation of IUserRepository."""
 
     def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
         self._session_factory = session_factory
 
-    async def get_or_create_async(self, anon_id: str | None) -> str:
+    async def get_or_create_async(self, anon_id: uuid.UUID | None) -> str:
         """Resolve or create a user by anon_id, refreshing updated_at on hit.
 
         Args:
-            anon_id: UUID string from the client (None on first request).
+            anon_id: Parsed UUID from the client (None on first request).
 
         Returns:
             The anon_id string of the resolved or newly created user.
         """
         if anon_id is not None:
-            try:
-                parsed: uuid.UUID = uuid.UUID(anon_id)
-                found: str | None = await self._touch_existing_async(parsed)
-                if found is not None:
-                    return found
-            except ValueError:
-                # Malformed UUID from client — treat as absent, issue fresh identity
-                logger.warning("anon_id_parse_failed", raw_anon_id=anon_id)
+            found: str | None = await self._touch_existing_async(anon_id)
+            if found is not None:
+                return found
 
         return await self._create_new_async()
 

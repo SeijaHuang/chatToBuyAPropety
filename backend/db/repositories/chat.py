@@ -47,15 +47,15 @@ class IChatRepository(Protocol):
     async def list_chats_by_anon_async(self, anon_id: str) -> list[ChatSessionDTO]:
         """Return all session records for an anonymous user, newest first.
 
-        Returns an empty list when the anon_id is unknown or has no persisted chats.
+        Returns an empty list when the anon_id has no persisted chats.
         """
         ...
 
     async def get_chat_snapshot_async(self, session_id: str) -> ConversationStateDTO | None:
         """Return a partially-constructed ConversationStateDTO from the DB row, or None.
 
-        Used by the session-restore path when Redis misses. Returns None for an
-        invalid UUID or when the session is not found.
+        Used by the session-restore path when Redis misses. Returns None when
+        the session is not found.
 
         Note: completion_status and current_module are left at defaults.
         Caller must call recalculate_completion() before using the returned state.
@@ -63,7 +63,7 @@ class IChatRepository(Protocol):
         ...
 
 
-class SqlAlchemyChatRepository:
+class SqlAlchemyChatRepository(IChatRepository):
     """SQLAlchemy-backed implementation of IChatRepository.
 
     Uses PostgreSQL's INSERT ... ON CONFLICT DO UPDATE for atomic upserts.
@@ -82,14 +82,8 @@ class SqlAlchemyChatRepository:
             logger.exception("db_upsert_failed", session_id=state.session_id)
 
     async def list_chats_by_anon_async(self, anon_id: str) -> list[ChatSessionDTO]:
-        """Return session records for an anon user, ordered newest first.
-
-        Returns an empty list for unknown anon_id values without raising.
-        """
-        try:
-            anon_uuid: uuid.UUID = uuid.UUID(anon_id)
-        except ValueError:
-            return []
+        """Return session records for an anon user, ordered newest first."""
+        anon_uuid: uuid.UUID = uuid.UUID(anon_id)
 
         async with self._session_factory() as session:
             result = await session.execute(
@@ -118,10 +112,7 @@ class SqlAlchemyChatRepository:
         objects. completion_status and current_module are left at defaults — caller
         must call recalculate_completion() before using the returned state.
         """
-        try:
-            session_uuid: uuid.UUID = uuid.UUID(session_id)
-        except ValueError:
-            return None
+        session_uuid: uuid.UUID = uuid.UUID(session_id)
 
         async with self._session_factory() as session:
             result = await session.execute(

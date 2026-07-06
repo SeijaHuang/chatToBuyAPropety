@@ -107,3 +107,31 @@ def register_exception_handlers(app: FastAPI) -> None:
                 ),
             ).model_dump(mode="json", by_alias=True),
         )
+
+    @app.exception_handler(Exception)
+    async def unhandled_exception_handler_async(request: Request, exc: Exception) -> JSONResponse:
+        """Convert any exception not otherwise handled to the standard error envelope.
+
+        Args:
+            request: The incoming HTTP request.
+            exc: The uncaught exception.
+
+        Returns:
+            JSONResponse with the standard error envelope and HTTP 500.
+        """
+        logger.exception(
+            "unhandled_exception",
+            exc_type=type(exc).__name__,
+            path=request.url.path,
+        )
+        return JSONResponse(
+            status_code=500,
+            content=ErrorResponse(
+                ok=False,
+                error=ErrorDetail(
+                    code="InternalServerError",
+                    message="An unexpected error occurred.",
+                    details={},
+                ),
+            ).model_dump(mode="json", by_alias=True),
+        )
