@@ -20,21 +20,17 @@ export function ChatSession({ sessionId, initialMessage = null }: ChatSessionPro
   const messages: UIMessage[] = useConversationStore((s) => s.messages)
   const isLoading: boolean = useConversationStore((s) => s.isLoading)
   const routing: RoutingPayload | null = useConversationStore((s) => s.routing)
+  const storeSessionId: string | null = useConversationStore((s) => s.sessionId)
   const sidebarCollapsed: boolean = useUIStore((s) => s.sidebarCollapsed)
 
   const isNewSession: boolean = sessionId === 'new'
+  const alreadyLoaded: boolean = storeSessionId === sessionId
   const clearSession = useConversationStore((s) => s.clearSession)
   const { sendMessage, errorMessage } = useChat()
-  const { isLoading: sessionLoading } = useSession(sessionId, !isNewSession)
+  const { isLoading: sessionLoading } = useSession(sessionId, !isNewSession && !alreadyLoaded)
 
   const messageListRef = useRef<HTMLDivElement>(null)
-  const initialMessageSent = useRef<boolean>(false)
-
-  useEffect(() => {
-    if (isNewSession) {
-      clearSession()
-    }
-  }, [isNewSession, clearSession])
+  const initialTurnStarted = useRef<boolean>(false)
 
   useEffect(() => {
     if (messageListRef.current) {
@@ -43,10 +39,13 @@ export function ChatSession({ sessionId, initialMessage = null }: ChatSessionPro
   }, [messages])
 
   useEffect(() => {
-    if (!isNewSession || initialMessage === null || initialMessageSent.current) return
-    initialMessageSent.current = true
-    void sendMessage(initialMessage)
-  }, [isNewSession, initialMessage, sendMessage])
+    if (!isNewSession || initialTurnStarted.current) return
+    initialTurnStarted.current = true
+    clearSession()
+    if (initialMessage !== null) {
+      void sendMessage(initialMessage)
+    }
+  }, [isNewSession, initialMessage, clearSession, sendMessage])
 
   const handleViewProperties = (): void => {
     // P2: router.push('/properties') — routing payload passed via router state
