@@ -1,5 +1,6 @@
 """Chat router — exposes /chat, /chat/summary, /session, and /chats endpoints."""
 
+import uuid
 from typing import Annotated
 
 import structlog
@@ -17,7 +18,12 @@ from models.chat import (
 )
 from models.conversation_state import ConversationStateDTO
 from models.summary import SummaryRequest, SummaryResponse
-from routers.deps import require_anon_id_cookie_async, resolve_anon_id_async
+from routers.deps import (
+    require_anon_id_cookie_async,
+    require_valid_session_id_async,
+    resolve_anon_id_async,
+    validate_optional_session_id_async,
+)
 from services.chats.chat_service import (
     ChatTurnResult,
     IChatService,
@@ -47,7 +53,8 @@ def _snapshot_from_state(state: ConversationStateDTO) -> ConversationSnapshotDTO
 async def chat_async(
     request: ChatRequest,
     response: Response,
-    resolved_anon_id: Annotated[str, Depends(resolve_anon_id_async)],
+    validated_session_id: Annotated[uuid.UUID | None, Depends(validate_optional_session_id_async)],
+    resolved_anon_id: Annotated[uuid.UUID, Depends(resolve_anon_id_async)],
     chat_service: Annotated[IChatService, Depends(get_chat_service)],
 ) -> SuccessResponse[ChatResponse]:
     """Handle a single conversation turn and return the assistant reply.
@@ -55,22 +62,26 @@ async def chat_async(
     Args:
         request: Inbound payload containing session_id and user message.
         response: FastAPI Response object used to set the anon_id cookie.
+        validated_session_id: Parsed session_id, validated by dependency.
         resolved_anon_id: Anonymous user identity resolved from HttpOnly cookie.
         chat_service: Chat orchestration service injected via FastAPI Depends
             (already wired to its own LLM client and chat repository).
 
     Returns:
         ChatResponse with reply, extracted fields, and optional routing.
+
+    Raises:
+        BadRequestError: When session_id is present but not a valid UUID string.
     """
     result: ChatTurnResult = await chat_service.process_turn_async(
-        session_id=request.session_id,
+        session_id=validated_session_id,
         message=request.message,
         anon_id=resolved_anon_id,
     )
 
     response.set_cookie(
         key="propertyai_anon_id",
-        value=resolved_anon_id,
+        value=str(resolved_anon_id),
         httponly=True,
         samesite="strict",
         secure=settings.cookie_secure,
@@ -90,13 +101,13 @@ async def chat_async(
 
 @router.get("/chat/{session_id}", tags=["chat"])
 async def get_session_async(
-    session_id: str,
+    session_id: Annotated[uuid.UUID, Depends(require_valid_session_id_async)],
     chat_service: Annotated[IChatService, Depends(get_chat_service)],
 ) -> SuccessResponse[SessionRestoreResponse]:
     """Return the conversation state for a session, with DB fallback when Redis has expired.
 
     Args:
-        session_id: UUID v4 session identifier.
+        session_id: Parsed session_id, validated by dependency.
         chat_service: Chat orchestration service injected via FastAPI Depends
             (already wired to its own LLM client and chat repository).
 
@@ -123,7 +134,7 @@ async def get_session_async(
 
 @router.get("/chats", tags=["chat"])
 async def list_chats_async(
-    resolved_anon_id: Annotated[str, Depends(require_anon_id_cookie_async)],
+    resolved_anon_id: Annotated[uuid.UUID, Depends(require_anon_id_cookie_async)],
     chat_repo: Annotated[IChatRepository, Depends(get_chat_repository)],
 ) -> SuccessResponse[list[ChatSessionDTO]]:
     """Return all chat sessions for an anonymous user, ordered newest first.
@@ -136,7 +147,7 @@ async def list_chats_async(
     invalid cookie yields a 400 error without creating a new identity.
 
     Args:
-        resolved_anon_id: UUID string from HttpOnly cookie, validated by dependency.
+        resolved_anon_id: Parsed UUID from HttpOnly cookie, validated by dependency.
         chat_repo: Chat repository injected via FastAPI Depends.
 
     Returns:
@@ -146,7 +157,7 @@ async def list_chats_async(
         BadRequestError: When the cookie is absent or its value is not a valid UUID.
     """
     sessions: list[ChatSessionDTO] = await chat_repo.list_chats_by_anon_async(resolved_anon_id)
-    logger.info("list_chats_response", anon_id=resolved_anon_id, count=len(sessions))
+    logger.info("list_chats_response", anon_id=str(resolved_anon_id), count=len(sessions))
     return SuccessResponse[list[ChatSessionDTO]](data=sessions)
 
 

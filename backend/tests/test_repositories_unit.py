@@ -9,8 +9,6 @@ import uuid
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
-
 from db.repositories.chat import SqlAlchemyChatRepository
 from db.repositories.user import SqlAlchemyUserRepository
 from models.conversation_state import ConversationStateDTO, EStatus, EUserIntent
@@ -50,9 +48,9 @@ class TestSqlAlchemyUserRepository:
         session.execute = AsyncMock()
         repo: SqlAlchemyUserRepository = SqlAlchemyUserRepository(factory)
 
-        result: str = await repo.get_or_create_async(None)
+        result: uuid.UUID = await repo.get_or_create_async(None)
 
-        assert uuid.UUID(result)
+        assert isinstance(result, uuid.UUID)
 
     async def test_get_or_create_with_existing_anon_id_returns_same_id(self) -> None:
         factory, session = _make_session_factory()
@@ -63,9 +61,9 @@ class TestSqlAlchemyUserRepository:
         session.execute = AsyncMock(side_effect=[select_result, update_result])
         repo: SqlAlchemyUserRepository = SqlAlchemyUserRepository(factory)
 
-        result: str = await repo.get_or_create_async(anon_uuid)
+        result: uuid.UUID = await repo.get_or_create_async(anon_uuid)
 
-        assert result == TEST_ANON_ID
+        assert result == anon_uuid
 
     async def test_get_or_create_with_unknown_uuid_creates_new_user(self) -> None:
         factory, session = _make_session_factory()
@@ -75,19 +73,18 @@ class TestSqlAlchemyUserRepository:
         session.execute = AsyncMock(side_effect=[select_result, insert_result])
         repo: SqlAlchemyUserRepository = SqlAlchemyUserRepository(factory)
 
-        result: str = await repo.get_or_create_async(uuid.uuid4())
+        result: uuid.UUID = await repo.get_or_create_async(uuid.uuid4())
 
-        assert uuid.UUID(result)
+        assert isinstance(result, uuid.UUID)
 
-    async def test_create_new_async_returns_uuid_string(self) -> None:
+    async def test_create_new_async_returns_uuid(self) -> None:
         factory, session = _make_session_factory()
         session.execute = AsyncMock()
         repo: SqlAlchemyUserRepository = SqlAlchemyUserRepository(factory)
 
-        result: str = await repo._create_new_async()
+        result: uuid.UUID = await repo._create_new_async()
 
-        assert isinstance(result, str)
-        assert uuid.UUID(result)
+        assert isinstance(result, uuid.UUID)
 
     async def test_touch_existing_returns_none_when_user_not_found(self) -> None:
         factory, session = _make_session_factory()
@@ -96,7 +93,7 @@ class TestSqlAlchemyUserRepository:
         session.execute = AsyncMock(return_value=select_result)
         repo: SqlAlchemyUserRepository = SqlAlchemyUserRepository(factory)
 
-        result: str | None = await repo._touch_existing_async(uuid.UUID(TEST_ANON_ID))
+        result: uuid.UUID | None = await repo._touch_existing_async(uuid.UUID(TEST_ANON_ID))
 
         assert result is None
 
@@ -115,7 +112,7 @@ class TestSqlAlchemyChatRepository:
         state: ConversationStateDTO = _fresh_state()
 
         with patch.object(repo, "_do_upsert_async", AsyncMock(side_effect=RuntimeError("boom"))):
-            await repo.upsert_chat_snapshot_async(state, TEST_ANON_ID)
+            await repo.upsert_chat_snapshot_async(state, uuid.UUID(TEST_ANON_ID))
 
     async def test_upsert_delegates_to_do_upsert(self) -> None:
         factory, _ = _make_session_factory()
@@ -124,16 +121,16 @@ class TestSqlAlchemyChatRepository:
         mock_do_upsert: AsyncMock = AsyncMock()
 
         with patch.object(repo, "_do_upsert_async", mock_do_upsert):
-            await repo.upsert_chat_snapshot_async(state, TEST_ANON_ID)
+            await repo.upsert_chat_snapshot_async(state, uuid.UUID(TEST_ANON_ID))
 
-        mock_do_upsert.assert_awaited_once_with(state, TEST_ANON_ID)
+        mock_do_upsert.assert_awaited_once_with(state, uuid.UUID(TEST_ANON_ID))
 
     async def test_do_upsert_executes_and_commits(self) -> None:
         factory, session = _make_session_factory()
         repo: SqlAlchemyChatRepository = SqlAlchemyChatRepository(factory)
         state: ConversationStateDTO = _fresh_state()
 
-        await repo._do_upsert_async(state, TEST_ANON_ID)
+        await repo._do_upsert_async(state, uuid.UUID(TEST_ANON_ID))
 
         session.execute.assert_awaited_once()
         session.commit.assert_awaited_once()
@@ -144,7 +141,7 @@ class TestSqlAlchemyChatRepository:
         state: ConversationStateDTO = _fresh_state()
         state.status = EStatus.REQUIREMENTS_COMPLETE
 
-        await repo._do_upsert_async(state, TEST_ANON_ID)
+        await repo._do_upsert_async(state, uuid.UUID(TEST_ANON_ID))
 
         session.execute.assert_awaited_once()
 
@@ -154,7 +151,7 @@ class TestSqlAlchemyChatRepository:
         state: ConversationStateDTO = _fresh_state()
         state.initial_intent = EUserIntent.RECOMMEND_SUBURBS
 
-        await repo._do_upsert_async(state, TEST_ANON_ID)
+        await repo._do_upsert_async(state, uuid.UUID(TEST_ANON_ID))
 
         session.execute.assert_awaited_once()
 
@@ -175,17 +172,9 @@ class TestSqlAlchemyChatRepository:
             disclaimer="Estimate only.",
         )
 
-        await repo._do_upsert_async(state, TEST_ANON_ID)
+        await repo._do_upsert_async(state, uuid.UUID(TEST_ANON_ID))
 
         session.execute.assert_awaited_once()
-
-    async def test_list_chats_raises_for_malformed_anon_id(self) -> None:
-        """Malformed anon_id is a caller contract violation — repo does not validate input."""
-        factory, _ = _make_session_factory()
-        repo: SqlAlchemyChatRepository = SqlAlchemyChatRepository(factory)
-
-        with pytest.raises(ValueError):
-            await repo.list_chats_by_anon_async("not-a-uuid")
 
     async def test_list_chats_returns_empty_when_no_rows(self) -> None:
         factory, session = _make_session_factory()
@@ -194,7 +183,7 @@ class TestSqlAlchemyChatRepository:
         session.execute = AsyncMock(return_value=select_result)
         repo: SqlAlchemyChatRepository = SqlAlchemyChatRepository(factory)
 
-        result = await repo.list_chats_by_anon_async(TEST_ANON_ID)
+        result = await repo.list_chats_by_anon_async(uuid.UUID(TEST_ANON_ID))
 
         assert result == []
 
@@ -216,7 +205,7 @@ class TestSqlAlchemyChatRepository:
         session.execute = AsyncMock(return_value=select_result)
         repo: SqlAlchemyChatRepository = SqlAlchemyChatRepository(factory)
 
-        result = await repo.list_chats_by_anon_async(TEST_ANON_ID)
+        result = await repo.list_chats_by_anon_async(uuid.UUID(TEST_ANON_ID))
 
         assert len(result) == 1
         assert result[0].session_id == str(session_id)

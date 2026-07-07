@@ -14,7 +14,7 @@ from models.conversation_state import ConversationStateDTO
 from models.financial import BorrowingCapacityResult
 from redis_store import session_store as session_store_module
 
-_SESSION_ID: str = "test-session-001"
+_SESSION_ID: str = "22222222-2222-4222-a222-222222222222"
 _VALID_SESSION_UUID: str = "11111111-1111-4111-a111-111111111111"
 
 _UUID4_PATTERN: re.Pattern[str] = re.compile(
@@ -336,6 +336,15 @@ async def test_omitting_session_id_is_valid(client_async: AsyncClient) -> None:
     with _mock_session(), _mock_llm():
         response = await client_async.post("/api/v1/chat", json={"message": "Hi"})
     assert response.status_code == 200
+
+
+async def test_post_chat_invalid_session_id_returns_400(client_async: AsyncClient) -> None:
+    """POST /chat with a non-UUID sessionId returns 400 with BadRequestError code."""
+    response = await client_async.post(
+        "/api/v1/chat", json={"sessionId": "not-a-uuid", "message": "Hi"}
+    )
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "BadRequestError"
 
 
 # ---------------------------------------------------------------------------

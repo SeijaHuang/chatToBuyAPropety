@@ -29,7 +29,7 @@ from domain.budget_gap_detector import detect_budget_gap_async
 from domain.llm_client import ILLMClient
 from domain.llm_client import llm_client as _default_llm_client
 from domain.user_needs_builder import build_user_needs
-from exceptions import BadRequestError, SessionNotFoundError, SummaryValidationError
+from exceptions import SessionNotFoundError, SummaryValidationError
 from models.chat import RoutingPayload
 from models.conversation_state import (
     CollectedData,
@@ -111,9 +111,9 @@ class IChatService(Protocol):
 
     async def process_turn_async(
         self,
-        session_id: str | None,
+        session_id: UUID | None,
         message: str,
-        anon_id: str,
+        anon_id: UUID,
     ) -> ChatTurnResult:
         """Process one conversation turn end to end.
 
@@ -130,18 +130,17 @@ class IChatService(Protocol):
 
     async def restore_session_async(
         self,
-        session_id: str,
+        session_id: UUID,
     ) -> SessionRestoreResult:
         """Resolve session state from Redis, falling back to Postgres on a miss.
 
         Args:
-            session_id: Session identifier, in principle a UUID v4 string.
+            session_id: Session identifier, already validated by the caller.
 
         Returns:
             SessionRestoreResult on a Redis or Postgres hit.
 
         Raises:
-            BadRequestError: When session_id is not a valid UUID string.
             SessionNotFoundError: When neither store has the session.
         """
         ...
@@ -187,12 +186,12 @@ class ChatService(IChatService):
 
     async def process_turn_async(
         self,
-        session_id: str | None,
+        session_id: UUID | None,
         message: str,
-        anon_id: str,
+        anon_id: UUID,
     ) -> ChatTurnResult:
         """Process one conversation turn end to end (see IChatService)."""
-        resolved_session_id: str = session_id if session_id else str(uuid4())
+        resolved_session_id: str = str(session_id) if session_id is not None else str(uuid4())
         loaded: ConversationStateDTO | None = await self._session_store.load_session_async(
             resolved_session_id
         )
@@ -292,16 +291,13 @@ class ChatService(IChatService):
 
     async def restore_session_async(
         self,
-        session_id: str,
+        session_id: UUID,
     ) -> SessionRestoreResult:
         """Resolve session state from Redis, falling back to Postgres (see IChatService)."""
-        try:
-            UUID(session_id)
-        except ValueError:
-            raise BadRequestError(f"Invalid session_id: '{session_id}' is not a valid UUID.")
+        session_id_str: str = str(session_id)
 
         redis_state: ConversationStateDTO | None = await self._session_store.load_session_async(
-            session_id
+            session_id_str
         )
         if redis_state is not None:
             return SessionRestoreResult(
@@ -310,13 +306,13 @@ class ChatService(IChatService):
                 conversation_history=redis_state.conversation_history,
             )
 
-        log: structlog.BoundLogger = logger.bind(session_id=session_id)
+        log: structlog.BoundLogger = logger.bind(session_id=session_id_str)
 
         db_state: ConversationStateDTO | None = await self._chat_repo.get_chat_snapshot_async(
             session_id
         )
         if db_state is None:
-            raise SessionNotFoundError(session_id)
+            raise SessionNotFoundError(session_id_str)
 
         log.info("session_restore_from_db")
 

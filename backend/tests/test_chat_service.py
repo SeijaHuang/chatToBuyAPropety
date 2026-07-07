@@ -1,13 +1,14 @@
 """Direct unit tests for ChatService — bypasses HTTP entirely (see test_chat_endpoint.py
 for integration coverage of the same behaviour through the router)."""
 
+import uuid
 from unittest.mock import AsyncMock
 
 import pytest
 
 from db.repositories.chat import IChatRepository
 from domain.llm_client import ILLMClient
-from exceptions import BadRequestError, SessionNotFoundError, SummaryValidationError
+from exceptions import SessionNotFoundError, SummaryValidationError
 from models.conversation_state import (
     CollectedData,
     ConversationStateDTO,
@@ -59,7 +60,9 @@ def service(
 # ---------------------------------------------------------------------------
 
 
-_TEST_ANON_ID: str = "test-anon-id"
+_TEST_ANON_ID: uuid.UUID = uuid.uuid4()
+_VALID_SESSION_ID: str = "11111111-1111-4111-a111-111111111111"
+_VALID_SESSION_UUID: uuid.UUID = uuid.UUID(_VALID_SESSION_ID)
 
 
 async def test_process_turn_generates_session_id_when_none_given(
@@ -81,11 +84,11 @@ async def test_process_turn_marks_should_persist_false_for_continuing_incomplete
     mock_session_store: AsyncMock, mock_chat_repo: AsyncMock, service: ChatService
 ) -> None:
     """An existing session with no module newly completed does not request persistence."""
-    existing: ConversationStateDTO = ConversationStateDTO(session_id="existing-session")
+    existing: ConversationStateDTO = ConversationStateDTO(session_id=_VALID_SESSION_ID)
     mock_session_store.load_session_async.return_value = existing
 
     result: ChatTurnResult = await service.process_turn_async(
-        session_id="existing-session", message="Hi", anon_id=_TEST_ANON_ID
+        session_id=_VALID_SESSION_UUID, message="Hi", anon_id=_TEST_ANON_ID
     )
 
     assert result.should_persist is False
@@ -100,7 +103,7 @@ async def test_process_turn_appends_user_and_assistant_messages(
     mock_session_store.load_session_async.return_value = None
 
     result: ChatTurnResult = await service.process_turn_async(
-        session_id="s1", message="Hello", anon_id=_TEST_ANON_ID
+        session_id=_VALID_SESSION_UUID, message="Hello", anon_id=_TEST_ANON_ID
     )
 
     assert result.state.conversation_history[0] == {"role": "user", "content": "Hello"}
@@ -115,16 +118,6 @@ async def test_process_turn_appends_user_and_assistant_messages(
 # restore_session_async
 # ---------------------------------------------------------------------------
 
-_VALID_SESSION_ID: str = "11111111-1111-4111-a111-111111111111"
-
-
-async def test_restore_session_raises_bad_request_for_invalid_uuid(
-    service: ChatService,
-) -> None:
-    """A non-UUID session_id raises BadRequestError before touching Redis or Postgres."""
-    with pytest.raises(BadRequestError):
-        await service.restore_session_async(session_id="not-a-uuid")
-
 
 async def test_restore_session_returns_redis_hit_without_calling_llm(
     mock_session_store: AsyncMock,
@@ -136,7 +129,9 @@ async def test_restore_session_returns_redis_hit_without_calling_llm(
     existing: ConversationStateDTO = ConversationStateDTO(session_id=_VALID_SESSION_ID)
     mock_session_store.load_session_async.return_value = existing
 
-    result: SessionRestoreResult = await service.restore_session_async(session_id=_VALID_SESSION_ID)
+    result: SessionRestoreResult = await service.restore_session_async(
+        session_id=_VALID_SESSION_UUID
+    )
 
     assert result.resume_message is None
     mock_chat_repo.get_chat_snapshot_async.assert_not_awaited()
@@ -151,7 +146,7 @@ async def test_restore_session_raises_not_found_when_neither_store_has_it(
     mock_chat_repo.get_chat_snapshot_async.return_value = None
 
     with pytest.raises(SessionNotFoundError):
-        await service.restore_session_async(session_id=_VALID_SESSION_ID)
+        await service.restore_session_async(session_id=_VALID_SESSION_UUID)
 
 
 async def test_restore_session_db_fallback_generates_resume_message(
@@ -167,7 +162,9 @@ async def test_restore_session_db_fallback_generates_resume_message(
     )
     mock_llm_client.complete_async.return_value = "Welcome back!"
 
-    result: SessionRestoreResult = await service.restore_session_async(session_id=_VALID_SESSION_ID)
+    result: SessionRestoreResult = await service.restore_session_async(
+        session_id=_VALID_SESSION_UUID
+    )
 
     assert result.resume_message == "Welcome back!"
     assert result.conversation_history == []
@@ -189,7 +186,9 @@ async def test_restore_session_survives_redis_reseed_failure(
     mock_session_store.save_session_async.side_effect = Exception("Redis down")
     mock_llm_client.complete_async.return_value = "Welcome back!"
 
-    result: SessionRestoreResult = await service.restore_session_async(session_id=_VALID_SESSION_ID)
+    result: SessionRestoreResult = await service.restore_session_async(
+        session_id=_VALID_SESSION_UUID
+    )
 
     assert result.resume_message == "Welcome back!"
 
