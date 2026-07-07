@@ -14,7 +14,11 @@ from models.conversation_state import (
 from prompts.sections.context import INVESTMENT_CONTEXT, OWNER_OCCUPIER_CONTEXT
 from prompts.sections.financial import build_borrowing_capacity_section, build_budget_gap_section
 from prompts.sections.guardrails import GUARDRAIL_RULES
-from prompts.sections.instructions import EXTRACTION_INSTRUCTION, QUESTION_TASK_INSTRUCTION
+from prompts.sections.instructions import (
+    EXTRACTION_INSTRUCTION,
+    QUESTION_TASK_INSTRUCTION,
+    SESSION_RESTORE_INSTRUCTION,
+)
 from prompts.sections.role import ROLE_DEFINITION
 from prompts.sections.state import build_state_section
 
@@ -101,6 +105,28 @@ def build_system_prompt(state: ConversationStateDTO) -> str:
 
     sections.append(GUARDRAIL_RULES)
 
+    return "\n\n".join(sections)
+
+
+def build_session_restore_prompt(state: ConversationStateDTO) -> str:
+    """Build the system prompt for the LLM welcome-back message on DB restore.
+
+    Used only by the GET /chat/{session_id} DB-fallback path. Distinct from
+    build_question_prompt (ongoing turn) and build_summary_prompt (final brief)
+    because the intent is to orient a returning user, not collect or summarise.
+
+    Args:
+        state: Reconstructed ConversationStateDTO from DB (conversation_history is empty).
+
+    Returns:
+        System prompt string for llm_client.complete_async().
+    """
+    sections: list[str] = [
+        ROLE_DEFINITION,
+        build_state_section(state),
+        GUARDRAIL_RULES,
+        SESSION_RESTORE_INSTRUCTION,
+    ]
     return "\n\n".join(sections)
 
 

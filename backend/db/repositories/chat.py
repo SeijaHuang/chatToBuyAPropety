@@ -3,7 +3,7 @@
 import uuid
 from dataclasses import asdict
 from datetime import UTC, datetime
-from typing import Protocol
+from typing import Protocol, TypedDict, cast
 
 import structlog
 from sqlalchemy import func, select
@@ -13,15 +13,31 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from db.connection import get_session_factory
 from db.models.chat import ChatRow
 from models.chat import ChatSessionDTO
-from models.conversation_state import ConversationStateDTO, EStatus
+from models.conversation_state import CollectedData, ConversationStateDTO, EStatus, EUserIntent
+from models.financial import BorrowingCapacityResult
 
 logger: structlog.BoundLogger = structlog.get_logger()
+
+
+class _BorrowingCapacityFields(TypedDict):
+    """Mirrors BorrowingCapacityResult fields — used to cast JSONB dict before unpacking."""
+
+    estimated_capacity: int
+    monthly_repayment: int
+    based_on_salary: int
+    is_joint: bool
+    annual_rate: float
+    loan_term_years: int
+    rate_source: str
+    disclaimer: str
 
 
 class IChatRepository(Protocol):
     """Persistence contract for the chats table."""
 
-    async def upsert_chat_snapshot_async(self, state: ConversationStateDTO, anon_id: str) -> None:
+    async def upsert_chat_snapshot_async(
+        self, state: ConversationStateDTO, anon_id: uuid.UUID
+    ) -> None:
         """Write or update the chats row for the given session.
 
         Called after each module completes. Idempotent — repeated calls with
@@ -30,15 +46,26 @@ class IChatRepository(Protocol):
         """
         ...
 
-    async def list_chats_by_anon_async(self, anon_id: str) -> list[ChatSessionDTO]:
+    async def list_chats_by_anon_async(self, anon_id: uuid.UUID) -> list[ChatSessionDTO]:
         """Return all session records for an anonymous user, newest first.
 
-        Returns an empty list when the anon_id is unknown or has no persisted chats.
+        Returns an empty list when the anon_id has no persisted chats.
+        """
+        ...
+
+    async def get_chat_snapshot_async(self, session_id: uuid.UUID) -> ConversationStateDTO | None:
+        """Return a partially-constructed ConversationStateDTO from the DB row, or None.
+
+        Used by the session-restore path when Redis misses. Returns None when
+        the session is not found.
+
+        Note: completion_status and current_module are left at defaults.
+        Caller must call recalculate_completion() before using the returned state.
         """
         ...
 
 
-class SqlAlchemyChatRepository:
+class SqlAlchemyChatRepository(IChatRepository):
     """SQLAlchemy-backed implementation of IChatRepository.
 
     Uses PostgreSQL's INSERT ... ON CONFLICT DO UPDATE for atomic upserts.
@@ -49,14 +76,68 @@ class SqlAlchemyChatRepository:
     def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
         self._session_factory = session_factory
 
-    async def upsert_chat_snapshot_async(self, state: ConversationStateDTO, anon_id: str) -> None:
+    async def upsert_chat_snapshot_async(
+        self, state: ConversationStateDTO, anon_id: uuid.UUID
+    ) -> None:
         """Upsert the chats row. Exceptions are logged and suppressed."""
         try:
             await self._do_upsert_async(state, anon_id)
         except Exception:
             logger.exception("db_upsert_failed", session_id=state.session_id)
 
-    async def _do_upsert_async(self, state: ConversationStateDTO, anon_id: str) -> None:
+    async def list_chats_by_anon_async(self, anon_id: uuid.UUID) -> list[ChatSessionDTO]:
+        """Return session records for an anon user, ordered newest first."""
+        async with self._session_factory() as session:
+            result = await session.execute(
+                select(ChatRow)
+                .where(ChatRow.anon_id == anon_id)
+                .order_by(ChatRow.updated_at.desc())
+            )
+            rows: list[ChatRow] = list(result.scalars().all())
+
+        return [
+            ChatSessionDTO(
+                session_id=str(row.session_id),
+                status=row.status,
+                initial_intent=row.initial_intent,
+                created_at=row.created_at,
+                updated_at=row.updated_at,
+                completed_at=row.completed_at,
+            )
+            for row in rows
+        ]
+
+    async def get_chat_snapshot_async(self, session_id: uuid.UUID) -> ConversationStateDTO | None:
+        """Return a partially-constructed ConversationStateDTO from the DB, or None.
+
+        Deserialises collected_data and borrowing_capacity from JSONB into domain
+        objects. completion_status and current_module are left at defaults — caller
+        must call recalculate_completion() before using the returned state.
+        """
+        async with self._session_factory() as session:
+            result = await session.execute(select(ChatRow).where(ChatRow.session_id == session_id))
+            row: ChatRow | None = result.scalar_one_or_none()
+
+        if row is None:
+            return None
+
+        collected_data: CollectedData = CollectedData.model_validate(row.collected_data)
+        borrowing_capacity: BorrowingCapacityResult | None = (
+            BorrowingCapacityResult(**cast(_BorrowingCapacityFields, row.borrowing_capacity))
+            if row.borrowing_capacity is not None
+            else None
+        )
+        return ConversationStateDTO(
+            session_id=str(row.session_id),
+            status=EStatus(row.status),
+            initial_intent=EUserIntent(row.initial_intent)
+            if row.initial_intent is not None
+            else None,
+            collected_data=collected_data,
+            borrowing_capacity=borrowing_capacity,
+        )
+
+    async def _do_upsert_async(self, state: ConversationStateDTO, anon_id: uuid.UUID) -> None:
         """Execute the PostgreSQL upsert statement."""
         collected: dict[str, object] = state.collected_data.model_dump(by_alias=False)
         final_needs: dict[str, object] | None = (
@@ -76,7 +157,7 @@ class SqlAlchemyChatRepository:
             pg_insert(ChatRow)
             .values(
                 session_id=uuid.UUID(state.session_id),
-                anon_id=uuid.UUID(anon_id),
+                anon_id=anon_id,
                 status=state.status.value,
                 schema_version="1.1",
                 initial_intent=initial_intent,
@@ -112,37 +193,7 @@ class SqlAlchemyChatRepository:
             await session.execute(stmt)
             await session.commit()
 
-    async def list_chats_by_anon_async(self, anon_id: str) -> list[ChatSessionDTO]:
-        """Return session records for an anon user, ordered newest first.
 
-        Returns an empty list for unknown anon_id values without raising.
-        """
-        try:
-            anon_uuid: uuid.UUID = uuid.UUID(anon_id)
-        except ValueError:
-            return []
-
-        async with self._session_factory() as session:
-            result = await session.execute(
-                select(ChatRow)
-                .where(ChatRow.anon_id == anon_uuid)
-                .order_by(ChatRow.updated_at.desc())
-            )
-            rows: list[ChatRow] = list(result.scalars().all())
-
-        return [
-            ChatSessionDTO(
-                session_id=str(row.session_id),
-                status=row.status,
-                initial_intent=row.initial_intent,
-                created_at=row.created_at,
-                updated_at=row.updated_at,
-                completed_at=row.completed_at,
-            )
-            for row in rows
-        ]
-
-
-def get_chat_repository() -> SqlAlchemyChatRepository:
+def get_chat_repository() -> IChatRepository:
     """FastAPI dependency — returns a SqlAlchemyChatRepository."""
     return SqlAlchemyChatRepository(get_session_factory())

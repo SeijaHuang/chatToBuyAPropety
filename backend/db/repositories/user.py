@@ -17,47 +17,42 @@ logger: structlog.BoundLogger = structlog.get_logger()
 class IUserRepository(Protocol):
     """Persistence contract for the users table."""
 
-    async def get_or_create_async(self, anon_id: str | None) -> str:
+    async def get_or_create_async(self, anon_id: uuid.UUID | None) -> uuid.UUID:
         """Resolve or create a user identity by anon_id.
 
         When anon_id is None or not found in the database, inserts a new user
         row with a fresh UUID pair. When found, refreshes updated_at.
 
         Returns:
-            The anon_id string for the resolved or newly created user.
+            The anon_id for the resolved or newly created user.
         """
         ...
 
 
-class SqlAlchemyUserRepository:
+class SqlAlchemyUserRepository(IUserRepository):
     """SQLAlchemy-backed implementation of IUserRepository."""
 
     def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
         self._session_factory = session_factory
 
-    async def get_or_create_async(self, anon_id: str | None) -> str:
+    async def get_or_create_async(self, anon_id: uuid.UUID | None) -> uuid.UUID:
         """Resolve or create a user by anon_id, refreshing updated_at on hit.
 
         Args:
-            anon_id: UUID string from the client (None on first request).
+            anon_id: Parsed UUID from the client (None on first request).
 
         Returns:
-            The anon_id string of the resolved or newly created user.
+            The anon_id of the resolved or newly created user.
         """
         if anon_id is not None:
-            try:
-                parsed: uuid.UUID = uuid.UUID(anon_id)
-                found: str | None = await self._touch_existing_async(parsed)
-                if found is not None:
-                    return found
-            except ValueError:
-                # Malformed UUID from client — treat as absent, issue fresh identity
-                logger.warning("anon_id_parse_failed", raw_anon_id=anon_id)
+            found: uuid.UUID | None = await self._touch_existing_async(anon_id)
+            if found is not None:
+                return found
 
         return await self._create_new_async()
 
-    async def _touch_existing_async(self, anon_uuid: uuid.UUID) -> str | None:
-        """Update updated_at for an existing user row. Returns anon_id str or None."""
+    async def _touch_existing_async(self, anon_uuid: uuid.UUID) -> uuid.UUID | None:
+        """Update updated_at for an existing user row. Returns anon_id or None."""
         async with self._session_factory() as session:
             result = await session.execute(
                 select(UserRow.anon_id).where(UserRow.anon_id == anon_uuid)
@@ -69,10 +64,10 @@ class SqlAlchemyUserRepository:
                 update(UserRow).where(UserRow.anon_id == anon_uuid).values(updated_at=func.now())
             )
             await session.commit()
-        return str(anon_uuid)
+        return anon_uuid
 
-    async def _create_new_async(self) -> str:
-        """Insert a new user row and return the generated anon_id string."""
+    async def _create_new_async(self) -> uuid.UUID:
+        """Insert a new user row and return the generated anon_id."""
         new_anon_id: uuid.UUID = uuid.uuid4()
         new_user_id: uuid.UUID = uuid.uuid4()
         async with self._session_factory() as session:
@@ -81,9 +76,9 @@ class SqlAlchemyUserRepository:
             )
             await session.commit()
         logger.info("user_created", anon_id=str(new_anon_id))
-        return str(new_anon_id)
+        return new_anon_id
 
 
-def get_user_repository() -> SqlAlchemyUserRepository:
+def get_user_repository() -> IUserRepository:
     """FastAPI dependency — returns a SqlAlchemyUserRepository."""
     return SqlAlchemyUserRepository(get_session_factory())

@@ -32,6 +32,7 @@ PAIRS: list[tuple[str, str, str]] = [
     ("redis_store.session_store", "ISessionStore", "RedisSessionStore"),
     ("db.repositories.user", "IUserRepository", "SqlAlchemyUserRepository"),
     ("db.repositories.chat", "IChatRepository", "SqlAlchemyChatRepository"),
+    ("services.chats.chat_service", "IChatService", "ChatService"),
 ]
 
 

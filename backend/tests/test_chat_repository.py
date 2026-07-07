@@ -66,7 +66,7 @@ class TestChatRepository:
         state: ConversationStateDTO = _fresh_state()
         repo: SqlAlchemyChatRepository = _make_repo(db_engine)
 
-        await repo.upsert_chat_snapshot_async(state, TEST_ANON_ID)
+        await repo.upsert_chat_snapshot_async(state, _TEST_ANON_UUID)
 
         row: ChatRow | None = await _fetch_row(db_engine, state.session_id)
         assert row is not None
@@ -77,7 +77,7 @@ class TestChatRepository:
         state: ConversationStateDTO = _fresh_state()
         repo: SqlAlchemyChatRepository = _make_repo(db_engine)
 
-        await repo.upsert_chat_snapshot_async(state, TEST_ANON_ID)
+        await repo.upsert_chat_snapshot_async(state, _TEST_ANON_UUID)
 
         row: ChatRow | None = await _fetch_row(db_engine, state.session_id)
         assert row is not None
@@ -90,12 +90,12 @@ class TestChatRepository:
         repo: SqlAlchemyChatRepository = _make_repo(db_engine)
 
         # First upsert establishes the anon_id
-        await repo.upsert_chat_snapshot_async(state, TEST_ANON_ID)
+        await repo.upsert_chat_snapshot_async(state, _TEST_ANON_UUID)
 
         # Second upsert with a different anon_id — the original must be preserved
         # (no FK constraint, so any UUID can be used without a corresponding users row)
         other_anon_uuid: uuid.UUID = uuid.uuid4()
-        await repo.upsert_chat_snapshot_async(state, str(other_anon_uuid))
+        await repo.upsert_chat_snapshot_async(state, other_anon_uuid)
 
         row: ChatRow | None = await _fetch_row(db_engine, state.session_id)
         assert row is not None
@@ -112,7 +112,7 @@ class TestChatRepository:
         state.collected_data.m1.intended_use = EIntendedUse.OWNER_OCCUPIER
         repo: SqlAlchemyChatRepository = _make_repo(db_engine)
 
-        await repo.upsert_chat_snapshot_async(state, TEST_ANON_ID)
+        await repo.upsert_chat_snapshot_async(state, _TEST_ANON_UUID)
 
         row: ChatRow | None = await _fetch_row(db_engine, state.session_id)
         assert row is not None
@@ -127,12 +127,12 @@ class TestChatRepository:
         repo: SqlAlchemyChatRepository = _make_repo(db_engine)
 
         # First upsert — M1 complete
-        await repo.upsert_chat_snapshot_async(state, TEST_ANON_ID)
+        await repo.upsert_chat_snapshot_async(state, _TEST_ANON_UUID)
 
         # Second upsert — M2 complete, m1 data still present
         state.completion_status.M2 = True
         state.collected_data.m2.household_size = 2
-        await repo.upsert_chat_snapshot_async(state, TEST_ANON_ID)
+        await repo.upsert_chat_snapshot_async(state, _TEST_ANON_UUID)
 
         row: ChatRow | None = await _fetch_row(db_engine, state.session_id)
         assert row is not None
@@ -153,7 +153,7 @@ class TestChatRepository:
         state.collected_data.m4.budget_max = 800_000
         repo: SqlAlchemyChatRepository = _make_repo(db_engine)
 
-        await repo.upsert_chat_snapshot_async(state, TEST_ANON_ID)
+        await repo.upsert_chat_snapshot_async(state, _TEST_ANON_UUID)
 
         row: ChatRow | None = await _fetch_row(db_engine, state.session_id)
         assert row is not None
@@ -164,8 +164,8 @@ class TestChatRepository:
         state: ConversationStateDTO = _fresh_state()
         repo: SqlAlchemyChatRepository = _make_repo(db_engine)
 
-        await repo.upsert_chat_snapshot_async(state, TEST_ANON_ID)
-        await repo.upsert_chat_snapshot_async(state, TEST_ANON_ID)
+        await repo.upsert_chat_snapshot_async(state, _TEST_ANON_UUID)
+        await repo.upsert_chat_snapshot_async(state, _TEST_ANON_UUID)
 
         factory: async_sessionmaker[AsyncSession] = async_sessionmaker(
             db_engine, expire_on_commit=False
@@ -184,11 +184,11 @@ class TestChatRepository:
         state.initial_intent = EUserIntent.RECOMMEND_SUBURBS
         repo: SqlAlchemyChatRepository = _make_repo(db_engine)
 
-        await repo.upsert_chat_snapshot_async(state, TEST_ANON_ID)
+        await repo.upsert_chat_snapshot_async(state, _TEST_ANON_UUID)
 
         # Second upsert with no intent — COALESCE must preserve the original
         state.initial_intent = None
-        await repo.upsert_chat_snapshot_async(state, TEST_ANON_ID)
+        await repo.upsert_chat_snapshot_async(state, _TEST_ANON_UUID)
 
         row: ChatRow | None = await _fetch_row(db_engine, state.session_id)
         assert row is not None
@@ -199,14 +199,14 @@ class TestChatRepository:
         state.status = EStatus.REQUIREMENTS_COMPLETE
         repo: SqlAlchemyChatRepository = _make_repo(db_engine)
 
-        await repo.upsert_chat_snapshot_async(state, TEST_ANON_ID)
+        await repo.upsert_chat_snapshot_async(state, _TEST_ANON_UUID)
         row_after_first: ChatRow | None = await _fetch_row(db_engine, state.session_id)
         assert row_after_first is not None
         first_completed_at = row_after_first.completed_at
 
         # Second upsert with IN_PROGRESS — completed_at must not be cleared
         state.status = EStatus.IN_PROGRESS
-        await repo.upsert_chat_snapshot_async(state, TEST_ANON_ID)
+        await repo.upsert_chat_snapshot_async(state, _TEST_ANON_UUID)
 
         row_after_second: ChatRow | None = await _fetch_row(db_engine, state.session_id)
         assert row_after_second is not None
@@ -217,7 +217,7 @@ class TestChatRepository:
         state.conversation_history = [{"role": "user", "content": "hello"}]
         repo: SqlAlchemyChatRepository = _make_repo(db_engine)
 
-        await repo.upsert_chat_snapshot_async(state, TEST_ANON_ID)
+        await repo.upsert_chat_snapshot_async(state, _TEST_ANON_UUID)
 
         row: ChatRow | None = await _fetch_row(db_engine, state.session_id)
         assert row is not None
@@ -233,17 +233,17 @@ class TestChatRepository:
 
         with patch.object(repo, "_do_upsert_async", AsyncMock(side_effect=RuntimeError("boom"))):
             # Must not raise — exception is logged and suppressed
-            await repo.upsert_chat_snapshot_async(state, TEST_ANON_ID)
+            await repo.upsert_chat_snapshot_async(state, _TEST_ANON_UUID)
 
     async def test_list_chats_by_anon_returns_correct_rows(self, db_engine: AsyncEngine) -> None:
         state1: ConversationStateDTO = _fresh_state()
         state2: ConversationStateDTO = _fresh_state()
         repo: SqlAlchemyChatRepository = _make_repo(db_engine)
 
-        await repo.upsert_chat_snapshot_async(state1, TEST_ANON_ID)
-        await repo.upsert_chat_snapshot_async(state2, TEST_ANON_ID)
+        await repo.upsert_chat_snapshot_async(state1, _TEST_ANON_UUID)
+        await repo.upsert_chat_snapshot_async(state2, _TEST_ANON_UUID)
 
-        results = await repo.list_chats_by_anon_async(TEST_ANON_ID)
+        results = await repo.list_chats_by_anon_async(_TEST_ANON_UUID)
         session_ids: set[str] = {r.session_id for r in results}
         assert len(results) == 2
         assert state1.session_id in session_ids
@@ -254,5 +254,5 @@ class TestChatRepository:
     ) -> None:
         repo: SqlAlchemyChatRepository = _make_repo(db_engine)
 
-        results = await repo.list_chats_by_anon_async(str(uuid.uuid4()))
+        results = await repo.list_chats_by_anon_async(uuid.uuid4())
         assert results == []

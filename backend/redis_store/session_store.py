@@ -36,7 +36,7 @@ class ISessionStore(Protocol):
         ...
 
 
-class RedisSessionStore:
+class RedisSessionStore(ISessionStore):
     """ISessionStore backed by Redis with a sliding 7-day TTL."""
 
     async def load_session_async(self, session_id: str) -> ConversationStateDTO | None:

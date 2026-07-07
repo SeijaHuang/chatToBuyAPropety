@@ -4,7 +4,7 @@ import { http, HttpResponse } from 'msw'
 import { useSession } from '@/hooks'
 import { useConversationStore } from '@/stores/conversationStore'
 import { server } from '@/__tests__/msw/server'
-import { mockConversationState } from '@/__tests__/msw/fixtures'
+import { mockSessionRestoreResponse } from '@/__tests__/msw/fixtures'
 import { ENDPOINTS } from '@/constants/endpoints'
 
 const BASE_URL = 'http://localhost:8000'
@@ -55,12 +55,12 @@ describe('useSession', () => {
     expect('conversationHistory' in (state ?? {})).toBe(false)
   })
 
-  it('rebuilds messages from conversationHistory on restore', async () => {
+  it('displays resumeMessage as assistant message when provided', async () => {
     server.use(
       http.get(`${BASE_URL}/${ENDPOINTS.CHAT}/:sessionId`, () =>
         HttpResponse.json({
           ok: true,
-          data: { ...mockConversationState, conversationHistory: [{ role: 'user', content: 'hi' }] },
+          data: { resumeMessage: 'Welcome back!', conversationHistory: [], state: mockSessionRestoreResponse.state },
         })
       )
     )
@@ -71,7 +71,37 @@ describe('useSession', () => {
 
     const msgs = useConversationStore.getState().messages
     expect(msgs).toHaveLength(1)
-    expect(msgs[0].content).toBe('hi')
+    expect(msgs[0].content).toBe('Welcome back!')
+    expect(msgs[0].role).toBe('assistant')
+  })
+
+  it('restores conversation history messages from Redis hit response', async () => {
+    server.use(
+      http.get(`${BASE_URL}/${ENDPOINTS.CHAT}/:sessionId`, () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            resumeMessage: null,
+            conversationHistory: [
+              { role: 'user', content: 'Hi' },
+              { role: 'assistant', content: 'Hello!' },
+            ],
+            state: mockSessionRestoreResponse.state,
+          },
+        })
+      )
+    )
+
+    const { result } = renderHook(() => useSession('test-session'))
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+    const msgs = useConversationStore.getState().messages
+    expect(msgs).toHaveLength(2)
+    expect(msgs[0].role).toBe('user')
+    expect(msgs[0].content).toBe('Hi')
+    expect(msgs[1].role).toBe('assistant')
+    expect(msgs[1].content).toBe('Hello!')
   })
 
   it('falls back to initSession when GET returns 404', async () => {
@@ -100,7 +130,7 @@ describe('useSession', () => {
     server.use(
       http.get(`${BASE_URL}/${ENDPOINTS.CHAT}/:sessionId`, async () => {
         await pendingPromise
-        return HttpResponse.json({ ok: true, data: mockConversationState })
+        return HttpResponse.json({ ok: true, data: mockSessionRestoreResponse })
       })
     )
 

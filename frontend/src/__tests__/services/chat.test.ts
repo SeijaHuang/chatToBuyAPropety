@@ -77,11 +77,12 @@ describe('getSession', () => {
     expect(result.ok).toBe(true)
   })
 
-  it('returns the ConversationStateDTO on success', async () => {
+  it('returns SessionRestoreResponse on success', async () => {
     const result = await getSession(TEST_SESSION_ID)
     expect(result.ok).toBe(true)
     if (result.ok) {
-      expect(result.data.sessionId).toBe('test-session')
+      expect(result.data.state.sessionId).toBe('test-session')
+      expect(result.data.resumeMessage).toBeNull()
     }
   })
 

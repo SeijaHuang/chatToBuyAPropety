@@ -8,13 +8,14 @@ from unittest.mock import AsyncMock, patch
 
 from httpx import AsyncClient
 
-import routers.chat as chat_module
+import domain.llm_client as llm_client_module
 from exceptions import LLMServiceError, RateLimitError
 from models.conversation_state import ConversationStateDTO
 from models.financial import BorrowingCapacityResult
 from redis_store import session_store as session_store_module
 
-_SESSION_ID: str = "test-session-001"
+_SESSION_ID: str = "22222222-2222-4222-a222-222222222222"
+_VALID_SESSION_UUID: str = "11111111-1111-4111-a111-111111111111"
 
 _UUID4_PATTERN: re.Pattern[str] = re.compile(
     r"^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
@@ -36,8 +37,8 @@ def _mock_llm(
     tools_mock = AsyncMock(return_value=extracted if extracted is not None else {})
     complete_mock = AsyncMock(return_value=reply)
     with (
-        patch.object(chat_module._default_llm_client, "chat_with_tools_async", tools_mock),
-        patch.object(chat_module._default_llm_client, "complete_async", complete_mock),
+        patch.object(llm_client_module.llm_client, "chat_with_tools_async", tools_mock),
+        patch.object(llm_client_module.llm_client, "complete_async", complete_mock),
     ):
         yield tools_mock, complete_mock
 
@@ -222,20 +223,101 @@ async def test_chat_response_state_contains_current_module(client_async: AsyncCl
 
 
 async def test_get_session_returns_stored_state(client_async: AsyncClient) -> None:
-    """GET /chat/{id} returns the current session state from Redis."""
-    initial: ConversationStateDTO = ConversationStateDTO(session_id=_SESSION_ID)
+    """GET /chat/{id} returns resume_message=None and state snapshot on Redis hit."""
+    initial: ConversationStateDTO = ConversationStateDTO(session_id=_VALID_SESSION_UUID)
     with _mock_session(initial=initial):
-        response = await client_async.get(f"/api/v1/chat/{_SESSION_ID}")
+        response = await client_async.get(f"/api/v1/chat/{_VALID_SESSION_UUID}")
     assert response.status_code == 200
-    assert response.json()["data"]["sessionId"] == _SESSION_ID
+    data: dict[str, object] = response.json()["data"]
+    assert data["resumeMessage"] is None
+    state: dict[str, object] = response.json()["data"]["state"]
+    assert state["sessionId"] == _VALID_SESSION_UUID
 
 
 async def test_get_session_404_when_not_found(client_async: AsyncClient) -> None:
-    """GET /chat/{id} returns 404 when the session_id is absent from Redis."""
+    """GET /chat/{id} returns 404 when the session is absent from both Redis and DB."""
+    _absent_uuid: str = "22222222-2222-4222-a222-222222222222"
     with _mock_session():
-        response = await client_async.get("/api/v1/chat/nonexistent-session")
+        response = await client_async.get(f"/api/v1/chat/{_absent_uuid}")
     assert response.status_code == 404
     assert response.json()["error"]["code"] == "SessionNotFoundError"
+
+
+async def test_get_session_db_restore_returns_resume_message(client_async: AsyncClient) -> None:
+    """GET /chat/{id} calls the LLM and returns a non-null resumeMessage on Redis miss + DB hit."""
+    from db.repositories.chat import get_chat_repository
+    from main import app
+
+    db_state: ConversationStateDTO = ConversationStateDTO(session_id=_VALID_SESSION_UUID)
+    mock_repo: AsyncMock = app.dependency_overrides[get_chat_repository]()
+    mock_repo.get_chat_snapshot_async.return_value = db_state
+
+    complete_mock: AsyncMock = AsyncMock(return_value="Welcome back!")
+    with (
+        _mock_session(),
+        patch.object(llm_client_module.llm_client, "complete_async", complete_mock),
+    ):
+        response = await client_async.get(f"/api/v1/chat/{_VALID_SESSION_UUID}")
+
+    assert response.status_code == 200
+    data: dict[str, object] = response.json()["data"]
+    assert data["resumeMessage"] == "Welcome back!"
+    assert data["conversationHistory"] == []
+
+
+async def test_get_session_db_restore_reseeds_redis(client_async: AsyncClient) -> None:
+    """After DB restore, the reconstructed state with welcome message is saved back to Redis."""
+    from db.repositories.chat import get_chat_repository
+    from main import app
+
+    db_state: ConversationStateDTO = ConversationStateDTO(session_id=_VALID_SESSION_UUID)
+    mock_repo: AsyncMock = app.dependency_overrides[get_chat_repository]()
+    mock_repo.get_chat_snapshot_async.return_value = db_state
+
+    complete_mock: AsyncMock = AsyncMock(return_value="Welcome back!")
+    with (
+        _mock_session() as store,
+        patch.object(llm_client_module.llm_client, "complete_async", complete_mock),
+    ):
+        response = await client_async.get(f"/api/v1/chat/{_VALID_SESSION_UUID}")
+
+    assert response.status_code == 200
+    assert _VALID_SESSION_UUID in store
+    assert store[_VALID_SESSION_UUID].conversation_history[0]["content"] == "Welcome back!"
+
+
+async def test_get_session_db_restore_survives_redis_reseed_failure(
+    client_async: AsyncClient,
+) -> None:
+    """DB restore returns 200 and resumeMessage even when the Redis re-seed call raises."""
+    from db.repositories.chat import get_chat_repository
+    from main import app
+
+    db_state: ConversationStateDTO = ConversationStateDTO(session_id=_VALID_SESSION_UUID)
+    mock_repo: AsyncMock = app.dependency_overrides[get_chat_repository]()
+    mock_repo.get_chat_snapshot_async.return_value = db_state
+
+    complete_mock: AsyncMock = AsyncMock(return_value="Welcome back!")
+    with (
+        _mock_session(),
+        patch.object(
+            session_store_module.session_store,
+            "save_session_async",
+            AsyncMock(side_effect=Exception("Redis down")),
+        ),
+        patch.object(llm_client_module.llm_client, "complete_async", complete_mock),
+    ):
+        response = await client_async.get(f"/api/v1/chat/{_VALID_SESSION_UUID}")
+
+    assert response.status_code == 200
+    assert response.json()["data"]["resumeMessage"] == "Welcome back!"
+
+
+async def test_get_session_invalid_uuid_returns_400(client_async: AsyncClient) -> None:
+    """GET /chat/{id} with a non-UUID segment returns 400 with BadRequestError code."""
+    response = await client_async.get("/api/v1/chat/not-a-uuid")
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "BadRequestError"
 
 
 # ---------------------------------------------------------------------------
@@ -256,6 +338,15 @@ async def test_omitting_session_id_is_valid(client_async: AsyncClient) -> None:
     assert response.status_code == 200
 
 
+async def test_post_chat_invalid_session_id_returns_400(client_async: AsyncClient) -> None:
+    """POST /chat with a non-UUID sessionId returns 400 with BadRequestError code."""
+    response = await client_async.post(
+        "/api/v1/chat", json={"sessionId": "not-a-uuid", "message": "Hi"}
+    )
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "BadRequestError"
+
+
 # ---------------------------------------------------------------------------
 # LLM error propagation
 # ---------------------------------------------------------------------------
@@ -266,7 +357,7 @@ async def test_llm_failure_returns_503(client_async: AsyncClient) -> None:
     tools_mock: AsyncMock = AsyncMock(side_effect=LLMServiceError("OpenRouter unavailable"))
     with (
         _mock_session(),
-        patch.object(chat_module._default_llm_client, "chat_with_tools_async", tools_mock),
+        patch.object(llm_client_module.llm_client, "chat_with_tools_async", tools_mock),
     ):
         response = await client_async.post("/api/v1/chat", json=_build_body("Hi"))
     assert response.status_code == 503
@@ -278,7 +369,7 @@ async def test_rate_limit_returns_429(client_async: AsyncClient) -> None:
     tools_mock: AsyncMock = AsyncMock(side_effect=RateLimitError())
     with (
         _mock_session(),
-        patch.object(chat_module._default_llm_client, "chat_with_tools_async", tools_mock),
+        patch.object(llm_client_module.llm_client, "chat_with_tools_async", tools_mock),
     ):
         response = await client_async.post("/api/v1/chat", json=_build_body("Hi"))
     assert response.status_code == 429
@@ -291,8 +382,8 @@ async def test_tool_call_parse_failure_returns_empty_extracted(client_async: Asy
     complete_mock: AsyncMock = AsyncMock(return_value="What are your needs?")
     with (
         _mock_session(),
-        patch.object(chat_module._default_llm_client, "chat_with_tools_async", tools_mock),
-        patch.object(chat_module._default_llm_client, "complete_async", complete_mock),
+        patch.object(llm_client_module.llm_client, "chat_with_tools_async", tools_mock),
+        patch.object(llm_client_module.llm_client, "complete_async", complete_mock),
     ):
         response = await client_async.post("/api/v1/chat", json=_build_body("Hi"))
     assert response.status_code == 200
@@ -321,7 +412,8 @@ async def test_borrowing_capacity_computed_when_salary_extracted(client_async: A
         _mock_session(),
         _mock_llm(extracted=extracted, reply="Got your salary!"),
         patch(
-            "routers.chat.estimate_borrowing_capacity_async", AsyncMock(return_value=mock_result)
+            "services.chats.chat_service.estimate_borrowing_capacity_async",
+            AsyncMock(return_value=mock_result),
         ),
     ):
         response = await client_async.post("/api/v1/chat", json=_build_body("I earn 100k"))

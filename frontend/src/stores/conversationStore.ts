@@ -4,12 +4,12 @@ import { create } from 'zustand'
 import { v4 as uuid } from 'uuid'
 import type {
   ConversationSnapshotDTO,
-  ConversationStateDTO,
   UIMessage,
   RoutingPayload,
   BorrowingCapacityResult,
   BudgetGapResult,
   MessageRole,
+  SessionRestoreResponse,
 } from '@/types'
 import { MESSAGE_ROLE } from '@/constants'
 
@@ -23,7 +23,7 @@ interface ConversationStore {
   initSession(sessionId: string): void
   setUpdatedState(newState: ConversationSnapshotDTO): void
   setSessionFromResponse(sessionId: string, newState: ConversationSnapshotDTO): void
-  restoreSession(fullState: ConversationStateDTO): void
+  restoreSession(response: SessionRestoreResponse): void
   addUserMessage(content: string): void
   addAssistantMessage(content: string): void
   setAssistantLoading(loading: boolean): void
@@ -92,26 +92,33 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
     }
   },
 
-  restoreSession(fullState: ConversationStateDTO): void {
-    const { conversationHistory, ...snapshot } = fullState
-    const messages: UIMessage[] = conversationHistory.map(
-      (entry): UIMessage => ({
-        id: uuid(),
-        role: entry.role,
-        content: entry.content,
-        isLoading: false,
-        timestamp: new Date(),
-      })
-    )
-    if (snapshot.borrowingCapacity !== null) {
-      messages.push(makeAssistantMessage('', { borrowingCapacity: snapshot.borrowingCapacity }))
+  restoreSession(response: SessionRestoreResponse): void {
+    const { resumeMessage, state, conversationHistory } = response
+    const messages: UIMessage[] = []
+
+    if (conversationHistory.length > 0) {
+      for (const msg of conversationHistory) {
+        messages.push({
+          id: uuid(),
+          role: msg.role as MessageRole,
+          content: msg.content,
+          isLoading: false,
+          timestamp: new Date(),
+        })
+      }
+    } else if (resumeMessage !== null) {
+      messages.push(makeAssistantMessage(resumeMessage))
     }
-    if (snapshot.budgetGap?.has_gap === true) {
-      messages.push(makeAssistantMessage('', { budgetGap: snapshot.budgetGap }))
+
+    if (state.borrowingCapacity !== null) {
+      messages.push(makeAssistantMessage('', { borrowingCapacity: state.borrowingCapacity }))
+    }
+    if (state.budgetGap?.has_gap === true) {
+      messages.push(makeAssistantMessage('', { budgetGap: state.budgetGap }))
     }
     set({
-      sessionId: fullState.sessionId,
-      state: snapshot,
+      sessionId: state.sessionId,
+      state,
       messages,
       routing: null,
       isLoading: false,

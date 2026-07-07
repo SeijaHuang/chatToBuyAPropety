@@ -793,44 +793,62 @@ flex-col h-screen:
   └── ChatInput (fixed bottom-0, bg-surface/80 backdrop-blur)
 ```
 
-**P0 数据流（前端持有状态架构）：**
+**数据流（`ChatSession` 容器组件 + `useChat` / `useSession` hook）：**
 
 ```
-用户提交消息
+用户提交消息（HomePage 首次发送，或 ChatPage 内继续对话）
   │
   ▼
-1. 乐观 UI：立即在消息列表追加 user 消息，追加 assistant loading 消息
-2. 从 conversationStore 取当前完整 state
-3. POST /chat { message, state } → 后端处理（约 5–10s，无 SSE）
-4. 响应到达：
-     a. 用 response.updated_state 完整替换 conversationStore.state（不做 merge）
-     b. 用 response.reply 替换 loading 的 assistant 消息内容
-     c. 若 response.updated_state.borrowing_capacity 首次非 null → 追加 BorrowingCapacityCard
-     d. 若 response.updated_state.budget_gap?.has_gap → 追加 BudgetGapCard
-     e. 若 response.routing 非 null → 显示"查看推荐房源"CTA 按钮
-5. 同步到 sessionStorage（防刷新丢失）
+1. 乐观 UI：store.addUserMessage(content) 追加 user 消息，
+             store.setAssistantLoading(true) 追加 loading 占位气泡
+2. isNewSession = store.sessionId === null || store.sessionId === 'new'
+3. POST /api/v1/chat { sessionId: isNewSession ? null : store.sessionId, message }
+4. 响应到达（response.ok 判定，见 §7.2）：
+     a. store.addAssistantMessage(response.data.reply) 替换 loading 气泡内容
+     b. isNewSession → store.setSessionFromResponse(sessionId, state) 采纳后端生成的真实
+        sessionId，router.replace(`/chat/${sessionId}`) 同步 URL
+     c. 继续中的会话 → store.setUpdatedState(state)（response.data.state 为
+        ConversationSnapshotDTO，完整替换本地展示快照，不 merge）
+     d. state.borrowingCapacity 首次非 null → 自动追加 BorrowingCapacityCard 消息
+     e. state.budgetGap?.hasGap 为 true → 自动追加 BudgetGapCard 消息
+     f. response.data.routing 非 null → store.setRouting(routing)，CTA 卡片出现
+5. [失败] 根据 error.code 设置 errorMessage（`role="alert"` 展示于输入框上方）
 ```
 
 **路由完成后的 CTA：**
 
-当 `response.routing` 非 null 时，在消息列表底部追加一个特殊卡片：
+当 `routing` 非 null 时，在消息列表底部追加一个特殊卡片：
 
 ```
 div.glass-ai.rounded-xl
   text: "I've collected everything I need. Ready to find properties?"
   button: "View Matching Properties" (primary variant)
-  → 点击后：将 routing payload 存入 sessionStorage，跳转 /properties（P2 实现后激活）
-  → P2 未上线时：显示 "Coming soon" toast
+  → 点击后：Part 2 尚未上线，当前实现为 alert('Coming soon — property search
+    will be available in the next release.')
 ```
 
-**会话恢复（刷新页面）：**
+**新建会话（首次发送）：**
+
+`HomePage` 不生成 `sessionId`；首次发送时直接 `router.push('/chat/new?q=<message>')`，`sessionId === 'new'` 是唯一的客户端会话哨兵值。`ChatSession` 检测到 `'new'` 后跳过 `GET /chat/:sessionId` 拉取，改为 mount 时用 `initialMessage`（来自 `searchParams.q`）自动触发一次 `sendMessage`，请求体携带 `sessionId: null`；后端创建会话行并在响应中返回真实 UUID，`setSessionFromResponse` + `router.replace` 完成 URL 同步。
+
+**会话恢复（刷新页面 / 直接访问已有 URL）：**
 
 ```
-1. 从 URL 取 sessionId
-2. 从 sessionStorage 读取 `conversation_state_{sessionId}`
-3. 若存在 → 恢复到 conversationStore，渲染历史消息
-4. 若不存在 → conversationStore 为空，显示空对话界面（用户重新开始）
+ChatSession 以 sessionId 挂载
+  │
+  ├─ sessionId === 'new'  → useSession 的 enabled=false（不发请求），等待 initialMessage
+  │
+  └─ sessionId !== 'new'  → useSession(sessionId, enabled: true)
+          └─ GET /api/v1/chat/:sessionId
+                  ├─ 200 → restoreSession(SessionRestoreResponse)
+                  │         — conversationHistory 非空（Redis 命中）：逐条还原为 UIMessage[]
+                  │         — conversationHistory 为空且 resumeMessage 非 null（DB 兜底恢复，
+                  │           见后端 PRD §9）：渲染唯一一条 assistant 消息 = resumeMessage
+                  │         — 随后按 state.borrowingCapacity / state.budgetGap 重放卡片消息
+                  └─ 404 / 网络错误 → initSession(sessionId)（本地空白状态，不写后端）
 ```
+
+`isRestored` / `isLoading` 由 `useSession` 返回；`ChatSession` 在 `sessionLoading === true` 时直接返回 `null`。
 
 ---
 
@@ -838,13 +856,15 @@ div.glass-ai.rounded-xl
 
 ### 6.1 架构概述
 
-**P0 架构核心原则：前端是状态的唯一持有者。**
+**核心原则：后端（Redis + PostgreSQL）是会话 state 的唯一权威来源；`conversationStore` 本地保留的 `state` 只是一份只读展示快照，每次响应后整体替换，不参与业务逻辑推导，也不写入 `sessionStorage`。**
 
 ```
 conversationStore (Zustand)
-  └── state: ConversationStateDTO      ← 每次 POST /chat 后用 updated_state 完整替换
-  └── messages: UIMessage[]            ← 前端 UI 消息列表（含 loading 状态等 UI 专属字段）
-  └── routing: RoutingPayload | null   ← Part 2 路由负载
+  └── sessionId: string | null
+  └── state: ConversationSnapshotDTO | null  ← 每次响应后完整替换（不 merge），仅用于展示
+  └── messages: UIMessage[]                  ← 前端 UI 消息列表（含 loading 状态等 UI 专属字段）
+  └── routing: RoutingPayload | null         ← Part 2 路由负载
+  └── isLoading: boolean
 
 uiStore (Zustand)
   └── sidebarCollapsed: boolean
@@ -858,7 +878,7 @@ uiStore (Zustand)
 
 // UI 专用消息类型（包含 loading 状态，不存入后端）
 interface UIMessage {
-  id: string; // 前端生成的临时 ID
+  id: string; // 前端生成的临时 ID（uuid）
   role: "user" | "assistant";
   content: string;
   isLoading: boolean; // true 表示等待后端响应
@@ -871,23 +891,41 @@ interface UIMessage {
 interface ConversationStore {
   // 核心状态
   sessionId: string | null;
-  state: ConversationStateDTO | null; // 后端 ConversationStateDTO 完整对象
+  state: ConversationSnapshotDTO | null; // 只读展示快照，不含 conversationHistory
   messages: UIMessage[];
   routing: RoutingPayload | null;
   isLoading: boolean; // POST /chat 进行中
 
   // Actions
-  initSession: (sessionId: string) => void; // 初始化空 state
-  sendMessage: (content: string) => Promise<void>;
-  restoreFromStorage: (sessionId: string) => boolean;
-  clearSession: () => void;
+  initSession(sessionId: string): void; // 本地空白状态（sessionId 已知，state 仍为 null）
+  setUpdatedState(newState: ConversationSnapshotDTO): void; // 完整替换 state，
+  //   并在 borrowingCapacity / budgetGap 由 null→非 null（或 hasGap 变 true）时追加卡片消息
+  setSessionFromResponse(sessionId: string, newState: ConversationSnapshotDTO): void; // 新会话
+  //   拿到后端生成的真实 sessionId 后调用，同时完成 setUpdatedState 的替换与卡片注入
+  restoreSession(response: SessionRestoreResponse): void; // GET /chat/:id 恢复：
+  //   conversationHistory 非空则逐条还原为 UIMessage[]；否则用 resumeMessage 生成一条
+  //   assistant 消息；随后按 state.borrowingCapacity / state.budgetGap 重放卡片
+  addUserMessage(content: string): void;
+  addAssistantMessage(content: string): void; // 替换最后一条 loading 中的 assistant 消息
+  setAssistantLoading(loading: boolean): void; // 追加/清除 loading 占位气泡
+  setLoading(loading: boolean): void;
+  setRouting(routing: RoutingPayload): void;
+  clearSession(): void;
 }
 ```
 
-### 6.3 ConversationStateDTO TypeScript 类型
+关键行为规则：
+
+1. **`setUpdatedState` / `setSessionFromResponse` / `restoreSession` 必须完整替换** `state`，禁止 `Object.assign` 或 spread merge。
+2. **`BorrowingCapacityCard` 触发规则**：`setUpdatedState`/`setSessionFromResponse` 内部对比替换前后的 `state.borrowingCapacity`，仅当由 `null` 变为非 `null` 时才追加一条含 `borrowingCapacity` 的 assistant 消息（`restoreSession` 恢复场景下则只要 `state.borrowingCapacity` 非 null 就重放一次）。
+3. **`BudgetGapCard` 触发规则**：`state.budgetGap?.hasGap === true` 时追加一条含 `budgetGap` 的 assistant 消息。
+4. 没有任何 action 写 `sessionStorage` / `localStorage`；`initSession` 只是把本地状态清空并记下 `sessionId`，不预先构造一份完整 `ConversationStateDTO`。
+
+### 6.3 ConversationStateDTO / ConversationSnapshotDTO TypeScript 类型
 
 ```ts
-// types/conversation.ts — 与后端 models/schemas.py 严格对应
+// types/conversation.d.ts — 字段均为 camelCase，与后端 PropertyAIBaseModel 的
+// camelCase alias_generator 序列化结果直接对应，不需要在前端做 snake_case ↔ camelCase 转换
 
 type ModuleID =
   | "M1_PROPERTY_NEEDS"
@@ -899,7 +937,7 @@ type ModuleID =
 type SessionStatus = "IN_PROGRESS" | "REQUIREMENTS_COMPLETE";
 
 interface M1PropertyNeeds {
-  property_type:
+  propertyType:
     | "house"
     | "townhouse"
     | "unit"
@@ -907,34 +945,34 @@ interface M1PropertyNeeds {
     | "villa"
     | "any"
     | null;
-  min_bedrooms: number | null;
-  max_bedrooms: number | null;
-  min_bathrooms: number | null;
-  min_carspaces: number | null;
-  min_land_size: number | null; // sqm
-  max_land_size: number | null; // sqm
-  wants_pool: boolean | null;
-  wants_outdoor: boolean | null;
-  wants_study: boolean | null;
-  intended_use: "owner_occupier" | "investment" | "both" | null;
+  minBedrooms: number | null;
+  maxBedrooms: number | null;
+  minBathrooms: number | null;
+  minCarspaces: number | null;
+  minLandSize: number | null; // sqm
+  maxLandSize: number | null; // sqm
+  wantsPool: boolean | null;
+  wantsOutdoor: boolean | null;
+  wantsStudy: boolean | null;
+  intendedUse: "owner_occupier" | "investment" | "both" | null;
 }
 
 interface M2Lifestyle {
-  household_size: number | null;
-  has_children: boolean | null;
-  needs_school_zone: boolean | null;
-  has_pets: boolean | null;
-  work_from_home: boolean | null;
-  target_tenant: "family" | "professional" | "student" | "any" | null;
+  householdSize: number | null;
+  hasChildren: boolean | null;
+  needsSchoolZone: boolean | null;
+  hasPets: boolean | null;
+  workFromHome: boolean | null;
+  targetTenant: "family" | "professional" | "student" | "any" | null;
 }
 
 interface M3SuburbPreference {
-  commute_destination: string | null;
-  commute_max_mins: number | null;
-  commute_mode: "train" | "car" | "tram" | "bus" | "any" | null;
-  preferred_suburbs: string[] | null;
-  excluded_suburbs: string[] | null;
-  lifestyle_vibe:
+  commuteDestination: string | null;
+  commuteMaxMins: number | null;
+  commuteMode: "train" | "car" | "tram" | "bus" | "any" | null;
+  preferredSuburbs: string[] | null;
+  excludedSuburbs: string[] | null;
+  lifestyleVibe:
     | "inner_city"
     | "suburban"
     | "leafy"
@@ -944,14 +982,14 @@ interface M3SuburbPreference {
 }
 
 interface M4Budget {
-  budget_min: number | null; // AUD 整数
-  budget_max: number | null; // AUD 整数
-  deposit_amount: number | null; // AUD 整数
-  pre_tax_salary: number | null; // AUD/年 税前
-  is_joint: boolean | null;
-  partner_salary: number | null; // AUD/年 税前
-  first_home_buyer: boolean | null;
-  loan_term_years: number | null; // 用户期望贷款年限
+  budgetMin: number | null; // AUD 整数
+  budgetMax: number | null; // AUD 整数
+  depositAmount: number | null; // AUD 整数
+  preTaxSalary: number | null; // AUD/年 税前
+  partnerSalary: number | null; // AUD/年 税前
+  isJoint: boolean | null;
+  firstHomeBuyer: boolean | null;
+  loanTermYears: number | null; // 用户期望贷款年限
 }
 
 interface CollectedData {
@@ -962,24 +1000,24 @@ interface CollectedData {
 }
 
 interface BorrowingCapacityResult {
-  estimated_capacity: number; // AUD，四舍五入至最近 $10,000
-  monthly_repayment: number; // AUD/月
-  based_on_salary: number; // 税前薪资总额
-  is_joint: boolean;
-  annual_rate: number; // 利率 %
-  loan_term_years: number;
-  rate_source: string; // 利率来源描述
+  estimatedCapacity: number; // AUD，四舍五入至最近 $10,000
+  monthlyRepayment: number; // AUD/月
+  basedOnSalary: number; // 税前薪资总额
+  isJoint: boolean;
+  annualRate: number; // 利率 %
+  loanTermYears: number;
+  rateSource: string; // 利率来源描述
   disclaimer: string; // ⚠️ 必须展示，合规要求
 }
 
 interface BudgetGapResult {
-  has_gap: boolean;
-  budget_max: number;
-  market_median: number;
-  gap_amount: number;
-  gap_percentage: number;
-  reference_suburb: string;
-  suggested_actions: string[]; // ≥ 2 项
+  hasGap: boolean;
+  budgetMax: number;
+  marketMedian: number;
+  gapAmount: number;
+  gapPercentage: number;
+  referenceSuburb: string;
+  suggestedActions: string[]; // ≥ 2 项
 }
 
 interface ConversationStateDTO {
@@ -990,15 +1028,27 @@ interface ConversationStateDTO {
   collectedData: CollectedData;
   conversationHistory: Array<{ role: "user" | "assistant"; content: string }>;
   finalNeeds: CollectedData | null;
-  borrowing_capacity: BorrowingCapacityResult | null; // S-G 新增
-  budget_gap: BudgetGapResult | null; // S-H 新增
+  borrowingCapacity: BorrowingCapacityResult | null;
+  budgetGap: BudgetGapResult | null;
+}
+
+// POST /chat 每轮响应中的 state 字段类型 —— 省略 conversationHistory，保持响应体精简
+type ConversationSnapshotDTO = Omit<ConversationStateDTO, "conversationHistory">;
+
+// GET /chat/:sessionId 的响应体
+interface SessionRestoreResponse {
+  resumeMessage: string | null; // Redis 命中为 null；DB 兜底恢复时为 LLM 生成的欢迎语
+  state: ConversationSnapshotDTO;
+  conversationHistory: Array<{ role: string; content: string }>; // Redis 命中时非空；DB 恢复时为 []
 }
 ```
+
+> 后端 `BorrowingCapacityResult` / `BudgetGapResult` 是 `@dataclass`（非 `PropertyAIBaseModel`），序列化时**不经过** camelCase `alias_generator`。但实际接口返回值确认为 camelCase（见 `types/financial.d.ts` 与 CLAUDE.md 关键不变量 #15 的说明差异，两处以代码实测为准，不在此处展开）。
 
 ### 6.4 RoutingPayload TypeScript 类型
 
 ```ts
-// types/routing.ts
+// types/routing.d.ts
 
 type EUserIntent =
   | "recommend_suburbs"
@@ -1011,21 +1061,21 @@ type EExecutionMode = "code_driven" | "agentic_loop";
 type ETriggerSource = "auto_complete" | "keyword" | "manual";
 
 interface UserNeeds {
-  session_id: string;
-  generated_at: string; // ISO 8601
-  schema_version: string; // "1.1"
+  sessionId: string;
+  generatedAt: string; // ISO 8601
+  schemaVersion: string; // "1.1"
   collected: CollectedData;
-  initial_intent: EUserIntent;
+  initialIntent: EUserIntent;
 }
 
 interface RoutingPayload {
   intent: EUserIntent;
-  session_id: string;
-  user_needs: UserNeeds;
-  execution_mode: EExecutionMode;
-  agents_hint: string[];
-  triggered_at: string; // ISO 8601
-  trigger_source: ETriggerSource;
+  sessionId: string;
+  userNeeds: UserNeeds;
+  executionMode: EExecutionMode;
+  agentsHint: string[];
+  triggeredAt: string; // ISO 8601
+  triggerSource: ETriggerSource;
 }
 ```
 
@@ -1041,52 +1091,54 @@ export function createInitialState(sessionId: string): ConversationStateDTO {
     completionStatus: { M1: false, M2: false, M3: false, M4: false },
     collectedData: {
       m1: {
-        property_type: null,
-        min_bedrooms: null,
-        max_bedrooms: null,
-        min_bathrooms: null,
-        min_carspaces: null,
-        min_land_size: null,
-        max_land_size: null,
-        wants_pool: null,
-        wants_outdoor: null,
-        wants_study: null,
-        intended_use: null,
+        propertyType: null,
+        minBedrooms: null,
+        maxBedrooms: null,
+        minBathrooms: null,
+        minCarspaces: null,
+        minLandSize: null,
+        maxLandSize: null,
+        wantsPool: null,
+        wantsOutdoor: null,
+        wantsStudy: null,
+        intendedUse: null,
       },
       m2: {
-        household_size: null,
-        has_children: null,
-        needs_school_zone: null,
-        has_pets: null,
-        work_from_home: null,
-        target_tenant: null,
+        householdSize: null,
+        hasChildren: null,
+        needsSchoolZone: null,
+        hasPets: null,
+        workFromHome: null,
+        targetTenant: null,
       },
       m3: {
-        commute_destination: null,
-        commute_max_mins: null,
-        commute_mode: null,
-        preferred_suburbs: null,
-        excluded_suburbs: null,
-        lifestyle_vibe: null,
+        commuteDestination: null,
+        commuteMaxMins: null,
+        commuteMode: null,
+        preferredSuburbs: null,
+        excludedSuburbs: null,
+        lifestyleVibe: null,
       },
       m4: {
-        budget_min: null,
-        budget_max: null,
-        deposit_amount: null,
-        pre_tax_salary: null,
-        is_joint: null,
-        partner_salary: null,
-        first_home_buyer: null,
-        loan_term_years: null,
+        budgetMin: null,
+        budgetMax: null,
+        depositAmount: null,
+        preTaxSalary: null,
+        partnerSalary: null,
+        isJoint: null,
+        firstHomeBuyer: null,
+        loanTermYears: null,
       },
     },
     conversationHistory: [],
     finalNeeds: null,
-    borrowing_capacity: null,
-    budget_gap: null,
+    borrowingCapacity: null,
+    budgetGap: null,
   };
 }
 ```
+
+`createInitialState` 目前只在测试和 `lib/utils.ts` 自身中被引用——`conversationStore.initSession` 并不调用它，而是直接把 `state` 置为 `null`（等待后端第一次响应后由 `setSessionFromResponse` 填入）。
 
 ---
 
@@ -1094,188 +1146,119 @@ export function createInitialState(sessionId: string): ConversationStateDTO {
 
 ### 7.1 基础约定
 
-| 项目     | 值                                                   |
-| -------- | ---------------------------------------------------- |
-| Base URL | `http://localhost:8000`（无 `/api/v1` 前缀）         |
-| 认证     | P0 无认证，P1 加入 `browser_fp` 字段                 |
-| 请求格式 | `Content-Type: application/json`                     |
-| 金额单位 | **AUD 整数**（`1200000` = $1,200,000），**不是**澳分 |
-| 日期格式 | ISO 8601（`"2026-05-19T10:00:00"`）                  |
+| 项目     | 值                                                                                          |
+| -------- | -------------------------------------------------------------------------------------------- |
+| Base URL | `process.env.NEXT_PUBLIC_API_BASE_URL`（不含 `/api/v1`）；`ENDPOINTS` 常量自带 `api/v1/` 前缀 |
+| 身份     | 匿名身份，`propertyai_anon_id` HttpOnly cookie；axios 实例配置 `withCredentials: true`，cookie 自动随请求发送，不出现在 request/response body 中 |
+| 请求格式 | `Content-Type: application/json`                                                             |
+| 金额单位 | **AUD 整数**（`1200000` = $1,200,000），**不是**澳分                                          |
+| 日期格式 | ISO 8601（`"2026-05-19T10:00:00Z"`）                                                          |
 
 ### 7.2 Axios 实例封装（`lib/request.ts`）
 
-所有 HTTP 请求统一通过 `lib/request.ts` 导出的 axios 实例发出，不直接使用 `axios` 或 `fetch`。
+所有 HTTP 请求统一通过 `lib/request.ts` 导出的 `request.post` / `request.get`，不直接使用 `axios` 或 `fetch`。与早期设计不同的是：**请求失败不抛出异常**——`request.post` / `request.get` 始终 resolve 为一个判别联合 `APIResponse<TData>`，调用方通过 `response.ok` 分支处理成功/失败，而不是 `try/catch`。
 
 **文件：** `src/lib/request.ts`
 
 ```ts
-import axios, {
-  type AxiosInstance,
-  type AxiosRequestConfig,
-  type AxiosResponse,
-  type InternalAxiosRequestConfig,
-  AxiosError,
-} from "axios";
+import axios, { isAxiosError, type AxiosInstance, type AxiosResponse, type InternalAxiosRequestConfig } from 'axios'
+import { ERROR_CODE, ERROR_MESSAGE } from '@/constants/errorCodes'
+import type { APIResponse, ErrorDetail } from '@/types'
 
-// ─── 自定义错误类 ───────────────────────────────────────────
-export class APIError extends Error {
-  constructor(
-    public readonly status: number,
-    public readonly code: string,
-    public readonly detail?: string,
-    public readonly retryAfter?: number, // 429 时后端返回的重试等待秒数
-  ) {
-    super(detail ?? code);
-    this.name = "APIError";
-  }
-}
-
-// ─── 后端错误响应体类型 ──────────────────────────────────────
-interface BackendError {
-  error: string;
-  detail?: string;
-  retry_after?: number;
-}
-
-// ─── 创建 axios 实例 ─────────────────────────────────────────
-const instance: AxiosInstance = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_BASE_URL, // e.g. http://localhost:8000
-  timeout: 30_000, // 30s（P0 双轮 LLM 约 10s，留余量）
+const axiosClient: AxiosInstance = axios.create({
+  baseURL: process.env.NEXT_PUBLIC_API_BASE_URL,
+  withCredentials: true, // 携带 propertyai_anon_id cookie
+  timeout: 30_000,
   headers: {
-    "Content-Type": "application/json",
-    Accept: "application/json",
+    'Content-Type': 'application/json',
+    Accept: 'application/json',
   },
-});
+})
 
-// ─── 请求拦截器 ──────────────────────────────────────────────
-instance.interceptors.request.use(
-  (config: InternalAxiosRequestConfig) => {
-    // P1：在此注入 Authorization header 或 browser_fp
-    // const token = getToken()
-    // if (token) config.headers.Authorization = `Bearer ${token}`
-    return config;
-  },
-  (error) => Promise.reject(error),
-);
+axiosClient.interceptors.request.use(
+  (config: InternalAxiosRequestConfig): InternalAxiosRequestConfig => {
+    // @todo P1: 注入 auth token — config.headers.Authorization = `Bearer ${token}`
+    return config
+  }
+)
 
-// ─── 响应拦截器 ──────────────────────────────────────────────
-instance.interceptors.response.use(
-  // 成功：直接返回 response，由调用方取 .data
-  (response: AxiosResponse) => response,
+// 将 axios 错误 / 后端 { error: { code, message, details } } 信封归一化为 ErrorDetail；
+// 无法识别的形状一律归为 ERROR_CODE.UNKNOWN，网络层错误（无 response）归为 ERROR_CODE.NETWORK
+function normalizeError(err: unknown): ErrorDetail { /* 见源码 lib/request.ts */ }
 
-  // 失败：统一转换为 APIError
-  async (error: AxiosError<BackendError>) => {
-    const status = error.response?.status;
-    const body = error.response?.data;
-    const code = body?.error ?? "unknown_error";
-    const detail = body?.detail;
+export { axiosClient }
 
-    // 429 自动重试（最多 1 次）
-    if (status === 429) {
-      const retryAfter = body?.retry_after ?? 2;
-      const config = error.config;
-
-      if (
-        config &&
-        !(config as AxiosRequestConfig & { _retried?: boolean })._retried
-      ) {
-        (config as AxiosRequestConfig & { _retried?: boolean })._retried = true;
-        await new Promise((resolve) => setTimeout(resolve, retryAfter * 1000));
-        return instance(config);
-      }
-
-      throw new APIError(429, code, detail, retryAfter);
+export const request = {
+  async post<TData>(url: string, data?: unknown): Promise<APIResponse<TData>> {
+    try {
+      const response: AxiosResponse<{ ok: true; data: TData }> = await axiosClient.post(url, data)
+      return { ok: true, data: response.data.data }
+    } catch (err) {
+      return { ok: false, error: normalizeError(err) }
     }
-
-    // 网络错误（无 response）
-    if (!error.response) {
-      throw new APIError(0, "network_error", "Connection failed");
-    }
-
-    throw new APIError(status ?? 0, code, detail);
   },
-);
-
-export default instance;
+  async get<TData>(url: string, params?: unknown): Promise<APIResponse<TData>> {
+    try {
+      const response: AxiosResponse<{ ok: true; data: TData }> = await axiosClient.get(url, { params })
+      return { ok: true, data: response.data.data }
+    } catch (err) {
+      return { ok: false, error: normalizeError(err) }
+    }
+  },
+}
 ```
 
-### 7.3 API 方法封装（`lib/api.ts`）
+当前实现**没有** 429 自动重试逻辑，也没有独立的 `APIError` 异常类——这两点是与早期设计的主要差异，需要重试或限流处理时再单独评估加回来。
 
-业务接口全部集中在 `lib/api.ts`，统一使用 `request` 实例，不在组件或 hook 内直接调用 axios。
+### 7.3 API 方法封装（`services/`）
 
-**文件：** `src/lib/api.ts`
+业务接口按后端资源拆分到 `src/services/` 下的独立文件（不再集中到单个 `lib/api.ts`），统一使用 `lib/request.ts` 的 `request`，不在组件或 hook 内直接调用 axios。
+
+**`src/services/chat.ts`：**
 
 ```ts
-import request from "./request";
-import type { ConversationStateDTO, CollectedData } from "@/types/conversation";
-import type { ChatResponse, SummaryResponse } from "@/types/api";
-import type { EUserIntent } from "@/types/routing";
+import { request } from '@/lib/request'
+import { ENDPOINTS } from '@/constants/endpoints'
+import type { APIResponse, ChatResponse, ChatSessionDTO, SessionRestoreResponse } from '@/types'
 
-// ─── P0 接口 ─────────────────────────────────────────────────
-
-/**
- * POST /chat
- * 发送消息，后端完整处理后返回 AI 回复 + updated_state。
- * ⚠️ P0 为同步 JSON 响应（约 5–10s），P1 改为 SSE。
- */
-export async function postChat(
+export function postChat(
   message: string,
-  state: ConversationStateDTO,
-): Promise<ChatResponse> {
-  const { data } = await request.post<ChatResponse>("/chat", {
-    message,
-    state,
-  });
-  return data;
+  sessionId: string | null,
+): Promise<APIResponse<ChatResponse>> {
+  return request.post<ChatResponse>(ENDPOINTS.CHAT, { message, sessionId })
 }
 
-/**
- * POST /chat/summary
- * 4 个模块全部完成后调用，生成自然语言摘要 + UserNeeds 结构。
- */
-export async function postChatSummary(
+export function getSession(sessionId: string): Promise<APIResponse<SessionRestoreResponse>> {
+  return request.get<SessionRestoreResponse>(`${ENDPOINTS.CHAT}/${sessionId}`)
+}
+
+export function getChats(): Promise<APIResponse<ChatSessionDTO[]>> {
+  return request.get<ChatSessionDTO[]>(ENDPOINTS.CHATS)
+}
+```
+
+**`src/services/summary.ts`：**
+
+```ts
+import { request } from '@/lib/request'
+import { ENDPOINTS } from '@/constants/endpoints'
+import { USER_INTENT } from '@/constants'
+import type { APIResponse, CollectedData, EUserIntent, SummaryResponse } from '@/types'
+
+export function postChatSummary(
   collectedData: CollectedData,
   sessionId: string,
-  initialIntent: EUserIntent = "open_ended_query",
-): Promise<SummaryResponse> {
-  const { data } = await request.post<SummaryResponse>("/chat/summary", {
-    collected_data: collectedData,
-    session_id: sessionId,
-    initial_intent: initialIntent,
-  });
-  return data;
+  initialIntent: EUserIntent = USER_INTENT.OPEN_ENDED_QUERY
+): Promise<APIResponse<SummaryResponse>> {
+  return request.post<SummaryResponse>(ENDPOINTS.CHAT_SUMMARY, {
+    collectedData,
+    sessionId,
+    initialIntent,
+  })
 }
-
-/**
- * GET /health
- * 健康检查，应用启动时调用确认后端可达。
- */
-export async function getHealth(): Promise<{ status: string }> {
-  const { data } = await request.get<{ status: string }>("/health");
-  return data;
-}
-
-// ─── P1 接口（占位，后端 P1 就绪后实现） ───────────────────────
-
-/**
- * GET /chat/{sessionId}
- * P1：从 Redis 恢复会话状态，替代 P0 的 sessionStorage 方案。
- * @todo 后端 P1 实现后取消注释
- */
-// export async function getSession(sessionId: string) {
-//   const { data } = await request.get(`/chat/${sessionId}`)
-//   return data
-// }
-
-/**
- * DELETE /chat/{sessionId}
- * P1：清除 Redis 会话（"重新开始"功能）。
- * @todo 后端 P1 实现后取消注释
- */
-// export async function deleteSession(sessionId: string): Promise<void> {
-//   await request.delete(`/chat/${sessionId}`)
-// }
 ```
+
+`postChat` 请求体只有 `{ message, sessionId }`——不再携带 `state`；`postChatSummary` 的请求体字段是 camelCase（`collectedData` / `sessionId` / `initialIntent`），因为 axios 直接把 JS 对象序列化为 JSON，后端 Pydantic 模型的 `alias_generator` 负责按 camelCase 反序列化，前端不需要手动转换成 snake_case。
 
 ### 7.4 P1 SSE 专用封装（`lib/sse.ts`）
 

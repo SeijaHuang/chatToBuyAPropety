@@ -1,5 +1,6 @@
 """Shared pytest fixtures for the PropertyAI backend test suite."""
 
+import uuid
 from collections.abc import AsyncGenerator
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
@@ -16,7 +17,8 @@ from sqlalchemy.ext.asyncio import (
 
 from config import settings
 from db.models import Base
-from db.repositories.chat import SqlAlchemyChatRepository, get_chat_repository
+from db.repositories.chat import IChatRepository, get_chat_repository
+from db.repositories.user import IUserRepository, get_user_repository
 from main import app
 from models.conversation_state import ConversationStateDTO
 from redis_store.client import redis_client
@@ -34,12 +36,15 @@ async def client_async() -> AsyncGenerator[AsyncClient, None]:
     dependencies are mocked so the test suite does not require live infrastructure.
     Individual tests that exercise those layers apply their own mocks via patch.
     """
-    mock_repo: AsyncMock = AsyncMock(spec=SqlAlchemyChatRepository)
-    mock_repo.list_chats_by_anon_async.return_value = []
+    mock_repo: AsyncMock = AsyncMock(spec=IChatRepository)
+    mock_repo.get_chat_snapshot_async.return_value = None
+    mock_anon_repo: AsyncMock = AsyncMock(spec=IUserRepository)
+    mock_anon_repo.get_or_create_async.return_value = uuid.UUID(TEST_ANON_ID)
 
     app.dependency_overrides[get_chat_repository] = lambda: mock_repo
-    app.dependency_overrides[resolve_anon_id_async] = lambda: TEST_ANON_ID
-    app.dependency_overrides[require_anon_id_cookie_async] = lambda: TEST_ANON_ID
+    app.dependency_overrides[get_user_repository] = lambda: mock_anon_repo
+    app.dependency_overrides[resolve_anon_id_async] = lambda: uuid.UUID(TEST_ANON_ID)
+    app.dependency_overrides[require_anon_id_cookie_async] = lambda: uuid.UUID(TEST_ANON_ID)
     try:
         with (
             patch.object(redis_client, "connect_async", AsyncMock()),
