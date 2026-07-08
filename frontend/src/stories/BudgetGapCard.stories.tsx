@@ -1,5 +1,5 @@
 import type { Story } from '@ladle/react'
-import { BudgetGapCard } from '@/components/BudgetGapCard'
+import { BudgetGapCard } from '@/components/chat/BudgetGapCard'
 import type { BudgetGapResult } from '@/types'
 
 const SAMPLE_WITH_GAP: BudgetGapResult = {

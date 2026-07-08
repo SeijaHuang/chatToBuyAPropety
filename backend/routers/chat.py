@@ -24,7 +24,7 @@ from routers.deps import (
     resolve_anon_id_async,
     validate_optional_session_id_async,
 )
-from services.chats.chat_service import (
+from services.chat_service import (
     ChatTurnResult,
     IChatService,
     SessionRestoreResult,
@@ -169,7 +169,7 @@ async def chat_summary_async(
     """Return a natural-language summary of all collected property requirements.
 
     Summary generation (all-None validation, prompt build, LLM call, UserNeeds
-    assembly) lives in services.chats.chat_service.ChatService.generate_summary_async.
+    assembly) lives in services.chat_service.ChatService.generate_summary_async.
 
     Args:
         request: Inbound payload carrying the CollectedData to summarise.

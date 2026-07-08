@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import { describe, it, expect } from 'vitest'
-import { BorrowingCapacityCard } from '@/components/BorrowingCapacityCard'
+import { BorrowingCapacityCard } from '@/components/chat/BorrowingCapacityCard'
 import { mockBorrowingCapacity } from '@/__tests__/msw/fixtures'
 
 // mockBorrowingCapacity:

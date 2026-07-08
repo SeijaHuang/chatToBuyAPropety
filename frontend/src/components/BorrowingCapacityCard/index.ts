@@ -1,1 +1,0 @@
-export { BorrowingCapacityCard } from './BorrowingCapacityCard'

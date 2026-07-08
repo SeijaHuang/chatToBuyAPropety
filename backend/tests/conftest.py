@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from config import settings
-from db.models import Base
+from db.orm import Base
 from db.repositories.chat import IChatRepository, get_chat_repository
 from db.repositories.user import IUserRepository, get_user_repository
 from main import app

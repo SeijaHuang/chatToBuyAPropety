@@ -4,8 +4,8 @@ import React from 'react'
 import { cn } from '@/lib/utils'
 import { MaterialSymbol, TypingIndicator } from '@/components/shared'
 import { MESSAGE_ROLE } from '@/constants'
-import { BorrowingCapacityCard } from '../BorrowingCapacityCard'
-import { BudgetGapCard } from '../BudgetGapCard'
+import { BorrowingCapacityCard } from './BorrowingCapacityCard'
+import { BudgetGapCard } from './BudgetGapCard'
 import type { MessageRole, BorrowingCapacityResult, BudgetGapResult } from '@/types'
 
 interface ChatMessageProps {

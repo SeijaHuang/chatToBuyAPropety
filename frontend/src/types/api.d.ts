@@ -1,6 +1,6 @@
 import type { ConversationSnapshotDTO } from './conversation'
 import type { RoutingPayload, EUserIntent } from './routing'
-import type { UserNeeds } from './user_needs'
+import type { UserNeeds } from './userNeeds'
 
 // --- Error envelope ---
 

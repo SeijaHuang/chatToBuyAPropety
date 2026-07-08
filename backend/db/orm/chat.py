@@ -7,7 +7,7 @@ from sqlalchemy import Index, Text, func
 from sqlalchemy.dialects.postgresql import JSONB, TIMESTAMP, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
-from db.models.base import Base
+from db.orm.base import Base
 
 
 class ChatRow(Base):

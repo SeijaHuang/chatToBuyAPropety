@@ -172,15 +172,18 @@ frontend/src/
 │   │   └── ChatHistoryList.tsx   "Recent" sidebar list — useChatHistory(); skeleton while
 │   │                             loading, empty state, active-session highlight via activePath,
 │   │                             intent-derived title (INTENT_LABELS map), formatRelativeTime()
-│   ├── ChatSession/              Top-level chat container — owns useSession + useChat;
-│   │                             renders message list, fixed ChatInput footer, error alert,
-│   │                             and post-completion CTA; auto-scrolls; treats sessionId === 'new'
-│   │                             as "not yet created" (skips restore, fires initialMessage once)
-│   ├── ChatInput/                Textarea + send button; fires onSend(trimmedMessage)
-│   ├── ChatMessage/               Renders user / assistant message bubble; embeds result cards
-│   ├── ModuleProgress/            Sticky step-progress bar (M1→M4); ModuleStep is internal
-│   ├── BorrowingCapacityCard/     Displays BorrowingCapacityResult; disclaimer always rendered
-│   └── BudgetGapCard/             Displays BudgetGapResult; returns null when has_gap is false
+│   └── chat/                     Chat-domain feature components (flat files, one barrel)
+│       ├── index.ts              Barrel — re-exports all six chat components
+│       ├── ChatSession.tsx       Top-level chat container — owns useSession + useChat;
+│       │                         renders message list, fixed ChatInput footer, error alert,
+│       │                         and post-completion CTA; auto-scrolls; treats sessionId === 'new'
+│       │                         as "not yet created" (skips restore, fires initialMessage once)
+│       ├── ChatInput.tsx         Textarea + send button; fires onSend(trimmedMessage)
+│       ├── ChatMessage.tsx       Renders user / assistant message bubble; embeds result cards
+│       ├── ModuleProgress.tsx    Sticky step-progress bar (M1→M4)
+│       ├── ModuleStep.tsx        Internal step indicator used only by ModuleProgress
+│       ├── BorrowingCapacityCard.tsx  Displays BorrowingCapacityResult; disclaimer always rendered
+│       └── BudgetGapCard.tsx     Displays BudgetGapResult; returns null when has_gap is false
 │
 ├── stories/                       Ladle stories — mirrors component structure (see coding-standards.md)
 │   ├── shared/                    AIBadge, Button, Chip, Skeleton, TypingIndicator stories
@@ -205,7 +208,7 @@ frontend/src/
 │   │                              ErrorDetail, ErrorResponse, SuccessResponse
 │   ├── financial.d.ts             BorrowingCapacityResult, BudgetGapResult
 │   │                              (snake_case — backend @dataclass bypasses camelCase alias)
-│   ├── user_needs.d.ts            UserNeeds interface (mirrors backend models/user_needs.py)
+│   ├── userNeeds.d.ts             UserNeeds interface (mirrors backend models/user_needs.py)
 │   ├── routing.d.ts               USER_INTENT, EXECUTION_MODE, TRIGGER_SOURCE as const objects,
 │   │                              derived union types, RoutingPayload interface
 │   ├── ui.d.ts                    ComponentSize, ComponentVariant, ComponentColor

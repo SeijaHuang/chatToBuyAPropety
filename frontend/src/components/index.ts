@@ -1,6 +1,8 @@
-export { ChatInput }             from './ChatInput'
-export { ChatMessage }           from './ChatMessage'
-export { ModuleProgress }        from './ModuleProgress'
-export { BorrowingCapacityCard } from './BorrowingCapacityCard'
-export { BudgetGapCard }         from './BudgetGapCard'
-export { ChatSession }           from './ChatSession'
+export {
+  ChatInput,
+  ChatMessage,
+  ChatSession,
+  ModuleProgress,
+  BorrowingCapacityCard,
+  BudgetGapCard,
+} from './chat'

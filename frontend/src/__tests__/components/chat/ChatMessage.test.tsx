@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import { describe, it, expect } from 'vitest'
-import { ChatMessage } from '@/components/ChatMessage'
+import { ChatMessage } from '@/components/chat/ChatMessage'
 import type { BorrowingCapacityResult, BudgetGapResult } from '@/types'
 
 const SAMPLE_BORROWING: BorrowingCapacityResult = {

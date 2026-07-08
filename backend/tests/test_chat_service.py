@@ -17,7 +17,7 @@ from models.conversation_state import (
     M1PropertyNeeds,
 )
 from redis_store.session_store import ISessionStore
-from services.chats.chat_service import (
+from services.chat_service import (
     ChatService,
     ChatTurnResult,
     SessionRestoreResult,
