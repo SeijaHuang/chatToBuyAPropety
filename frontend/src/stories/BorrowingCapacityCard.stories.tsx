@@ -1,6 +1,6 @@
 import type { Story } from '@ladle/react'
 import type { BorrowingCapacityResult } from '@/types'
-import { BorrowingCapacityCard } from '@/components/BorrowingCapacityCard'
+import { BorrowingCapacityCard } from '@/components/chat/BorrowingCapacityCard'
 
 const SAMPLE_BORROWING: BorrowingCapacityResult = {
   estimated_capacity: 560000,

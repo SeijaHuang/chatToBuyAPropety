@@ -11,7 +11,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from db.connection import get_session_factory
-from db.models.chat import ChatRow
+from db.orm.chat import ChatRow
 from models.chat import ChatSessionDTO
 from models.conversation_state import CollectedData, ConversationStateDTO, EStatus, EUserIntent
 from models.financial import BorrowingCapacityResult

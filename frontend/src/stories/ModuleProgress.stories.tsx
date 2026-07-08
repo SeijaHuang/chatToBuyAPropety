@@ -1,5 +1,5 @@
 import type { Story } from '@ladle/react'
-import { ModuleProgress } from '@/components/ModuleProgress'
+import { ModuleProgress } from '@/components/chat/ModuleProgress'
 import { MODULE_ID } from '@/constants'
 
 export const AllPending: Story = () => (

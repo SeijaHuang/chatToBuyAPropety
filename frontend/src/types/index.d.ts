@@ -15,7 +15,7 @@ export type {
 
 export type { BorrowingCapacityResult, BudgetGapResult } from './financial'
 
-export type { UserNeeds } from './user_needs'
+export type { UserNeeds } from './userNeeds'
 
 export type {
   EUserIntent,

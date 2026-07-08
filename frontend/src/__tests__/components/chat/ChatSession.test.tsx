@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
-import { ChatSession } from '@/components/ChatSession'
+import { ChatSession } from '@/components/chat/ChatSession'
 import { useChat } from '@/hooks/useChat'
 import { useConversationStore } from '@/stores/conversationStore'
 import { createInitialState } from '@/lib/utils'

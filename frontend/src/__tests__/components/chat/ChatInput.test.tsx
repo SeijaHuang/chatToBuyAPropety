@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi } from 'vitest'
-import { ChatInput } from '@/components/ChatInput'
+import { ChatInput } from '@/components/chat/ChatInput'
 
 describe('ChatInput', () => {
   it('calls onSend with trimmed message on Enter', async () => {

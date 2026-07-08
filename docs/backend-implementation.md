@@ -84,7 +84,7 @@ If the LLM call itself fails during a Postgres restore, `LLMServiceError` (503) 
 
 ### Anonymous identity
 
-A single `users` table (`db/models/user.py`) covers both anonymous and future registered users:
+A single `users` table (`db/orm/user.py`) covers both anonymous and future registered users:
 
 - `anon_id` (unique UUID) — always set; the value round-tripped via the `propertyai_anon_id` cookie.
 - `email` (nullable, unique) — `NULL` for anonymous users; populated on registration (P1-B), on the **same row** — no migration of `chats` rows required when a user logs in.
@@ -119,7 +119,7 @@ backend/
 │                                  RateLimitError, SessionNotFoundError)
 ├── error_handlers.py              structlog configuration + FastAPI exception handler registration
 │                                  (PropertyAIException → error envelope, RequestValidationError → 422)
-├── scripts.py                     [project.scripts] entry points — test, lint, format_code,
+├── cli.py                          [project.scripts] entry points — test, lint, format_code,
 │                                  typecheck, dev (docker-compose up → _migrate (Alembic, retries
 │                                  while Postgres starts) → uvicorn)
 ├── pyproject.toml                 Canonical dependency + tool config (ruff, mypy, pytest)
@@ -154,7 +154,7 @@ backend/
 │   │   └── versions/                993128e7e195_create_chats.py (chats table),
 │   │                              2f156e1dbbc7_add_users_and_clean_chats_constraints.py
 │   │                              (users table + drops the old single-owner CHECK constraint)
-│   ├── models/                     SQLAlchemy ORM — distinct from the models/ Pydantic package
+│   ├── orm/                        SQLAlchemy ORM — distinct from the models/ Pydantic package
 │   │   ├── base.py                  Base(DeclarativeBase)
 │   │   ├── user.py                  UserRow — users table (user_id, anon_id, email, timestamps)
 │   │   └── chat.py                  ChatRow — chats table (session_id, anon_id, user_id, status,
@@ -217,10 +217,17 @@ backend/
 │   └── extraction_schema.py         OpenAI-format tool definition that instructs the LLM to
 │                                  return structured CollectedData fields
 │
+├── services/                       Process orchestration layer — sequences conversation/ state
+│   │                              rules, domain/ calculations + LLM gateway, and db/redis_store
+│   │                              reads/writes for one HTTP operation; owns no business rule itself
+│   └── chat_service.py             IChatService / ChatService — process_turn_async (POST /chat),
+│                                  restore_session_async (GET /chat/{id}, Redis-or-Postgres),
+│                                  generate_summary_async (POST /chat/summary)
+│
 ├── routers/
-│   ├── chat.py                      FastAPI route handlers — POST /chat, GET /chat/{session_id}
-│   │                              (Redis-or-Postgres session restore, see above), GET /chats,
-│   │                              POST /chat/summary; all endpoints tagged "chat"
+│   ├── chat.py                      FastAPI route handlers — POST /chat, GET /chat/{session_id},
+│   │                              GET /chats, POST /chat/summary; resolves dependencies, shapes
+│   │                              HTTP responses, delegates all orchestration to services/chat_service.py
 │   └── deps.py                      Cookie-based identity dependencies —
 │                                  resolve_anon_id_async (auto-create), require_anon_id_cookie_async
 │                                  (400 if missing/invalid, no auto-create)
@@ -235,6 +242,8 @@ backend/
     ├── test_state_machine.py        S-B unit tests
     ├── test_system_prompt.py        S-C unit tests
     ├── test_chat_endpoint.py        S-D integration tests (POST /chat, GET /chat/{id}, GET /chats)
+    ├── test_chat_service.py         ChatService unit tests — bypasses HTTP (see test_chat_endpoint.py
+    │                              for the same behaviour through the router)
     ├── test_intent_router.py        S-E unit tests
     ├── test_summary.py              S-F integration tests
     ├── test_borrowing_capacity.py   S-G unit tests
@@ -416,7 +425,7 @@ uv run dev
 # Dev server only (assumes Postgres/Redis already running and migrated)
 uv run uvicorn main:app --reload --port 8000
 
-# Create a new Alembic migration after changing db/models/*.py
+# Create a new Alembic migration after changing db/orm/*.py
 uv run alembic revision --autogenerate -m "description"
 
 # Apply pending migrations manually

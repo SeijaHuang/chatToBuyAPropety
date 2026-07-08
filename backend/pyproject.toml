@@ -24,7 +24,7 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-py-modules = ["scripts"]
+py-modules = ["cli"]
 
 [tool.setuptools.packages.find]
 include = ["conversation*", "db*", "domain*", "models*", "prompts*", "routers*", "tools*"]
@@ -33,11 +33,11 @@ include = ["conversation*", "db*", "domain*", "models*", "prompts*", "routers*",
 package = true
 
 [project.scripts]
-test = "scripts:test"
-lint = "scripts:lint"
-format = "scripts:format_code"
-typecheck = "scripts:typecheck"
-dev = "scripts:dev"
+test = "cli:test"
+lint = "cli:lint"
+format = "cli:format_code"
+typecheck = "cli:typecheck"
+dev = "cli:dev"
 
 [dependency-groups]
 dev = [

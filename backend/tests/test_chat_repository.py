@@ -6,8 +6,8 @@ import pytest_asyncio
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
-from db.models.chat import ChatRow
-from db.models.user import UserRow
+from db.orm.chat import ChatRow
+from db.orm.user import UserRow
 from db.repositories.chat import SqlAlchemyChatRepository
 from models.conversation_state import (
     ConversationStateDTO,

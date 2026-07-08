@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import { describe, it, expect } from 'vitest'
-import { ModuleProgress } from '@/components/ModuleProgress'
+import { ModuleProgress } from '@/components/chat/ModuleProgress'
 import { MODULE_ID } from '@/constants'
 
 describe('ModuleProgress', () => {

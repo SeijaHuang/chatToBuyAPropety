@@ -6,7 +6,7 @@ from sqlalchemy import create_engine, pool
 from sqlalchemy.engine import Connection
 
 from config import settings
-from db.models import Base  # noqa: F401 — registers all ORM models with Base.metadata
+from db.orm import Base  # noqa: F401 — registers all ORM models with Base.metadata
 
 config = context.config
 

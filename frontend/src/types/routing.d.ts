@@ -1,5 +1,5 @@
 import { USER_INTENT, EXECUTION_MODE, TRIGGER_SOURCE } from '../constants/routing'
-import type { UserNeeds } from './user_needs'
+import type { UserNeeds } from './userNeeds'
 
 export type EUserIntent    = typeof USER_INTENT[keyof typeof USER_INTENT]
 export type EExecutionMode = typeof EXECUTION_MODE[keyof typeof EXECUTION_MODE]

@@ -1,5 +1,5 @@
 import type { Story } from '@ladle/react'
-import { ChatMessage } from '@/components/ChatMessage'
+import { ChatMessage } from '@/components/chat/ChatMessage'
 import type { BorrowingCapacityResult, BudgetGapResult } from '@/types'
 
 const SAMPLE_BORROWING: BorrowingCapacityResult = {

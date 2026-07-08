@@ -9,7 +9,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from db.connection import get_session_factory
-from db.models.user import UserRow
+from db.orm.user import UserRow
 
 logger: structlog.BoundLogger = structlog.get_logger()
 

@@ -1,5 +1,5 @@
 import type { Story } from '@ladle/react'
-import { ChatInput } from '@/components/ChatInput'
+import { ChatInput } from '@/components/chat/ChatInput'
 
 export const Default: Story = () => (
   <div className="p-md max-w-2xl">
