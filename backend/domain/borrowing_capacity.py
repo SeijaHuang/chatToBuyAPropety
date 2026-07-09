@@ -9,8 +9,8 @@ import httpx
 import structlog
 
 from config import settings
-from models.conversation_state import M4Budget
-from models.financial import BorrowingCapacityResult
+from models.shared.financial import BorrowingCapacityResult
+from models.shared.submodels import M4Budget
 
 logger = structlog.get_logger()
 

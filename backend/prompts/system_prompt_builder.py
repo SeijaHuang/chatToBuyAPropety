@@ -4,13 +4,9 @@ All prompt string content lives in prompts/sections/. This module is responsible
 only for composing those sections into the correct order for each prompt type.
 """
 
-from models.conversation_state import (
-    CollectedData,
-    ConversationStateDTO,
-    EIntendedUse,
-    ESubmodel,
-    ESubmodelLabel,
-)
+from models.shared.conversation_state import ConversationStateDTO
+from models.shared.enums import EIntendedUse, ESubmodel, ESubmodelLabel
+from models.shared.submodels import CollectedData
 from prompts.sections.context import INVESTMENT_CONTEXT, OWNER_OCCUPIER_CONTEXT
 from prompts.sections.financial import build_borrowing_capacity_section, build_budget_gap_section
 from prompts.sections.guardrails import GUARDRAIL_RULES

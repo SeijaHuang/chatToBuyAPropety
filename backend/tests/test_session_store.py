@@ -2,7 +2,7 @@
 
 from unittest.mock import AsyncMock, patch
 
-from models.conversation_state import ConversationStateDTO
+from models.shared.conversation_state import ConversationStateDTO
 from redis_store.client import redis_client
 from redis_store.session_store import RedisSessionStore
 

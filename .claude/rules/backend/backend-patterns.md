@@ -102,23 +102,30 @@ Never return raw `{"detail": "..."}` FastAPI defaults for business errors.
 
 ## Models Package Layout
 
-The `models/` package is split into four semantically distinct files. Add new models to the correct file; do **not** create a catch-all `schemas.py`.
+The `models/` package is organised by **API-contract layer**, not by domain concept. `models/base.py` is a flat file (just `PropertyAIBaseModel` and the error/success envelope). Everything else is one of five sub-packages. Do **not** create a catch-all `schemas.py`, and do not add a domain-concept file at the top level of `models/` the way the old `chat.py` / `conversation_state.py` used to work.
 
-| File | Contains |
-|------|----------|
-| `models/base.py` | `PropertyAIBaseModel` — camelCase `alias_generator`, `populate_by_name=True`; base for all public DTOs |
-| `models/conversation_state.py` | Enums (`EModule`, `EStatus`, `ESubmodel`, `ESubmodelLabel`), M1–M4 sub-models, `CollectedData`, `CompletionStatus`, `ConversationStateDTO` |
-| `models/chat.py` | `ChatRequest`, `ChatResponse`, `RoutingPayload` |
-| `models/summary.py` | `SummaryRequest`, `SummaryResponse` |
+| Package | Layer | Contains |
+|---|---|---|
+| `models/shared/` | Cross-endpoint | Enums, M1–M4 sub-models, `CollectedData`, `CompletionStatus`, `ConversationStateDTO`, financial results, `UserNeeds`, `RoutingPayload`, `ConversationSnapshotDTO` — anything reused by more than one endpoint |
+| `models/requests/` | HTTP in | One file per endpoint holding the inbound Pydantic body. A GET endpoint with no body gets a docstring-only file explaining where its parameters are validated instead (see `requests/get_chat.py`) |
+| `models/commands/` | router → service | One `@dataclass(frozen=True)` per endpoint — the router builds this from the validated request plus resolved dependencies (cookie identity, path params) and passes it into the matching `IChatService` method. The service layer never accepts loose keyword args |
+| `models/dto/` | service → router | One `@dataclass(frozen=True)` (or Pydantic model, if it's later serialised) per endpoint — the raw result a service method hands back to the router, before the router reshapes it into the HTTP response. If a service result already has the exact response shape with nothing left to reshape, skip the dto file (leave a docstring pointing at the file that does own the shape — see `dto/get_chats.py` → `responses/get_chats.py`) |
+| `models/responses/` | HTTP out | One file per endpoint holding the outbound Pydantic body (or a `list[...]`/type alias when the endpoint returns a collection, e.g. `ChatSessionsResponse = list[ChatSessionDTO]`) |
+
+Each per-endpoint file is named after the endpoint it belongs to: `post_chat.py`, `get_chat.py`, `get_chats.py`, `post_chat_summary.py`. Class names are suffixed by layer (`...Request`, `...Command`, `...DTO`, `...Response`) — never mix suffixes within a layer.
 
 ```python
-# Correct — import from the file that owns the symbol
-from models.conversation_state import CollectedData, ConversationStateDTO
-from models.chat import ChatRequest, ChatResponse
-from models.summary import SummaryRequest, SummaryResponse
+# Correct — import from the sub-package that owns the symbol
+from models.shared.conversation_state import ConversationStateDTO
+from models.shared.submodels import CollectedData
+from models.requests.post_chat import ChatRequest
+from models.commands.post_chat import ProcessChatTurnCommand
+from models.dto.post_chat import ChatTurnDTO
+from models.responses.post_chat import ChatResponse
 
-# Incorrect — there is no models.schemas
+# Incorrect — there is no models.schemas, and the old flat chat.py/conversation_state.py are gone
 from models.schemas import CollectedData  # ModuleNotFoundError
+from models.chat import ChatRequest       # ModuleNotFoundError
 ```
 
 ---

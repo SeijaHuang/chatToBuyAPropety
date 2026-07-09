@@ -2,8 +2,9 @@
 
 from conversation.intent_router import classify_intent
 from domain.user_needs_builder import build_user_needs
-from models.conversation_state import CompletionStatus, ConversationStateDTO
-from models.user_needs import UserNeeds
+from models.shared.conversation_state import ConversationStateDTO
+from models.shared.submodels import CompletionStatus
+from models.shared.user_needs import UserNeeds
 
 
 def _incomplete_state(session_id: str = "test-session-001") -> ConversationStateDTO:

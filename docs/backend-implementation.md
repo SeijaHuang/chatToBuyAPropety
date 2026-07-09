@@ -78,7 +78,7 @@ Upserts use `INSERT ... ON CONFLICT (session_id) DO UPDATE`, with `COALESCE` gua
 2. `conversation/state_machine.py::recalculate_completion()` and `get_current_module()` re-derive `completion_status` / `current_module` from `collected_data` — neither is persisted to Postgres, so both must be recomputed rather than trusted from storage.
 3. `prompts/system_prompt_builder.py::build_session_restore_prompt()` (distinct from `build_question_prompt` / `build_summary_prompt`) builds a prompt instructing the LLM to write a short, jargon-free welcome-back message; `llm_client.complete_async()` generates it.
 4. The generated message is appended to `conversation_history` as the first assistant turn, then `save_session_async()` re-seeds Redis so the next request is a cache hit again. A re-seed failure is logged and swallowed — the response has already been prepared, and the Postgres row is untouched either way.
-5. The endpoint returns `SessionRestoreResponse { resume_message, state, conversation_history }` — `resume_message` is `null` on a Redis hit and the generated string on a Postgres restore; the frontend distinguishes the two cases by that field alone, since the rest of the response shape is identical.
+5. The endpoint returns `ChatSessionRestoreResponse { resume_message, state, conversation_history }` — `resume_message` is `null` on a Redis hit and the generated string on a Postgres restore; the frontend distinguishes the two cases by that field alone, since the rest of the response shape is identical.
 
 If the LLM call itself fails during a Postgres restore, `LLMServiceError` (503) is raised and Redis is deliberately **not** re-seeded, so the next request retries the same restore path rather than caching a half-finished state.
 
@@ -125,25 +125,35 @@ backend/
 ├── pyproject.toml                 Canonical dependency + tool config (ruff, mypy, pytest)
 ├── requirements.txt               pip mirror of pyproject.toml — keep in sync manually
 │
-├── models/                        Pydantic DTOs — HTTP contract + domain shape
+├── models/                        Organised by API-contract layer, not domain concept — see
+│   │                              backend-patterns.md#models-package-layout for the full rule
 │   ├── base.py                    PropertyAIBaseModel — shared Pydantic base with camelCase
 │   │                              alias_generator; ErrorDetail, ErrorResponse, SuccessResponse[T]
-│   ├── conversation_state.py      Enums (EModule, EStatus, ESubmodel, ESubmodelLabel, EUserIntent,
-│   │                              EPropertyType, EIntendedUse, ETargetTenant, ECommuteMode,
-│   │                              ELifestyleVibe), M1–M4 sub-models, CollectedData, CompletionStatus
-│   │                              (computed all_complete / current_module), ConversationStateDTO
-│   │                              (full state incl. conversation_history, final_needs)
-│   ├── chat.py                    ChatRequest (session_id | null, message), ChatResponse,
-│   │                              ConversationSnapshotDTO (ChatResponse.state — omits
-│   │                              conversation_history), ChatSessionDTO (one GET /chats row),
-│   │                              SessionRestoreResponse (GET /chat/{id} response — resume_message,
-│   │                              state, conversation_history), RoutingPayload, EExecutionMode,
-│   │                              ETriggerSource
-│   ├── summary.py                 Summary API contract: SummaryRequest, SummaryResponse
-│   ├── financial.py               Internal frozen dataclasses: BorrowingCapacityResult,
-│   │                              BudgetGapResult, and suggested-action string constants
-│   └── user_needs.py              Part 1 → Part 2 output contract: UserNeeds
-│                                  (session_id, generated_at, schema_version, collected, initial_intent)
+│   ├── shared/                    Cross-endpoint models — enums.py (EModule, EStatus, ESubmodel,
+│   │                              ESubmodelLabel, EUserIntent, EPropertyType, EIntendedUse,
+│   │                              ETargetTenant, ECommuteMode, ELifestyleVibe), submodels.py
+│   │                              (M1–M4 sub-models, CollectedData, CompletionStatus),
+│   │                              conversation_state.py (ConversationStateDTO), financial.py
+│   │                              (BorrowingCapacityResult, BudgetGapResult), user_needs.py
+│   │                              (UserNeeds), routing.py (RoutingPayload, EExecutionMode,
+│   │                              ETriggerSource), conversation_snapshot.py (ConversationSnapshotDTO
+│   │                              — reused by post_chat and get_chat responses)
+│   ├── requests/                  One file per endpoint, inbound Pydantic body: post_chat.py
+│   │                              (ChatRequest), post_chat_summary.py (ChatSummaryRequest);
+│   │                              get_chat.py / get_chats.py are docstring-only (no request body)
+│   ├── commands/                  One file per endpoint, router → service parameter object:
+│   │                              post_chat.py (ProcessChatTurnCommand), get_chat.py
+│   │                              (RestoreChatSessionCommand), get_chats.py
+│   │                              (ListChatSessionsCommand), post_chat_summary.py
+│   │                              (GenerateChatSummaryCommand)
+│   ├── dto/                       One file per endpoint, service → router result object:
+│   │                              post_chat.py (ChatTurnDTO), get_chat.py (ChatSessionRestoreDTO),
+│   │                              get_chats.py (ChatSessionDTO — one chats-table row),
+│   │                              post_chat_summary.py (ChatSummaryDTO)
+│   └── responses/                 One file per endpoint, outbound Pydantic body: post_chat.py
+│                                  (ChatResponse), get_chat.py (ChatChatSessionRestoreResponse),
+│                                  get_chats.py (ChatSessionsResponse = list[ChatSessionDTO]),
+│                                  post_chat_summary.py (ChatSummaryResponse)
 │
 ├── db/                             PostgreSQL persistence — history layer, distinct from models/
 │   ├── connection.py               AsyncEngine + async_sessionmaker lifecycle:
@@ -287,13 +297,13 @@ POST /api/v1/chat  { sessionId: string | null, message: string }
     │       14. Return ChatResponse (reply + extracted + sessionId + ConversationSnapshotDTO + routing)
     │
 GET /api/v1/chat/{session_id}
-    ├── load_session_async → Redis hit → 200 SessionRestoreResponse (resume_message: null)
+    ├── load_session_async → Redis hit → 200 ChatSessionRestoreResponse (resume_message: null)
     └── Redis miss → db/repositories/chat.py::get_chat_snapshot_async
             ├── Postgres miss → 404 SessionNotFoundError
             └── Postgres hit → recalculate_completion + get_current_module
                     → build_session_restore_prompt → complete_async → resume_message
                     → save_session_async (re-seeds Redis)
-                    → 200 SessionRestoreResponse (resume_message: <generated text>)
+                    → 200 ChatSessionRestoreResponse (resume_message: <generated text>)
 
 GET /api/v1/chats
     └── routers/deps.py::require_anon_id_cookie_async (400 if cookie missing/invalid)
@@ -347,7 +357,7 @@ A single handler in `error_handlers.py` converts every `PropertyAIException` sub
 | 7 | Prompt locality — all LLM prompt strings live exclusively in `prompts/system_prompt_builder.py` | `prompts/` |
 | 8 | Error envelope — all 4xx/5xx responses use `{"error": {"code", "message", "details"}}` | `error_handlers.py` |
 | 9 | LLM calls are always mocked in tests — no live API calls | `tests/` |
-| 10 | `ChatRequest` never carries conversation state — only `session_id` and `message` | `models/chat.py` |
+| 10 | `ChatRequest` never carries conversation state — only `session_id` and `message` | `models/requests/post_chat.py` |
 
 Invariants 6–9 are the original P0 invariants (still in force); 1–5 and 10 are new with the persistence layer. The full project-wide invariant list lives in [CLAUDE.md](../CLAUDE.md#key-invariants).
 
@@ -358,7 +368,7 @@ Invariants 6–9 are the original P0 invariants (still in force); 1–5 and 10 a
 | Module | Target | Notes |
 |---|---|---|
 | `models/base.py` | 100% | `PropertyAIBaseModel` |
-| `models/conversation_state.py` | 100% | |
+| `models/shared/*.py` | 100% | Enums, sub-models, `ConversationStateDTO` |
 | `tools/extraction_schema.py` | 100% | |
 | `conversation/state_machine.py` | 100% | |
 | `conversation/intent_router.py` | 100% | Extra tests added beyond PRD spec |

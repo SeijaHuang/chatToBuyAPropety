@@ -12,9 +12,11 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from db.connection import get_session_factory
 from db.orm.chat import ChatRow
-from models.chat import ChatSessionDTO
-from models.conversation_state import CollectedData, ConversationStateDTO, EStatus, EUserIntent
-from models.financial import BorrowingCapacityResult
+from models.dto.get_chats import ChatSessionDTO
+from models.shared.conversation_state import ConversationStateDTO
+from models.shared.enums import EStatus, EUserIntent
+from models.shared.financial import BorrowingCapacityResult
+from models.shared.submodels import CollectedData
 
 logger: structlog.BoundLogger = structlog.get_logger()
 

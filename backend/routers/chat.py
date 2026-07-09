@@ -7,30 +7,26 @@ import structlog
 from fastapi import APIRouter, Depends, Response
 
 from config import settings
-from db.repositories.chat import IChatRepository, get_chat_repository
 from models.base import SuccessResponse
-from models.chat import (
-    ChatRequest,
-    ChatResponse,
-    ChatSessionDTO,
-    ConversationSnapshotDTO,
-    SessionRestoreResponse,
-)
-from models.conversation_state import ConversationStateDTO
-from models.summary import SummaryRequest, SummaryResponse
+from models.commands.get_chat import RestoreChatSessionCommand
+from models.commands.get_chats import ListChatSessionsCommand
+from models.commands.post_chat import ProcessChatTurnCommand
+from models.commands.post_chat_summary import GenerateChatSummaryCommand
+from models.requests.post_chat import ChatRequest
+from models.requests.post_chat_summary import ChatSummaryRequest
+from models.responses.get_chat import ChatSessionRestoreResponse
+from models.responses.get_chats import ChatSessionsResponse
+from models.responses.post_chat import ChatResponse
+from models.responses.post_chat_summary import ChatSummaryResponse
+from models.shared.conversation_snapshot import ConversationSnapshotDTO
+from models.shared.conversation_state import ConversationStateDTO
 from routers.deps import (
     require_anon_id_cookie_async,
     require_valid_session_id_async,
     resolve_anon_id_async,
     validate_optional_session_id_async,
 )
-from services.chat_service import (
-    ChatTurnResult,
-    IChatService,
-    SessionRestoreResult,
-    SummaryResult,
-    get_chat_service,
-)
+from services.chat_service import IChatService, get_chat_service
 
 router = APIRouter()
 logger = structlog.get_logger()
@@ -73,10 +69,12 @@ async def chat_async(
     Raises:
         BadRequestError: When session_id is present but not a valid UUID string.
     """
-    result: ChatTurnResult = await chat_service.process_turn_async(
-        session_id=validated_session_id,
-        message=request.message,
-        anon_id=resolved_anon_id,
+    result = await chat_service.process_turn_async(
+        ProcessChatTurnCommand(
+            session_id=validated_session_id,
+            message=request.message,
+            anon_id=resolved_anon_id,
+        )
     )
 
     response.set_cookie(
@@ -103,7 +101,7 @@ async def chat_async(
 async def get_session_async(
     session_id: Annotated[uuid.UUID, Depends(require_valid_session_id_async)],
     chat_service: Annotated[IChatService, Depends(get_chat_service)],
-) -> SuccessResponse[SessionRestoreResponse]:
+) -> SuccessResponse[ChatSessionRestoreResponse]:
     """Return the conversation state for a session, with DB fallback when Redis has expired.
 
     Args:
@@ -112,19 +110,19 @@ async def get_session_async(
             (already wired to its own LLM client and chat repository).
 
     Returns:
-        SessionRestoreResponse with state snapshot and optional welcome-back message.
+        ChatSessionRestoreResponse with state snapshot and optional welcome-back message.
 
     Raises:
         BadRequestError: When session_id is not a valid UUID string.
         SessionNotFoundError: When the session is absent from both Redis and DB.
         LLMServiceError: When the LLM call fails during DB restore (state not re-seeded).
     """
-    result: SessionRestoreResult = await chat_service.restore_session_async(
-        session_id=session_id,
+    result = await chat_service.restore_session_async(
+        RestoreChatSessionCommand(session_id=session_id)
     )
 
-    return SuccessResponse[SessionRestoreResponse](
-        data=SessionRestoreResponse(
+    return SuccessResponse[ChatSessionRestoreResponse](
+        data=ChatSessionRestoreResponse(
             resume_message=result.resume_message,
             state=_snapshot_from_state(result.state),
             conversation_history=result.conversation_history,
@@ -135,8 +133,8 @@ async def get_session_async(
 @router.get("/chats", tags=["chat"])
 async def list_chats_async(
     resolved_anon_id: Annotated[uuid.UUID, Depends(require_anon_id_cookie_async)],
-    chat_repo: Annotated[IChatRepository, Depends(get_chat_repository)],
-) -> SuccessResponse[list[ChatSessionDTO]]:
+    chat_service: Annotated[IChatService, Depends(get_chat_service)],
+) -> SuccessResponse[ChatSessionsResponse]:
     """Return all chat sessions for an anonymous user, ordered newest first.
 
     Returns an empty list when the anon_id is valid but has no persisted sessions.
@@ -148,7 +146,8 @@ async def list_chats_async(
 
     Args:
         resolved_anon_id: Parsed UUID from HttpOnly cookie, validated by dependency.
-        chat_repo: Chat repository injected via FastAPI Depends.
+        chat_service: Chat orchestration service injected via FastAPI Depends
+            (already wired to its own LLM client and chat repository).
 
     Returns:
         List of ChatSessionDTO ordered by updated_at descending.
@@ -156,16 +155,18 @@ async def list_chats_async(
     Raises:
         BadRequestError: When the cookie is absent or its value is not a valid UUID.
     """
-    sessions: list[ChatSessionDTO] = await chat_repo.list_chats_by_anon_async(resolved_anon_id)
+    sessions = await chat_service.list_chats_async(
+        ListChatSessionsCommand(anon_id=resolved_anon_id)
+    )
     logger.info("list_chats_response", anon_id=str(resolved_anon_id), count=len(sessions))
-    return SuccessResponse[list[ChatSessionDTO]](data=sessions)
+    return SuccessResponse[ChatSessionsResponse](data=sessions)
 
 
 @router.post("/chat/summary", tags=["chat"])
 async def chat_summary_async(
-    request: SummaryRequest,
+    request: ChatSummaryRequest,
     chat_service: Annotated[IChatService, Depends(get_chat_service)],
-) -> SuccessResponse[SummaryResponse]:
+) -> SuccessResponse[ChatSummaryResponse]:
     """Return a natural-language summary of all collected property requirements.
 
     Summary generation (all-None validation, prompt build, LLM call, UserNeeds
@@ -177,16 +178,18 @@ async def chat_summary_async(
             (already wired to its own LLM client).
 
     Returns:
-        SummaryResponse with summary_text and the original structured data.
+        ChatSummaryResponse with summary_text and the original structured data.
 
     Raises:
         SummaryValidationError: When all fields across all sub-models are None.
     """
-    result: SummaryResult = await chat_service.generate_summary_async(
-        collected_data=request.collected_data,
-        session_id=request.session_id,
-        initial_intent=request.initial_intent,
+    result = await chat_service.generate_summary_async(
+        GenerateChatSummaryCommand(
+            collected_data=request.collected_data,
+            session_id=request.session_id,
+            initial_intent=request.initial_intent,
+        )
     )
-    return SuccessResponse[SummaryResponse](
-        data=SummaryResponse(summary_text=result.summary_text, structured=result.user_needs)
+    return SuccessResponse[ChatSummaryResponse](
+        data=ChatSummaryResponse(summary_text=result.summary_text, structured=result.user_needs)
     )

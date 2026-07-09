@@ -5,7 +5,7 @@ from typing import Protocol
 import structlog
 
 from config import settings
-from models.conversation_state import ConversationStateDTO
+from models.shared.conversation_state import ConversationStateDTO
 from redis_store.client import redis_client
 
 logger = structlog.get_logger()

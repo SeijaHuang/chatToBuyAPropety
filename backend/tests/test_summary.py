@@ -6,13 +6,8 @@ from unittest.mock import AsyncMock, patch
 from httpx import AsyncClient
 
 import domain.llm_client as llm_client_module
-from models.conversation_state import (
-    CollectedData,
-    EPropertyType,
-    M1PropertyNeeds,
-    M3SuburbPreference,
-    M4Budget,
-)
+from models.shared.enums import EPropertyType
+from models.shared.submodels import CollectedData, M1PropertyNeeds, M3SuburbPreference, M4Budget
 
 _MOCK_SUMMARY = "Budget max is 800000, property type is house, commute to CBD"
 _SESSION_ID = "test-session-123"

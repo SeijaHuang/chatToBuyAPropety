@@ -20,7 +20,7 @@ from db.orm import Base
 from db.repositories.chat import IChatRepository, get_chat_repository
 from db.repositories.user import IUserRepository, get_user_repository
 from main import app
-from models.conversation_state import ConversationStateDTO
+from models.shared.conversation_state import ConversationStateDTO
 from redis_store.client import redis_client
 from routers.deps import require_anon_id_cookie_async, resolve_anon_id_async
 

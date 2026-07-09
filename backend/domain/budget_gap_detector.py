@@ -6,7 +6,7 @@ import httpx
 import structlog
 
 from config import settings
-from models.financial import (
+from models.shared.financial import (
     ADJUST_PROPERTY_TYPE,
     EXPLORE_NEARBY_SUBURBS,
     REVISIT_BUDGET,

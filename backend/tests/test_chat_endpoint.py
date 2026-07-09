@@ -10,8 +10,8 @@ from httpx import AsyncClient
 
 import domain.llm_client as llm_client_module
 from exceptions import LLMServiceError, RateLimitError
-from models.conversation_state import ConversationStateDTO
-from models.financial import BorrowingCapacityResult
+from models.shared.conversation_state import ConversationStateDTO
+from models.shared.financial import BorrowingCapacityResult
 from redis_store import session_store as session_store_module
 
 _SESSION_ID: str = "22222222-2222-4222-a222-222222222222"

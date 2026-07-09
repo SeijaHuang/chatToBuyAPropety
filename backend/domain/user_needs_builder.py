@@ -2,8 +2,9 @@
 
 from datetime import UTC, datetime
 
-from models.conversation_state import CollectedData, EUserIntent
-from models.user_needs import UserNeeds
+from models.shared.enums import EUserIntent
+from models.shared.submodels import CollectedData
+from models.shared.user_needs import UserNeeds
 
 
 def build_user_needs(

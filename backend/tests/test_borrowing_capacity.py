@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, patch
 
 from config import settings
 from domain.borrowing_capacity import estimate_borrowing_capacity_async
-from models.conversation_state import M4Budget
+from models.shared.submodels import M4Budget
 
 _MOCK_RATE: tuple[float, str] = (6.30, "RBA F5 rate 6.30% p.a.")
 _PATCH_TARGET = "domain.borrowing_capacity.get_reference_rate_async"
