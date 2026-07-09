@@ -3,15 +3,9 @@
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from models.conversation_state import (
-    CollectedData,
-    CompletionStatus,
-    ConversationStateDTO,
-    EModule,
-    EStatus,
-    ESubmodel,
-    TSubmodel,
-)
+from models.shared.conversation_state import ConversationStateDTO
+from models.shared.enums import EModule, EStatus, ESubmodel
+from models.shared.submodels import CollectedData, CompletionStatus, TSubmodel
 
 _CONTROL_KEYS: frozenset[str] = frozenset({"module_complete", "next_question", "user_intent"})
 

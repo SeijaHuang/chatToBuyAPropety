@@ -11,7 +11,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from db.repositories.chat import SqlAlchemyChatRepository
 from db.repositories.user import SqlAlchemyUserRepository
-from models.conversation_state import ConversationStateDTO, EStatus, EUserIntent
+from models.shared.conversation_state import ConversationStateDTO
+from models.shared.enums import EStatus, EUserIntent
 
 TEST_ANON_ID: str = "aaaabbbb-cccc-4000-aaaa-bbbbbbbbbbbb"
 
@@ -156,7 +157,7 @@ class TestSqlAlchemyChatRepository:
         session.execute.assert_awaited_once()
 
     async def test_do_upsert_with_borrowing_capacity(self) -> None:
-        from models.financial import BorrowingCapacityResult
+        from models.shared.financial import BorrowingCapacityResult
 
         factory, session = _make_session_factory()
         repo: SqlAlchemyChatRepository = SqlAlchemyChatRepository(factory)

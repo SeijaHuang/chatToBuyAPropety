@@ -5,14 +5,9 @@ from conversation.state_machine import (
     is_module_complete,
     merge_extracted_fields,
 )
-from models.conversation_state import (
-    CollectedData,
-    CompletionStatus,
-    ConversationStateDTO,
-    EIntendedUse,
-    EModule,
-    EPropertyType,
-)
+from models.shared.conversation_state import ConversationStateDTO
+from models.shared.enums import EIntendedUse, EModule, EPropertyType
+from models.shared.submodels import CollectedData, CompletionStatus
 
 
 def test_m1_complete_when_all_required_fields_present() -> None:

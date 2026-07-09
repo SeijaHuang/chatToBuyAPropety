@@ -1,13 +1,9 @@
 """Dynamic state section builders for conversation progress and collected field summaries."""
 
 from conversation.state_machine import MODULE_COMPLETION_RULES, ModuleRequirements
-from models.conversation_state import (
-    CollectedData,
-    CompletionStatus,
-    ConversationStateDTO,
-    EModule,
-    TSubmodel,
-)
+from models.shared.conversation_state import ConversationStateDTO
+from models.shared.enums import EModule
+from models.shared.submodels import CollectedData, CompletionStatus, TSubmodel
 
 
 def build_completed_list(completion: CompletionStatus) -> str:

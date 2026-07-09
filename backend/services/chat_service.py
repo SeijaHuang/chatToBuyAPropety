@@ -9,9 +9,8 @@ layer — it owns no business rule of its own.
 """
 
 import json
-from dataclasses import dataclass
 from typing import Annotated, Protocol
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 import structlog
 from fastapi import Depends
@@ -30,17 +29,18 @@ from domain.llm_client import ILLMClient
 from domain.llm_client import llm_client as _default_llm_client
 from domain.user_needs_builder import build_user_needs
 from exceptions import SessionNotFoundError, SummaryValidationError
-from models.chat import RoutingPayload
-from models.conversation_state import (
-    CollectedData,
-    CompletionStatus,
-    ConversationStateDTO,
-    ESubmodel,
-    EUserIntent,
-    M3SuburbPreference,
-    M4Budget,
-)
-from models.user_needs import UserNeeds
+from models.commands.get_chat import RestoreChatSessionCommand
+from models.commands.get_chats import ListChatSessionsCommand
+from models.commands.post_chat import ProcessChatTurnCommand
+from models.commands.post_chat_summary import GenerateChatSummaryCommand
+from models.dto.get_chat import ChatSessionRestoreDTO
+from models.dto.get_chats import ChatSessionDTO
+from models.dto.post_chat import ChatTurnDTO
+from models.dto.post_chat_summary import ChatSummaryDTO
+from models.shared.conversation_state import ConversationStateDTO
+from models.shared.enums import ESubmodel, EUserIntent
+from models.shared.submodels import CompletionStatus, M3SuburbPreference, M4Budget
+from models.shared.user_needs import UserNeeds
 from prompts.system_prompt_builder import (
     build_extraction_prompt,
     build_question_prompt,
@@ -54,115 +54,59 @@ from tools.extraction_schema import EXTRACT_REQUIREMENTS_TOOL
 logger = structlog.get_logger()
 
 
-@dataclass(frozen=True)
-class ChatTurnResult:
-    """Outcome of processing one POST /chat turn.
-
-    Attributes:
-        reply: Assistant reply text from the Round 2 question-generation call.
-        extracted: Fields extracted by Round 1 (empty dict on tool-call parse failure).
-        state: Fully updated conversation state after this turn (already persisted).
-        routing: Populated when the turn completes requirements or matches a keyword.
-        should_persist: True when a Postgres upsert was performed this turn — true
-            for a brand-new session or when any module newly completed this turn.
-    """
-
-    reply: str
-    extracted: dict[str, object]
-    state: ConversationStateDTO
-    routing: RoutingPayload | None
-    should_persist: bool
-
-
-@dataclass(frozen=True)
-class SessionRestoreResult:
-    """Outcome of resolving GET /chat/{session_id}.
-
-    Attributes:
-        resume_message: None on a Redis hit; the LLM-generated welcome-back string
-            on a Postgres-fallback restore.
-        state: Resolved conversation state — the live Redis copy, or the
-            reconstructed Postgres snapshot with completion_status/current_module
-            re-derived (neither is persisted, so both must be recomputed).
-        conversation_history: Full history on a Redis hit; empty on a Postgres
-            restore, since raw history is never persisted to Postgres.
-    """
-
-    resume_message: str | None
-    state: ConversationStateDTO
-    conversation_history: list[dict[str, object]]
-
-
-@dataclass(frozen=True)
-class SummaryResult:
-    """Outcome of generating a natural-language requirements summary.
-
-    Attributes:
-        summary_text: LLM-generated summary covering all non-None collected fields.
-        user_needs: Part 1 → Part 2 handoff snapshot built from the same data.
-    """
-
-    summary_text: str
-    user_needs: UserNeeds
-
-
 class IChatService(Protocol):
     """Process-orchestration contract behind the chat endpoints."""
 
-    async def process_turn_async(
-        self,
-        session_id: UUID | None,
-        message: str,
-        anon_id: UUID,
-    ) -> ChatTurnResult:
+    async def process_turn_async(self, command: ProcessChatTurnCommand) -> ChatTurnDTO:
         """Process one conversation turn end to end.
 
         Args:
-            session_id: Existing session UUID, or None to create a new session.
-            message: The user's message text for this turn.
-            anon_id: Anonymous user identity, used for the Postgres upsert.
+            command: Session id (or None for a new session), message, and anon_id.
 
         Returns:
-            ChatTurnResult describing the reply, updated state, and whether a
+            ChatTurnDTO describing the reply, updated state, and whether a
             Postgres upsert was performed this turn.
         """
         ...
 
     async def restore_session_async(
-        self,
-        session_id: UUID,
-    ) -> SessionRestoreResult:
+        self, command: RestoreChatSessionCommand
+    ) -> ChatSessionRestoreDTO:
         """Resolve session state from Redis, falling back to Postgres on a miss.
 
         Args:
-            session_id: Session identifier, already validated by the caller.
+            command: Session identifier, already validated by the caller.
 
         Returns:
-            SessionRestoreResult on a Redis or Postgres hit.
+            ChatSessionRestoreDTO on a Redis or Postgres hit.
 
         Raises:
             SessionNotFoundError: When neither store has the session.
         """
         ...
 
-    async def generate_summary_async(
-        self,
-        collected_data: CollectedData,
-        session_id: str,
-        initial_intent: EUserIntent,
-    ) -> SummaryResult:
+    async def generate_summary_async(self, command: GenerateChatSummaryCommand) -> ChatSummaryDTO:
         """Generate a natural-language requirements summary.
 
         Args:
-            collected_data: Accumulated field values from the conversation.
-            session_id: Session identifier for the UserNeeds handoff snapshot.
-            initial_intent: Intent classified at M1 completion.
+            command: Collected data, session id, and initial intent to summarise.
 
         Returns:
-            SummaryResult with the generated text and UserNeeds snapshot.
+            ChatSummaryDTO with the generated text and UserNeeds snapshot.
 
         Raises:
             SummaryValidationError: When every field across all sub-models is None.
+        """
+        ...
+
+    async def list_chats_async(self, command: ListChatSessionsCommand) -> list[ChatSessionDTO]:
+        """Return all chat sessions for an anonymous user, ordered newest first.
+
+        Args:
+            command: Anonymous user identity resolved from the HttpOnly cookie.
+
+        Returns:
+            List of ChatSessionDTO ordered by updated_at descending.
         """
         ...
 
@@ -184,14 +128,11 @@ class ChatService(IChatService):
         self._session_store = session_store
         self._llm_client = llm_client
 
-    async def process_turn_async(
-        self,
-        session_id: UUID | None,
-        message: str,
-        anon_id: UUID,
-    ) -> ChatTurnResult:
+    async def process_turn_async(self, command: ProcessChatTurnCommand) -> ChatTurnDTO:
         """Process one conversation turn end to end (see IChatService)."""
-        resolved_session_id: str = str(session_id) if session_id is not None else str(uuid4())
+        resolved_session_id: str = (
+            str(command.session_id) if command.session_id is not None else str(uuid4())
+        )
         loaded: ConversationStateDTO | None = await self._session_store.load_session_async(
             resolved_session_id
         )
@@ -204,9 +145,9 @@ class ChatService(IChatService):
             session_id=state.session_id,
             current_module=state.current_module,
         )
-        log.info("chat_request_received", message_length=len(message))
+        log.info("chat_request_received", message_length=len(command.message))
 
-        state.conversation_history.append({"role": "user", "content": message})
+        state.conversation_history.append({"role": "user", "content": command.message})
 
         # Snapshot completion before extraction to detect newly completed modules
         prev_completion: CompletionStatus = state.completion_status.model_copy()
@@ -256,14 +197,14 @@ class ChatService(IChatService):
             )
 
         question_prompt: str = build_question_prompt(state)
-        reply: str = await self._llm_client.complete_async(question_prompt, message)
+        reply: str = await self._llm_client.complete_async(question_prompt, command.message)
 
         state.conversation_history.append({"role": "assistant", "content": reply})
 
         await self._session_store.save_session_async(state)
 
         user_needs: UserNeeds = build_user_needs(state.collected_data, state.session_id)
-        routing: RoutingPayload | None = classify_intent(message, state, user_needs)
+        routing = classify_intent(command.message, state, user_needs)
         log.info("chat_response_ready", has_routing=routing is not None)
 
         # Write initial_intent when M1 first completes this turn
@@ -279,9 +220,9 @@ class ChatService(IChatService):
         )
         should_persist: bool = is_new_session or newly_completed
         if should_persist:
-            await self._chat_repo.upsert_chat_snapshot_async(state, anon_id)
+            await self._chat_repo.upsert_chat_snapshot_async(state, command.anon_id)
 
-        return ChatTurnResult(
+        return ChatTurnDTO(
             reply=reply,
             extracted=extracted,
             state=state,
@@ -290,17 +231,16 @@ class ChatService(IChatService):
         )
 
     async def restore_session_async(
-        self,
-        session_id: UUID,
-    ) -> SessionRestoreResult:
+        self, command: RestoreChatSessionCommand
+    ) -> ChatSessionRestoreDTO:
         """Resolve session state from Redis, falling back to Postgres (see IChatService)."""
-        session_id_str: str = str(session_id)
+        session_id_str: str = str(command.session_id)
 
         redis_state: ConversationStateDTO | None = await self._session_store.load_session_async(
             session_id_str
         )
         if redis_state is not None:
-            return SessionRestoreResult(
+            return ChatSessionRestoreDTO(
                 resume_message=None,
                 state=redis_state,
                 conversation_history=redis_state.conversation_history,
@@ -309,7 +249,7 @@ class ChatService(IChatService):
         log: structlog.BoundLogger = logger.bind(session_id=session_id_str)
 
         db_state: ConversationStateDTO | None = await self._chat_repo.get_chat_snapshot_async(
-            session_id
+            command.session_id
         )
         if db_state is None:
             raise SessionNotFoundError(session_id_str)
@@ -332,36 +272,37 @@ class ChatService(IChatService):
         except Exception:
             log.warning("redis_reseed_failed")
 
-        return SessionRestoreResult(
+        return ChatSessionRestoreDTO(
             resume_message=resume_message,
             state=db_state,
             conversation_history=[],
         )
 
-    async def generate_summary_async(
-        self,
-        collected_data: CollectedData,
-        session_id: str,
-        initial_intent: EUserIntent,
-    ) -> SummaryResult:
+    async def generate_summary_async(self, command: GenerateChatSummaryCommand) -> ChatSummaryDTO:
         """Generate a natural-language requirements summary (see IChatService)."""
         all_none: bool = all(
             value is None
             for submodel in ESubmodel
-            for value in getattr(collected_data, submodel).model_dump().values()
+            for value in getattr(command.collected_data, submodel).model_dump().values()
         )
         if all_none:
             logger.warning("summary_rejected_all_none")
             raise SummaryValidationError("No data collected — cannot generate summary.")
 
         logger.info("summary_request_received")
-        system_prompt: str = build_summary_prompt(collected_data)
+        system_prompt: str = build_summary_prompt(command.collected_data)
         reply: str = await self._llm_client.complete_async(
             system_prompt, "Please generate the requirements summary."
         )
         logger.info("summary_generated", summary_length=len(reply))
-        user_needs: UserNeeds = build_user_needs(collected_data, session_id, initial_intent)
-        return SummaryResult(summary_text=reply, user_needs=user_needs)
+        user_needs: UserNeeds = build_user_needs(
+            command.collected_data, command.session_id, command.initial_intent
+        )
+        return ChatSummaryDTO(summary_text=reply, user_needs=user_needs)
+
+    async def list_chats_async(self, command: ListChatSessionsCommand) -> list[ChatSessionDTO]:
+        """Return all chat sessions for an anonymous user (see IChatService)."""
+        return await self._chat_repo.list_chats_by_anon_async(command.anon_id)
 
 
 def get_chat_service(

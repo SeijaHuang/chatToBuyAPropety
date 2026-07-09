@@ -1,15 +1,8 @@
 """Tests for prompts/system_prompt_builder.py — Story S-C."""
 
-from models.conversation_state import (
-    CollectedData,
-    CompletionStatus,
-    ConversationStateDTO,
-    EIntendedUse,
-    EModule,
-    EPropertyType,
-    EStatus,
-    M1PropertyNeeds,
-)
+from models.shared.conversation_state import ConversationStateDTO
+from models.shared.enums import EIntendedUse, EModule, EPropertyType, EStatus
+from models.shared.submodels import CollectedData, CompletionStatus, M1PropertyNeeds
 from prompts.system_prompt_builder import (
     build_extraction_prompt,
     build_question_prompt,

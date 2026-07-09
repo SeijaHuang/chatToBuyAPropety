@@ -1,13 +1,13 @@
-"""Request/response DTOs for the requirements summary endpoint."""
+"""Request DTO for POST /chat/summary."""
 
 from pydantic import ConfigDict
 
 from models.base import PropertyAIBaseModel
-from models.conversation_state import CollectedData, EUserIntent
-from models.user_needs import UserNeeds
+from models.shared.enums import EUserIntent
+from models.shared.submodels import CollectedData
 
 
-class SummaryRequest(PropertyAIBaseModel):
+class ChatSummaryRequest(PropertyAIBaseModel):
     """Inbound payload for the summary endpoint."""
 
     # Extends parent config with an OpenAPI example; alias_generator and
@@ -34,10 +34,3 @@ class SummaryRequest(PropertyAIBaseModel):
     collected_data: CollectedData
     session_id: str
     initial_intent: EUserIntent = EUserIntent.OPEN_ENDED_QUERY
-
-
-class SummaryResponse(PropertyAIBaseModel):
-    """Outbound payload from the summary endpoint."""
-
-    summary_text: str
-    structured: UserNeeds

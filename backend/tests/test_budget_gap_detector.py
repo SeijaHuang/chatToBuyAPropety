@@ -5,8 +5,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from domain.budget_gap_detector import detect_budget_gap_async
-from models.conversation_state import ConversationStateDTO
-from models.financial import (
+from models.shared.conversation_state import ConversationStateDTO
+from models.shared.financial import (
     ADJUST_PROPERTY_TYPE,
     EXPLORE_NEARBY_SUBURBS,
     BudgetGapResult,

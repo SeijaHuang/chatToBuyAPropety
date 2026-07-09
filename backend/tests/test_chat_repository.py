@@ -9,13 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 from db.orm.chat import ChatRow
 from db.orm.user import UserRow
 from db.repositories.chat import SqlAlchemyChatRepository
-from models.conversation_state import (
-    ConversationStateDTO,
-    EIntendedUse,
-    EPropertyType,
-    EStatus,
-    EUserIntent,
-)
+from models.shared.conversation_state import ConversationStateDTO
+from models.shared.enums import EIntendedUse, EPropertyType, EStatus, EUserIntent
 
 # Stable anonymous user UUID used across all repository tests
 TEST_ANON_ID: str = "aaaabbbb-cccc-4000-aaaa-bbbbbbbbbbbb"

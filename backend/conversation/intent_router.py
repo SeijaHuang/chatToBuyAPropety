@@ -4,9 +4,10 @@ import re
 from collections.abc import Callable
 from datetime import UTC, datetime
 
-from models.chat import EExecutionMode, ETriggerSource, RoutingPayload
-from models.conversation_state import ConversationStateDTO, EUserIntent
-from models.user_needs import UserNeeds
+from models.shared.conversation_state import ConversationStateDTO
+from models.shared.enums import EUserIntent
+from models.shared.routing import EExecutionMode, ETriggerSource, RoutingPayload
+from models.shared.user_needs import UserNeeds
 
 _SUBURB_KEYWORDS: frozenset[str] = frozenset({"suburb", "area", "recommend", "推荐", "区域"})
 _PROPERTY_KEYWORDS: frozenset[str] = frozenset({"property", "listing", "find", "找房", "房源"})

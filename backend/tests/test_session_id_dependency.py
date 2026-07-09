@@ -5,7 +5,7 @@ import uuid
 import pytest
 
 from exceptions import BadRequestError
-from models.chat import ChatRequest
+from models.requests.post_chat import ChatRequest
 from routers.deps import require_valid_session_id_async, validate_optional_session_id_async
 
 TEST_SESSION_ID: str = "11111111-1111-4111-a111-111111111111"

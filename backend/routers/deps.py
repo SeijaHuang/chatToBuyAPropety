@@ -8,7 +8,7 @@ from fastapi import Cookie, Depends
 
 from db.repositories.user import IUserRepository, get_user_repository
 from exceptions import BadRequestError
-from models.chat import ChatRequest
+from models.requests.post_chat import ChatRequest
 
 logger = structlog.get_logger()
 

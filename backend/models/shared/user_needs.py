@@ -1,9 +1,10 @@
-"""Output contract models for Part 1 → Part 2 handoff (PRD §12)."""
+"""Output contract model for Part 1 → Part 2 handoff (PRD §12)."""
 
 from datetime import datetime
 
 from models.base import PropertyAIBaseModel
-from models.conversation_state import CollectedData, EUserIntent
+from models.shared.enums import EUserIntent
+from models.shared.submodels import CollectedData
 
 
 class UserNeeds(PropertyAIBaseModel):

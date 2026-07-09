@@ -1,6 +1,6 @@
 """Financial estimate section builders for borrowing capacity and budget gap context."""
 
-from models.financial import BorrowingCapacityResult, BudgetGapResult
+from models.shared.financial import BorrowingCapacityResult, BudgetGapResult
 
 
 def build_borrowing_capacity_section(result: BorrowingCapacityResult | None) -> str:
