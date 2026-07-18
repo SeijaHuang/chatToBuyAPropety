@@ -936,10 +936,12 @@ class PTVConnector(BaseConnector):
 
 | # | 决策 | 方案 | 理由 |
 |---|---|---|---|
-| I1 | `ExecutionContext.user_needs` 类型 | `UserNeeds`（非 `CollectedData`） | 与现有 `RoutingPayload.user_needs` 类型一致；`ContextResolver` 可直接复制，Tool 通过 `.collected.m3.commute_mode` 访问字段 |
-| I2 | `ExecutionResponse` 定义位置 | `models/shared/execution_response.py`，继承 `PropertyAIBaseModel` | 跨 Executor / Orchestrator / 未来 HTTP 边界共用；遵循现有 models 分层规范 |
-| I3 | ILLMClient 扩展 | 不纳入原型阶段 | 现有 `chat_with_tools_async` 为 Part 1 单次提取设计；LLMDrivenExecutor 使用现有 Protocol + `# TODO(agent)` 标记，多轮 tool calling 支持后续单独 PR |
-| I4 | PTV 验证实现 | 不纳入原型阶段 | 用户反馈只需原型搭建，具体 Connector/Tool 由各自 PRD 覆盖 |
+| I1 | `ExecutionContext.user_needs` 类型 | `CollectedData`（非 `UserNeeds`） | `UserNeeds` 在 Part 1 服务于 summary 快照接口；Part 2 的 Tool 只需要 `CollectedData` 字段，`ContextResolver` 从 `RoutingPayload.user_needs.collected` 提取；`UserNeeds` 的 `session_id`/`generated_at`/`schema_version`/`initial_intent` 对 Tool 无意义 |
+| I2 | `ConnectorError` 基类 | `Exception`（非 `PropertyAIException`） | ConnectorError 在 `BaseTool.run()` 模板方法中被捕获并转为 `ToolResult`，永远不到达 HTTP handler；PRD 决策 D5：错误码是数据不是控制流；`PropertyAIException` 的 `status_code`/`details` 字段语义与 Connector 层不匹配 |
+| I3 | `ExecutionResponse` 定义位置 | `models/shared/execution_response.py`，继承 `PropertyAIBaseModel` | 跨 Executor / Orchestrator / 未来 HTTP 边界共用；遵循现有 models 分层规范 |
+| I4 | ILLMClient 扩展 | 不纳入原型阶段 | 现有 `chat_with_tools_async` 为 Part 1 单次提取设计；LLMDrivenExecutor 使用现有 Protocol + `# TODO(agent)` 标记，多轮 tool calling 支持后续单独 PR |
+| I5 | PTV 验证实现 | 不纳入原型阶段 | 用户反馈只需原型搭建，具体 Connector/Tool 由各自 PRD 覆盖 |
+| I6 | `pyproject.toml` 包注册 | 纳入 Subtask 1 | `[tool.setuptools.packages.find]` 追加 `"agent*"`；`[tool.ruff.lint.isort]` 追加 `"agent"`；否则 ruff/mypy 无法正确识别 agent 包 |
 
 ---
 
@@ -1009,12 +1011,13 @@ backend/
 | S1.3 | `agent/shared/execution_events.py` | `tests/test_execution_events.py` | **100%** | 枚举成员值唯一；可 JSON 序列化（`isinstance(member, str)` 或 `member.value`） |
 | S1.4 | `agent/shared/connector.py`（异常部分） | `tests/test_connector.py`（异常测试） | **100%** | `ConnectorHttpError` 各字段正确赋值（`status_code`, `error_code`, `response_body`）；`ConnectorTimeoutError` 各字段（`path`, `attempts`）；两者均为 `ConnectorError` 子类 |
 
-**依赖**: `models/base.py`（`PropertyAIBaseModel`）、`models/shared/enums.py`（`EUserIntent`）、`models/shared/user_needs.py`（`UserNeeds`）
+**依赖**: `models/base.py`（`PropertyAIBaseModel`）、`models/shared/enums.py`（`EUserIntent`）、`models/shared/submodels.py`（`CollectedData`）
 
 **完成标准**:
 - 4 个模块达到 **100%** 覆盖率
 - `ruff check` + `mypy --strict` 通过
 - `agent/shared/connector.py` 仅含异常类，不含 BaseConnector
+- `pyproject.toml` 更新：`[tool.setuptools.packages.find]` include 追加 `"agent*"`；`[tool.ruff.lint.isort]` known-first-party 追加 `"agent"`
 
 ---
 
@@ -1115,7 +1118,6 @@ Subtask 4 (Layer 3 + 跨层 — 编排 + ExecutionResponse, 依赖 L0–L2)
 - SSE 事件的实际发送机制（`execution_events.py` 只定义枚举）
 - ExecutionState 的 Redis 持久化
 - ILLMClient 协议扩展（多轮 tool calling）
-- `pyproject.toml` 中 `agent*` 包路径注册
 
 ---
 
