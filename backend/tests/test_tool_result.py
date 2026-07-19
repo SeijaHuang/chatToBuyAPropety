@@ -2,7 +2,7 @@
 
 from datetime import UTC, datetime
 
-from agent.shared.tool_result import ToolResult
+from agent.tool.result import ToolResult
 
 
 class TestToolResult:

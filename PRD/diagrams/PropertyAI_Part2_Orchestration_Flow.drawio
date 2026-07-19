@@ -1,0 +1,413 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mxfile host="app.diagrams.net" modified="2026-07-19T00:00:00.000Z" agent="Claude" version="21.0.0">
+  <diagram name="Part2-Orchestration-Flow" id="part2-orch-flow">
+    <mxGraphModel dx="1422" dy="762" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1400" pageHeight="1100" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- ========== SWIMLANE BACKGROUNDS ========== -->
+
+        <!-- Lane 1: Part 1 Input -->
+        <mxCell id="lane-input-bg" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=none;opacity=30;" vertex="1" parent="1">
+          <mxGeometry x="20" y="50" width="1340" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="lane-input-label" value="Part 1 → Part 2 Boundary" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=13;fontStyle=1;fontColor=#5A2D82;spacingLeft=10;spacingTop=5;" vertex="1" parent="1">
+          <mxGeometry x="20" y="50" width="240" height="25" as="geometry" />
+        </mxCell>
+
+        <!-- Lane 2: Orchestration Layer -->
+        <mxCell id="lane-orch-bg" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=none;opacity=30;" vertex="1" parent="1">
+          <mxGeometry x="20" y="170" width="1340" height="210" as="geometry" />
+        </mxCell>
+        <mxCell id="lane-orch-label" value="Orchestration Layer — agent/orchestration/" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=13;fontStyle=1;fontColor=#1A6B1A;spacingLeft=10;spacingTop=5;" vertex="1" parent="1">
+          <mxGeometry x="20" y="170" width="280" height="25" as="geometry" />
+        </mxCell>
+
+        <!-- Lane 3: Execution Layer -->
+        <mxCell id="lane-exec-bg" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=none;opacity=30;" vertex="1" parent="1">
+          <mxGeometry x="20" y="400" width="1340" height="240" as="geometry" />
+        </mxCell>
+        <mxCell id="lane-exec-label" value="Execution Layer — agent/orchestration/executors/" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=13;fontStyle=1;fontColor=#0050A0;spacingLeft=10;spacingTop=5;" vertex="1" parent="1">
+          <mxGeometry x="20" y="400" width="300" height="25" as="geometry" />
+        </mxCell>
+
+        <!-- Lane 4: Tool & Handler Layer -->
+        <mxCell id="lane-tool-bg" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=none;opacity=30;" vertex="1" parent="1">
+          <mxGeometry x="20" y="660" width="1340" height="160" as="geometry" />
+        </mxCell>
+        <mxCell id="lane-tool-label" value="Tool &amp; Handler Layer — agent/shared/ + agent/orchestration/handlers/" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=13;fontStyle=1;fontColor=#856B00;spacingLeft=10;spacingTop=5;" vertex="1" parent="1">
+          <mxGeometry x="20" y="660" width="400" height="25" as="geometry" />
+        </mxCell>
+
+        <!-- Lane 5: Connector + External APIs -->
+        <mxCell id="lane-conn-bg" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=none;opacity=30;" vertex="1" parent="1">
+          <mxGeometry x="20" y="840" width="1340" height="180" as="geometry" />
+        </mxCell>
+        <mxCell id="lane-conn-label" value="Connector Layer + External APIs — agent/shared/connector.py" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=13;fontStyle=1;fontColor=#A00020;spacingLeft=10;spacingTop=5;" vertex="1" parent="1">
+          <mxGeometry x="20" y="840" width="370" height="25" as="geometry" />
+        </mxCell>
+
+        <!-- ========== LANE 1: Part 1 Input ========== -->
+
+        <!-- RoutingPayload -->
+        <mxCell id="routing-payload" value="&lt;b&gt;RoutingPayload&lt;/b&gt;&lt;br&gt;intent: EUserIntent&lt;br&gt;session_id: str&lt;br&gt;user_needs: UserNeeds&lt;br&gt;execution_mode: EExecutionMode&lt;br&gt;(CODE_DRIVEN | AGENTIC_LOOP)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E1D5E7;strokeColor=#9673A6;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="60" y="80" width="280" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- Arrow: RoutingPayload → Orchestrator -->
+        <mxCell id="arrow-routing-to-orch" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;strokeColor=#5A2D82;fillColor=#E1D5E7;endArrow=block;endFill=1;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="120" y="140" as="sourcePoint" />
+            <mxPoint x="120" y="210" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="arrow-routing-to-orch-label" value="Part 1 → Part 2" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=10;fontColor=#5A2D82;fontStyle=1;" vertex="1" connectable="0" parent="arrow-routing-to-orch">
+          <mxGeometry x="-0.2" y="1" relative="1" as="geometry">
+            <mxPoint x="20" y="-5" as="offset" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- ========== LANE 2: Orchestration Layer ========== -->
+
+        <!-- Orchestrator -->
+        <mxCell id="orchestrator" value="&lt;b&gt;Orchestrator&lt;/b&gt; : IOrchestrator&lt;br&gt;&lt;hr&gt;&lt;i&gt;execute_async(routing)&lt;/i&gt;&lt;br&gt;1. ContextResolver → ExecutionContext&lt;br&gt;2. dispatch by execution_mode" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D5E8D4;strokeColor=#82B366;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="60" y="210" width="280" height="75" as="geometry" />
+        </mxCell>
+
+        <!-- ContextResolver -->
+        <mxCell id="context-resolver" value="&lt;b&gt;ContextResolver&lt;/b&gt; : IContextResolver&lt;br&gt;&lt;hr&gt;&lt;i&gt;resolve_async(routing)&lt;/i&gt;&lt;br&gt;1. Copy session_id, intent&lt;br&gt;2. Extract user_needs.collected&lt;br&gt;3. Optional: geocode → lat/lng" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D5E8D4;strokeColor=#82B366;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="400" y="200" width="280" height="90" as="geometry" />
+        </mxCell>
+
+        <!-- ExecutionContext -->
+        <mxCell id="execution-context" value="&lt;b&gt;ExecutionContext&lt;/b&gt; &lt;i&gt;(frozen @dataclass)&lt;/i&gt;&lt;br&gt;&lt;hr&gt;session_id, intent&lt;br&gt;user_needs: CollectedData&lt;br&gt;property_lat/lng/address&lt;br&gt;target_entity_id/type/label" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D5E8D4;strokeColor=#82B366;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="400" y="310" width="280" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- Arrow: Orchestrator → ContextResolver -->
+        <mxCell id="arrow-orch-to-resolver" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=1.5;strokeColor=#82B366;endArrow=block;endFill=1;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="200" y="247" as="sourcePoint" />
+            <mxPoint x="400" y="245" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="arrow-orch-to-resolver-label" value="resolve_async(routing)" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=9;fontColor=#82B366;" vertex="1" connectable="0" parent="arrow-orch-to-resolver">
+          <mxGeometry x="-0.2" y="1" relative="1" as="geometry">
+            <mxPoint y="-8" as="offset" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Arrow: ContextResolver → ExecutionContext -->
+        <mxCell id="arrow-resolver-to-ctx" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=1.5;strokeColor=#82B366;endArrow=block;endFill=1;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="540" y="290" as="sourcePoint" />
+            <mxPoint x="540" y="310" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="arrow-resolver-to-ctx-label" value="returns" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=9;fontColor=#82B366;" vertex="1" connectable="0" parent="arrow-resolver-to-ctx">
+          <mxGeometry x="-0.2" y="1" relative="1" as="geometry">
+            <mxPoint x="15" as="offset" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Arrow: ExecutionContext back to Orchestrator -->
+        <mxCell id="arrow-ctx-to-orch" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=1.5;strokeColor=#82B366;endArrow=block;endFill=1;dashed=1;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="400" y="340" as="sourcePoint" />
+            <mxPoint x="340" y="285" as="targetPoint" />
+            <Array as="points">
+              <mxPoint x="380" y="340" />
+              <mxPoint x="380" y="285" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="arrow-ctx-to-orch-label" value="ExecutionContext" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=9;fontColor=#82B366;" vertex="1" connectable="0" parent="arrow-ctx-to-orch">
+          <mxGeometry x="-0.2" y="1" relative="1" as="geometry">
+            <mxPoint x="-40" y="-5" as="offset" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- ========== LANE 3: Execution Layer ========== -->
+
+        <!-- Dispatch decision diamond -->
+        <mxCell id="dispatch-decision" value="&lt;b&gt;execution_mode?&lt;/b&gt;" style="rhombus;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="310" y="425" width="110" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- Arrow: Orchestrator → Dispatch -->
+        <mxCell id="arrow-orch-to-dispatch" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;strokeColor=#6C8EBF;endArrow=block;endFill=1;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="200" y="285" as="sourcePoint" />
+            <mxPoint x="365" y="445" as="targetPoint" />
+            <Array as="points">
+              <mxPoint x="200" y="365" />
+              <mxPoint x="365" y="365" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="arrow-orch-to-dispatch-label" value="context" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=9;fontColor=#6C8EBF;" vertex="1" connectable="0" parent="arrow-orch-to-dispatch">
+          <mxGeometry x="-0.2" y="1" relative="1" as="geometry">
+            <mxPoint x="90" y="-8" as="offset" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- CODE_DRIVEN path (left) -->
+        <mxCell id="label-code-driven" value="&lt;b&gt;CODE_DRIVEN&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=10;fontColor=#0050A0;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="60" y="410" width="120" height="20" as="geometry" />
+        </mxCell>
+
+        <mxCell id="arrow-dispatch-code" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=1.5;strokeColor=#6C8EBF;endArrow=block;endFill=1;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="310" y="455" as="sourcePoint" />
+            <mxPoint x="120" y="455" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- CodeDrivenExecutor -->
+        <mxCell id="code-driven-executor" value="&lt;b&gt;CodeDrivenExecutor&lt;/b&gt; : IExecutor&lt;br&gt;&lt;hr&gt;&lt;i&gt;execute_async(context)&lt;/i&gt;&lt;br&gt;1. handler = handlers[context.intent]&lt;br&gt;2. handler.execute_async(context)&lt;br&gt;3. wrap → ExecutionResponse" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="60" y="480" width="260" height="85" as="geometry" />
+        </mxCell>
+
+        <!-- Arrow: Dispatch → CodeDrivenExecutor -->
+        <mxCell id="arrow-dispatch-to-code" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=1.5;strokeColor=#6C8EBF;endArrow=block;endFill=1;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="120" y="455" as="sourcePoint" />
+            <mxPoint x="120" y="480" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- AGENTIC_LOOP path (right) -->
+        <mxCell id="label-agentic" value="&lt;b&gt;AGENTIC_LOOP&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=10;fontColor=#0050A0;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="470" y="410" width="120" height="20" as="geometry" />
+        </mxCell>
+
+        <mxCell id="arrow-dispatch-agentic" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=1.5;strokeColor=#6C8EBF;endArrow=block;endFill=1;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="420" y="455" as="sourcePoint" />
+            <mxPoint x="530" y="455" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- LLMDrivenExecutor -->
+        <mxCell id="llm-driven-executor" value="&lt;b&gt;LLMDrivenExecutor&lt;/b&gt; : IExecutor&lt;br&gt;&lt;hr&gt;&lt;i&gt;execute_async(context)&lt;/i&gt;&lt;br&gt;Loop (max_rounds=5):&lt;br&gt;  1. get_openai_tool_schemas()&lt;br&gt;  2. LLM.chat_with_tools_async()&lt;br&gt;  3. if tool_call → run → feed back&lt;br&gt;  4. if no tool_call → SUCCESS" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="450" y="480" width="280" height="100" as="geometry" />
+        </mxCell>
+
+        <!-- Arrow: Dispatch → LLMDrivenExecutor -->
+        <mxCell id="arrow-dispatch-to-llm" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=1.5;strokeColor=#6C8EBF;endArrow=block;endFill=1;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="530" y="455" as="sourcePoint" />
+            <mxPoint x="530" y="480" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- LLM bubble (for LLMDrivenExecutor) -->
+        <mxCell id="llm-bubble" value="&lt;b&gt;LLM&lt;/b&gt;&lt;br&gt;ILLMClient&lt;br&gt;(OpenRouter)" style="ellipse;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="760" y="490" width="120" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- Arrow: LLMDrivenExecutor → LLM -->
+        <mxCell id="arrow-executor-to-llm" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=1.5;strokeColor=#D6B656;endArrow=block;endFill=1;dashed=1;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="730" y="520" as="sourcePoint" />
+            <mxPoint x="760" y="520" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="arrow-executor-to-llm-label" value="tool_schemas + messages" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=8;fontColor=#D6B656;" vertex="1" connectable="0" parent="arrow-executor-to-llm">
+          <mxGeometry x="-0.2" y="1" relative="1" as="geometry">
+            <mxPoint y="-8" as="offset" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- ========== LANE 4: Tool & Handler Layer ========== -->
+
+        <!-- Handler Protocol -->
+        <mxCell id="handler-protocol" value="&lt;b&gt;IntentHandler&lt;T&gt;&lt;/b&gt; &lt;i&gt;(Protocol)&lt;/i&gt;&lt;br&gt;&lt;hr&gt;&lt;i&gt;execute_async(context)&lt;/i&gt; → T&lt;br&gt;&lt;i&gt;intent&lt;/i&gt; → EUserIntent&lt;br&gt;&lt;hr&gt;Implementations (future):&lt;br&gt;• RecommendSuburbsHandler&lt;br&gt;• ListPropertiesHandler&lt;br&gt;• PropertyDetailHandler" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="40" y="690" width="260" height="120" as="geometry" />
+        </mxCell>
+
+        <!-- Arrow: CodeDrivenExecutor → Handler -->
+        <mxCell id="arrow-code-to-handler" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=1.5;strokeColor=#D6B656;endArrow=block;endFill=1;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="140" y="565" as="sourcePoint" />
+            <mxPoint x="140" y="690" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="arrow-code-to-handler-label" value="handler.execute_async(context)" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=9;fontColor=#D6B656;fontStyle=1;" vertex="1" connectable="0" parent="arrow-code-to-handler">
+          <mxGeometry x="-0.2" y="1" relative="1" as="geometry">
+            <mxPoint x="65" y="-5" as="offset" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- ToolRegistry -->
+        <mxCell id="tool-registry" value="&lt;b&gt;ToolRegistry&lt;/b&gt; : IToolRegistry&lt;br&gt;&lt;hr&gt;register(tool)&lt;br&gt;get(name) → BaseTool&lt;br&gt;list_names() → list[str]&lt;br&gt;get_tool_schemas()&lt;br&gt;get_openai_tool_schemas()" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="380" y="690" width="240" height="100" as="geometry" />
+        </mxCell>
+
+        <!-- Arrow: LLMDrivenExecutor → ToolRegistry -->
+        <mxCell id="arrow-llm-to-registry" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=1.5;strokeColor=#D6B656;endArrow=block;endFill=1;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="560" y="580" as="sourcePoint" />
+            <mxPoint x="480" y="690" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="arrow-llm-to-registry-label" value="get_openai_tool_schemas()" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=9;fontColor=#D6B656;" vertex="1" connectable="0" parent="arrow-llm-to-registry">
+          <mxGeometry x="-0.2" y="1" relative="1" as="geometry">
+            <mxPoint x="-50" y="-5" as="offset" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Arrow: Handler → ToolRegistry -->
+        <mxCell id="arrow-handler-to-registry" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=1.5;strokeColor=#D6B656;endArrow=block;endFill=1;dashed=1;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="300" y="740" as="sourcePoint" />
+            <mxPoint x="380" y="740" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="arrow-handler-to-registry-label" value="registry.get(name)" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=9;fontColor=#D6B656;" vertex="1" connectable="0" parent="arrow-handler-to-registry">
+          <mxGeometry x="-0.2" y="1" relative="1" as="geometry">
+            <mxPoint y="-8" as="offset" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- BaseTool -->
+        <mxCell id="base-tool" value="&lt;b&gt;BaseTool&lt;TParams&gt;&lt;/b&gt; &lt;i&gt;(ABC)&lt;/i&gt;&lt;br&gt;&lt;hr&gt;name, description&lt;br&gt;params_model: type[TParams]&lt;br&gt;&lt;hr&gt;&lt;i&gt;build_params(context)&lt;/i&gt; → TParams&lt;br&gt;&lt;i&gt;_execute_async(params)&lt;/i&gt; → dict&lt;br&gt;&lt;b&gt;run_async(params)&lt;/b&gt; → ToolResult&lt;br&gt;  (timing + error → ToolResult)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="700" y="690" width="280" height="120" as="geometry" />
+        </mxCell>
+
+        <!-- Arrow: ToolRegistry → BaseTool -->
+        <mxCell id="arrow-registry-to-tool" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=1.5;strokeColor=#D6B656;endArrow=block;endFill=1;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="620" y="740" as="sourcePoint" />
+            <mxPoint x="700" y="740" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="arrow-registry-to-tool-label" value="get(name)" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=9;fontColor=#D6B656;" vertex="1" connectable="0" parent="arrow-registry-to-tool">
+          <mxGeometry x="-0.2" y="1" relative="1" as="geometry">
+            <mxPoint y="-8" as="offset" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- ToolResult flowing up -->
+        <mxCell id="tool-result" value="&lt;b&gt;ToolResult&lt;/b&gt;&lt;br&gt;success: bool&lt;br&gt;data | error_code&lt;br&gt;source, execution_time_ms" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;fontSize=10;align=left;spacingLeft=6;" vertex="1" parent="1">
+          <mxGeometry x="1020" y="700" width="200" height="70" as="geometry" />
+        </mxCell>
+
+        <!-- Arrow: BaseTool → ToolResult -->
+        <mxCell id="arrow-tool-to-result" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=1.5;strokeColor=#D6B656;endArrow=block;endFill=1;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="980" y="740" as="sourcePoint" />
+            <mxPoint x="1020" y="735" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="arrow-tool-to-result-label" value="returns" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=9;fontColor=#D6B656;" vertex="1" connectable="0" parent="arrow-tool-to-result">
+          <mxGeometry x="-0.2" y="1" relative="1" as="geometry">
+            <mxPoint y="-6" as="offset" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- ========== LANE 5: Connector + External APIs ========== -->
+
+        <!-- BaseConnector -->
+        <mxCell id="base-connector" value="&lt;b&gt;BaseConnector&lt;/b&gt; &lt;i&gt;(ABC)&lt;/i&gt;&lt;br&gt;&lt;hr&gt;connectorConfig (base_url, timeout)&lt;br&gt;&lt;i&gt;_build_auth_async(request)&lt;/i&gt;&lt;br&gt;&lt;i&gt;_map_error(status_code, body)&lt;/i&gt;&lt;br&gt;&lt;b&gt;_request_async(method, path, params)&lt;/b&gt;&lt;br&gt;  retry loop → httpx.AsyncClient" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F8CECC;strokeColor=#B85450;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="700" y="875" width="280" height="110" as="geometry" />
+        </mxCell>
+
+        <!-- Arrow: BaseTool → BaseConnector -->
+        <mxCell id="arrow-tool-to-connector" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=1.5;strokeColor=#B85450;endArrow=block;endFill=1;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="800" y="810" as="sourcePoint" />
+            <mxPoint x="800" y="875" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="arrow-tool-to-connector-label" value="_execute_async calls connector" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=9;fontColor=#B85450;fontStyle=1;" vertex="1" connectable="0" parent="arrow-tool-to-connector">
+          <mxGeometry x="-0.2" y="1" relative="1" as="geometry">
+            <mxPoint x="65" y="-5" as="offset" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- External APIs -->
+        <mxCell id="external-api-ptv" value="&lt;b&gt;PTV API&lt;/b&gt;&lt;br&gt;Public Transport Victoria" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F8CECC;strokeColor=#B85450;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1020" y="875" width="160" height="45" as="geometry" />
+        </mxCell>
+
+        <mxCell id="external-api-google-routes" value="&lt;b&gt;Google Routes&lt;/b&gt;&lt;br&gt;Directions / Distance Matrix" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F8CECC;strokeColor=#B85450;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1020" y="930" width="160" height="45" as="geometry" />
+        </mxCell>
+
+        <mxCell id="external-api-google-places" value="&lt;b&gt;Google Places&lt;/b&gt;&lt;br&gt;Nearby Search / Details" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F8CECC;strokeColor=#B85450;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1200" y="875" width="160" height="45" as="geometry" />
+        </mxCell>
+
+        <mxCell id="external-api-domain" value="&lt;b&gt;Domain API&lt;/b&gt;&lt;br&gt;Property Listings" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F8CECC;strokeColor=#B85450;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1200" y="930" width="160" height="45" as="geometry" />
+        </mxCell>
+
+        <!-- Arrows: Connector → External APIs -->
+        <mxCell id="arrow-conn-to-ptv" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=1.5;strokeColor=#B85450;endArrow=block;endFill=1;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="980" y="895" as="sourcePoint" />
+            <mxPoint x="1020" y="897" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="arrow-conn-to-groutes" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=1.5;strokeColor=#B85450;endArrow=block;endFill=1;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="980" y="952" as="sourcePoint" />
+            <mxPoint x="1020" y="952" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="arrow-conn-to-gplaces" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=1.5;strokeColor=#B85450;endArrow=block;endFill=1;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="980" y="897" as="sourcePoint" />
+            <mxPoint x="1200" y="897" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="arrow-conn-to-domain" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=1.5;strokeColor=#B85450;endArrow=block;endFill=1;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="980" y="952" as="sourcePoint" />
+            <mxPoint x="1200" y="952" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Connector Error types -->
+        <mxCell id="connector-errors" value="&lt;b&gt;Connector Errors&lt;/b&gt;&lt;br&gt;&lt;hr&gt;ConnectorError (base)&lt;br&gt;├── ConnectorHttpError&lt;br&gt;│&amp;nbsp;&amp;nbsp;&amp;nbsp;status_code, error_code, body&lt;br&gt;└── ConnectorTimeoutError&lt;br&gt;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;path, attempts&lt;br&gt;&lt;hr&gt;&lt;i&gt;Caught by BaseTool.run_async()&lt;br&gt;→ ToolResult(success=False)&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F8CECC;strokeColor=#B85450;fontSize=10;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="20" y="875" width="240" height="130" as="geometry" />
+        </mxCell>
+
+        <!-- ========== RESULT FLOW (right side, flowing up) ========== -->
+
+        <!-- ExecutionResponse -->
+        <mxCell id="execution-response" value="&lt;b&gt;ExecutionResponse&lt;/b&gt;&lt;br&gt;status: EExecutionStatus&lt;br&gt;  (SUCCESS | PARTIAL | FAILED)&lt;br&gt;data: dict | None&lt;br&gt;error_code, error_message" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E1D5E7;strokeColor=#9673A6;fontSize=10;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="1000" y="360" width="210" height="80" as="geometry" />
+        </mxCell>
+
+        <!-- Return flow arrows -->
+        <mxCell id="arrow-result-up-1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=1.5;strokeColor=#9673A6;endArrow=block;endFill=1;dashed=1;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1100" y="770" as="sourcePoint" />
+            <mxPoint x="1100" y="440" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="arrow-result-up-1-label" value="ToolResult →&lt;br&gt;ExecutionResponse" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=9;fontColor=#9673A6;fontStyle=1;" vertex="1" connectable="0" parent="arrow-result-up-1">
+          <mxGeometry x="-0.2" y="1" relative="1" as="geometry">
+            <mxPoint x="30" as="offset" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- ========== LEGEND ========== -->
+
+        <mxCell id="legend-box" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F5F5F5;strokeColor=#CCCCCC;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1020" y="40" width="280" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="legend-title" value="&lt;b&gt;Protocol → Implementation&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=10;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1035" y="45" width="250" height="18" as="geometry" />
+        </mxCell>
+        <mxCell id="legend-items" value="IOrchestrator → Orchestrator&lt;br&gt;IContextResolver → ContextResolver&lt;br&gt;IExecutor → CodeDrivenExecutor&lt;br&gt;IExecutor → LLMDrivenExecutor&lt;br&gt;IntentHandler[T] → (per intent)&lt;br&gt;IToolRegistry → ToolRegistry&lt;br&gt;ILLMClient → OpenRouterClient" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=9;" vertex="1" parent="1">
+          <mxGeometry x="1035" y="63" width="250" height="62" as="geometry" />
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

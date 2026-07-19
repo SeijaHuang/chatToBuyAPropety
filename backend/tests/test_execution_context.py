@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from agent.shared.execution_context import ExecutionContext
+from agent.shared.context import ExecutionContext
 from models.shared.enums import EUserIntent
 from models.shared.submodels import CollectedData
 

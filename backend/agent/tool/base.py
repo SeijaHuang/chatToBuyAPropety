@@ -17,9 +17,9 @@ from typing import TypeVar, cast
 
 from pydantic import BaseModel
 
-from agent.shared.connector import ConnectorHttpError, ConnectorTimeoutError
-from agent.shared.execution_context import ExecutionContext
-from agent.shared.tool_result import ToolResult
+from agent.connector.base import ConnectorHttpError, ConnectorTimeoutError
+from agent.shared.context import ExecutionContext
+from agent.tool.result import ToolResult
 
 TToolParams = TypeVar("TToolParams", bound=BaseModel)
 

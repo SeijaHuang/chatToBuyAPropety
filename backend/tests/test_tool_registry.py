@@ -3,9 +3,9 @@
 import pytest
 from pydantic import BaseModel
 
-from agent.shared.execution_context import ExecutionContext
-from agent.shared.tool import BaseTool
-from agent.shared.tool_registry import ToolRegistry
+from agent.shared.context import ExecutionContext
+from agent.tool.base import BaseTool
+from agent.tool_registry.registry import ToolRegistry
 
 # ============================================================================
 # Test doubles

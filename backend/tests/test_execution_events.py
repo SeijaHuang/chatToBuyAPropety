@@ -1,6 +1,6 @@
 """Tests for agent.shared.execution_events — EExecutionEvent enum."""
 
-from agent.shared.execution_events import EExecutionEvent
+from agent.shared.events import EExecutionEvent
 
 
 class TestEExecutionEvent:

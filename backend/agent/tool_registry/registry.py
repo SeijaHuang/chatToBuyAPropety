@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from typing import Any, Protocol
 
-from agent.shared.tool import BaseTool
+from agent.tool.base import BaseTool
 
 
 class IToolRegistry(Protocol):
@@ -92,3 +92,8 @@ class ToolRegistry(IToolRegistry):
         OpenAI chat completions API.
         """
         return [{"type": "function", "function": schema} for schema in self.get_tool_schemas()]
+
+
+def get_tool_registry() -> IToolRegistry:
+    """FastAPI dependency — returns a ToolRegistry as the IToolRegistry implementation."""
+    return ToolRegistry()
