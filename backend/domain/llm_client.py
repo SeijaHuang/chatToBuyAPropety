@@ -187,3 +187,8 @@ class OpenRouterClient(ILLMClient):
 
 
 llm_client: OpenRouterClient = OpenRouterClient()
+
+
+def get_llm_client() -> ILLMClient:
+    """FastAPI dependency — returns an OpenRouterClient as the ILLMClient implementation."""
+    return OpenRouterClient()

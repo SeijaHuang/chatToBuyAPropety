@@ -27,12 +27,29 @@ if str(_BACKEND_ROOT) not in sys.path:
 # ---------------------------------------------------------------------------
 # Registry — update this table whenever a new Protocol/implementation is added
 # ---------------------------------------------------------------------------
-PAIRS: list[tuple[str, str, str]] = [
+PAIRS: list[tuple[str, str, str] | tuple[str, str, str, str]] = [
+    # (protocol_module, ProtocolName, ImplName) — Protocol & impl in same module
     ("domain.llm_client", "ILLMClient", "OpenRouterClient"),
     ("redis_store.session_store", "ISessionStore", "RedisSessionStore"),
     ("db.repositories.user", "IUserRepository", "SqlAlchemyUserRepository"),
     ("db.repositories.chat", "IChatRepository", "SqlAlchemyChatRepository"),
     ("services.chat_service", "IChatService", "ChatService"),
+    ("agent.tool_registry.registry", "IToolRegistry", "ToolRegistry"),
+    ("agent.orchestration.context_resolver", "IContextResolver", "ContextResolver"),
+    ("agent.orchestration.orchestrator", "IOrchestrator", "Orchestrator"),
+    # (protocol_module, ProtocolName, ImplName, impl_module) — cross-file pairs
+    (
+        "agent.orchestration.executors.base",
+        "IExecutor",
+        "CodeDrivenExecutor",
+        "agent.orchestration.executors.code_driven_executor",
+    ),
+    (
+        "agent.orchestration.executors.base",
+        "IExecutor",
+        "LLMDrivenExecutor",
+        "agent.orchestration.executors.llm_driven_executor",
+    ),
 ]
 
 
@@ -55,13 +72,36 @@ def _protocol_members(protocol_cls: type) -> frozenset[str]:
     )
 
 
+def _resolve_entry(
+    entry: tuple[str, str, str] | tuple[str, str, str, str],
+) -> tuple[type, str, type, str]:
+    """Resolve a PAIRS entry to (protocol_class, protocol_name, impl_class, impl_label).
+
+    For 3-tuples the implementation lives in the same module as the Protocol.
+    For 4-tuples the fourth element is the implementation's module path.
+    """
+    protocol_module_path: str = entry[0]
+    protocol_name: str = entry[1]
+    impl_name: str = entry[2]
+    impl_module_path: str = entry[3] if len(entry) == 4 else protocol_module_path
+
+    protocol_module: ModuleType = import_module(protocol_module_path)
+    impl_module: ModuleType = import_module(impl_module_path)
+    protocol_cls: type = getattr(protocol_module, protocol_name)
+    impl_cls: type = getattr(impl_module, impl_name)
+
+    # Label includes module path when different from protocol
+    impl_label: str = (
+        impl_name if impl_module_path == protocol_module_path else f"{impl_module_path}.{impl_name}"
+    )
+    return protocol_cls, protocol_name, impl_cls, impl_label
+
+
 def check_all() -> list[str]:
     """Check every (Protocol, implementation) pair and return error strings."""
     errors: list[str] = []
-    for module_path, protocol_name, impl_name in PAIRS:
-        module: ModuleType = import_module(module_path)
-        protocol_cls: type = getattr(module, protocol_name)
-        impl_cls: type = getattr(module, impl_name)
+    for entry in PAIRS:
+        protocol_cls, protocol_name, impl_cls, impl_label = _resolve_entry(entry)
 
         required: frozenset[str] = _protocol_members(protocol_cls)
         missing: list[str] = sorted(
@@ -69,7 +109,7 @@ def check_all() -> list[str]:
         )
         if missing:
             errors.append(
-                f"  {impl_name} is missing {len(missing)} method(s) from "
+                f"  {impl_label} is missing {len(missing)} method(s) from "
                 f"{protocol_name}: {', '.join(missing)}"
             )
     return errors
