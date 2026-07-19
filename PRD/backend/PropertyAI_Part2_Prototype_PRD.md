@@ -464,18 +464,27 @@ class BaseTool(ABC, Generic[TParams]):
             )
 
     def get_tool_schema(self) -> dict:
-        """生成 OpenAI function-calling 格式的 Tool 定义。
+        """返回 provider-agnostic 的 Tool 元数据和参数 Schema。
 
-        供 ToolRegistry → LLMDrivenExecutor 使用。
-        基于 params_model 的 Pydantic model_json_schema() 自动生成。
+        返回 {name, description, parameters}，其中 parameters 为
+        params_model 的 JSON Schema（type, properties, required, 可选的 $defs）。
+
+        OpenAI function-calling 的 {"type": "function", "function": ...}
+        包装由 ToolRegistry.get_openai_tool_schemas() 负责——
+        Tool 本身不绑定任何特定 LLM provider。
         """
+        raw_schema: dict = cast(BaseModel, self.params_model).model_json_schema()
+        parameters: dict = {
+            "type": raw_schema.get("type", "object"),
+            "properties": raw_schema.get("properties", {}),
+            "required": raw_schema.get("required", []),
+        }
+        if "$defs" in raw_schema:
+            parameters["$defs"] = raw_schema["$defs"]
         return {
-            "type": "function",
-            "function": {
-                "name": self.name,
-                "description": self.description,
-                "parameters": self.params_model.model_json_schema(),
-            },
+            "name": self.name,
+            "description": self.description,
+            "parameters": parameters,
         }
 ```
 
@@ -514,7 +523,7 @@ LLMDriven:   LLM tool_call → 反序列化 → TParams → run()
 
 **定位**: 全局 name → Tool 实例的注册表。两个消费者：
 - CodeDriven Handler: `registry.get("ptv_nearby_stops")` 获取实例
-- LLMDriven Executor: `registry.get_tool_schemas()` 生成 LLM function-calling 定义
+- LLMDriven Executor: `registry.get_openai_tool_schemas()` 获取 OpenAI function-calling 格式的 Tool 定义
 
 ```python
 # agent/shared/tool_registry.py
@@ -545,11 +554,22 @@ class ToolRegistry:
         return list(self._tools.keys())
 
     def get_tool_schemas(self) -> list[dict]:
-        """生成所有 Tool 的 OpenAI function-calling JSON Schema。
-
-        供 LLMDrivenExecutor 使用。
+        """返回所有 Tool 的 provider-agnostic 元数据列表。
+        
+        每个元素为 {name, description, parameters}，不含 provider 特定包装。
         """
         return [tool.get_tool_schema() for tool in self._tools.values()]
+
+    def get_openai_tool_schemas(self) -> list[dict]:
+        """以 OpenAI function-calling 格式返回所有 Tool 的定义。
+
+        在 get_tool_schemas() 的结果外包装 {"type": "function", "function": ...}。
+        供 LLMDrivenExecutor 使用。
+        """
+        return [
+            {"type": "function", "function": schema}
+            for schema in self.get_tool_schemas()
+        ]
 ```
 
 ---
@@ -689,7 +709,7 @@ class LLMDrivenExecutor(IExecutor):
     async def execute_async(self, context: ExecutionContext) -> ExecutionResponse:
         # 将 ExecutionContext 序列化进 system prompt
         messages: list[dict] = [self._build_system_message(context)]
-        tool_schemas: list[dict] = self._registry.get_tool_schemas()
+        tool_schemas: list[dict] = self._registry.get_openai_tool_schemas()
 
         for _round in range(self._max_rounds):
             response = await self._llm.chat_with_tools_async(
@@ -753,7 +773,7 @@ LLMDriven 路径 (open_ended_query):
       ↓
   LLMDrivenExecutor
       ├── ExecutionContext → system prompt       ← Context 转自然语言
-      ├── tool_schemas = registry.get_tool_schemas()
+      ├── tool_schemas = registry.get_openai_tool_schemas()
       │
       ├── LLM 推理: tool_call("ptv_nearby_stops", {lat:-37.82, lng:144.96})
       │     ↓
@@ -911,7 +931,7 @@ class PTVConnector(BaseConnector):
 | D7 | `run()` 的实现位置 | 基类模板方法 | 错误→ToolResult 转换对所有 Tool 一致，避免重复 |
 | D8 | 泛型参数声明方式 | `params_model` 类变量 | 比 `__orig_bases__` 反射更可靠，意图更清晰 |
 | D9 | LLM 路径是否用 `build_params` | 否 | LLM 从 system prompt 中的 Context 文本自行推理参数 |
-| D10 | `TParams` 的 JSON Schema | Pydantic `model_json_schema()` 自动生成 | 不手写 schema；与代码同步 |
+| D10 | `TParams` 的 JSON Schema | Pydantic `model_json_schema()` 自动生成 | Tool 层只输出 provider-agnostic 的 {name, description, parameters}；OpenAI envelope 由 ToolRegistry.get_openai_tool_schemas() 统一包装，Tool 不绑定任何 LLM provider |
 
 ---
 
@@ -1030,7 +1050,7 @@ backend/
 | # | 源文件 | 测试文件 | 覆盖率 | 测试要点 |
 |---|---|---|---|---|
 | S2.1 | `agent/shared/connector.py`（追加 BaseConnector + ConnectorConfig） | `tests/test_connector.py`（追加） | **100%** | `ConnectorConfig` frozen dataclass；`_get_client_async` 延迟初始化；`_request_async` 重试逻辑（mock `httpx.AsyncClient.send`）：成功返回 JSON、HTTP 4xx/5xx → `ConnectorHttpError`（含 `_map_error` 生成的 error_code）、超时耗尽 → `ConnectorTimeoutError`；`_build_auth_async` 抽象方法；`close_async` 清理 |
-| S2.2 | `agent/shared/tool.py` | `tests/test_tool.py` | **100%** | `run()` 模板方法：`_execute_async` 成功 → `ToolResult(success=True, data=...)`；`ConnectorHttpError` → `ToolResult(success=False, error_code=e.error_code)`；`ConnectorTimeoutError` → `ToolResult(success=False, error_code="..._TIMEOUT")`；`execution_time_ms` 正确计算；`get_tool_schema()` 基于 `params_model.model_json_schema()` 生成 OpenAI function-calling 格式；`build_params` / `_execute_async` 抽象方法 |
+| S2.2 | `agent/shared/tool.py` | `tests/test_tool.py` | **100%** | `run()` 模板方法：`_execute_async` 成功 → `ToolResult(success=True, data=...)`；`ConnectorHttpError` → `ToolResult(success=False, error_code=e.error_code)`；`ConnectorTimeoutError` → `ToolResult(success=False, error_code="..._TIMEOUT")`；`execution_time_ms` 正确计算；`get_tool_schema()` 返回 provider-agnostic 的 {name, description, parameters}（不含 OpenAI envelope）；`build_params` / `_execute_async` 抽象方法 |
 
 **依赖**: Subtask 1（`ToolResult`、`ExecutionContext`、`ConnectorError`）+ `httpx` + `pydantic`
 
@@ -1048,7 +1068,7 @@ backend/
 
 | # | 源文件 | 测试文件 | 覆盖率 | 测试要点 |
 |---|---|---|---|---|
-| S3.1 | `agent/shared/tool_registry.py` | `tests/test_tool_registry.py` | **100%** | `register` / `get` / `list_names` 正常路径；重复注册同名 Tool → `ValueError`；`get` 不存在的名称 → `KeyError`；`get_tool_schemas()` 返回所有已注册 Tool 的 schema 列表（空注册表 → 空列表） |
+| S3.1 | `agent/shared/tool_registry.py` | `tests/test_tool_registry.py` | **100%** | `register` / `get` / `list_names` 正常路径；重复注册同名 Tool → `ValueError`；`get` 不存在的名称 → `KeyError`；`get_tool_schemas()` 返回 provider-agnostic schema 列表（空注册表 → 空列表）；`get_openai_tool_schemas()` 为每个 schema 包装 {"type": "function", "function": ...} |
 
 **依赖**: Subtask 2（`BaseTool`）
 

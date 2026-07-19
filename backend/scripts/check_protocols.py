@@ -33,6 +33,7 @@ PAIRS: list[tuple[str, str, str]] = [
     ("db.repositories.user", "IUserRepository", "SqlAlchemyUserRepository"),
     ("db.repositories.chat", "IChatRepository", "SqlAlchemyChatRepository"),
     ("services.chat_service", "IChatService", "ChatService"),
+    ("agent.shared.tool_registry", "IToolRegistry", "ToolRegistry"),
 ]
 
 
