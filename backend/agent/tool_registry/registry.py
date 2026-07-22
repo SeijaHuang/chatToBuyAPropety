@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from typing import Any, Protocol
 
-from agent.tool.base import BaseTool
+from agent.tools.base import BaseTool
 
 
 class IToolRegistry(Protocol):

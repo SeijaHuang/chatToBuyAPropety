@@ -3,10 +3,10 @@
 import pytest
 from pydantic import BaseModel
 
-from agent.connector.base import ConnectorHttpError, ConnectorTimeoutError
+from agent.connectors.base import ConnectorHttpError, ConnectorTimeoutError
 from agent.shared.context import ExecutionContext
-from agent.tool.base import BaseTool
-from agent.tool.result import ToolResult
+from agent.tools.base import BaseTool
+from agent.tools.result import ToolResult
 from models.shared.enums import EUserIntent
 from models.shared.submodels import CollectedData
 

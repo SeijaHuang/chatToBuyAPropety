@@ -7,8 +7,8 @@ from pydantic import BaseModel
 
 from agent.orchestration.executors.llm_driven_executor import LLMDrivenExecutor
 from agent.shared.context import ExecutionContext
-from agent.tool.base import BaseTool
 from agent.tool_registry.registry import ToolRegistry
+from agent.tools.base import BaseTool
 from models.shared.enums import EUserIntent
 from models.shared.execution_response import EExecutionStatus, ExecutionResponse
 from models.shared.submodels import CollectedData

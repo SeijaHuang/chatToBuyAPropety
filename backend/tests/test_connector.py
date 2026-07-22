@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 import httpx
 import pytest
 
-from agent.connector.base import (
+from agent.connectors.base import (
     BaseConnector,
     ConnectorConfig,
     ConnectorError,

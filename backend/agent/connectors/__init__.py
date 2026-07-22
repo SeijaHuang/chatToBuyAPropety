@@ -1,6 +1,6 @@
 """Connector layer — HTTP abstraction for external API calls."""
 
-from agent.connector.base import (
+from agent.connectors.base import (
     BaseConnector,
     ConnectorConfig,
     ConnectorError,

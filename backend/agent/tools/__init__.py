@@ -1,6 +1,6 @@
 """Atomic Tool base class and unified result type."""
 
-from agent.tool.base import BaseTool
-from agent.tool.result import ToolResult
+from agent.tools.base import BaseTool
+from agent.tools.result import ToolResult
 
 __all__ = ["BaseTool", "ToolResult"]

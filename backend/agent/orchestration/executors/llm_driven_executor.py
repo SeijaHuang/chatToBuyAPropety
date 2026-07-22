@@ -12,9 +12,9 @@ from pydantic import BaseModel
 
 from agent.orchestration.executors.base import IExecutor
 from agent.shared.context import ExecutionContext
-from agent.tool.base import BaseTool
-from agent.tool.result import ToolResult
 from agent.tool_registry.registry import IToolRegistry, get_tool_registry
+from agent.tools.base import BaseTool
+from agent.tools.result import ToolResult
 from domain.llm_client import ILLMClient, get_llm_client
 from models.shared.execution_response import EExecutionStatus, ExecutionResponse
 
